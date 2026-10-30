@@ -498,7 +498,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
                     // a name for another type.
                     None if object_literal(&ty).is_none()
                         && !matches!(ty.trim(), "object" | "Object")
-                        && !block.contains("@template") =>
+                        && !has_tag(&block, "@template") =>
                     {
                         aliases.push((name, ty))
                     }
@@ -619,10 +619,16 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         ty
     };
     // A type with each alias inside it written out (`Tab[]` as `import("../types/app").Tab[]`), so
-    // a generated declaration or a set of names is seen wherever it is.
-    let expand = |ty: &str| expand_aliases(&aliases, &resolve(ty), 0);
+    // a generated declaration or a set of names is seen wherever it is. Each alias is written out
+    // once, before any type is read.
+    let expanded = expand_all(&aliases);
+    let expand = |ty: &str| {
+        substitute(&resolve(ty), &mut |word| expanded.iter().find(|(local, _)| local == word).map(|(_, to)| to.clone()))
+    };
     let plain_type = |ty: &str| {
-        let ty = expand(ty);
+        // A view's or a row's name in `Holds<Row, ..>` and `FeedUrl<Level>` is the name itself.
+        let resolved = resolve(ty);
+        let ty = if resolved.starts_with("Holds<") || resolved.starts_with("FeedUrl<") { resolved } else { expand(ty) };
         match param_type(&ty) {
             Param::Any => event_of(&ty).map_or(Param::Any, Param::Event),
             other => other,
@@ -673,6 +679,34 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         }
         groups.push(ArgGroup { name, fields, doc });
     }
+    // The typedefs a handler cannot take in any shape (`P`, `P | null`, `P[]`, or inside another
+    // typedef of plain values): one of plain values that holds a generated declaration or a set of
+    // names, and a group with a set of names. Followed through typedefs that hold them.
+    let mut bad: Vec<(String, String)> = Vec::new();
+    for (name, fields) in &plain {
+        let fields = expand(fields);
+        if holds_names_union(&fields) {
+            bad.push((name.clone(), union_error(name, fields.trim())));
+        } else if mentions_generated(&fields) {
+            bad.push((name.clone(), format!("{name} holds a generated declaration in a shape the call is not checked against; take the generated type itself (import(\"../types/app\").Name), a list of it, or a group typedef")));
+        }
+    }
+    for (group, (_, why)) in &unions {
+        bad.push((group.clone(), why.clone()));
+    }
+    loop {
+        let found = plain.iter().find_map(|(name, fields)| {
+            if bad.iter().any(|(b, _)| b == name) {
+                return None;
+            }
+            let held = type_words(&expand(fields)).into_iter().find_map(|w| bad.iter().find(|(b, _)| *b == w).cloned())?;
+            Some((name.clone(), format!("{name} holds {}: {}", held.0, held.1)))
+        });
+        match found {
+            Some(entry) => bad.push(entry),
+            None => break,
+        }
+    }
     let mut handlers = Vec::new();
     for Raw { name, params, doc, line } in raw {
         let mut list = Vec::new();
@@ -694,14 +728,19 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
                 plain_type(&ty)
             };
             if let Param::Unreadable(why) = resolved {
+                let expanded = expand(&ty);
+                let why = if expanded == ty { why } else { format!("{ty}, which is {why}") };
                 return Err((line, format!("{name}: {param}: {why}")));
             }
             // A generated declaration in a shape the call is not checked against (inside a list
             // with `null`, a tuple, a typedef of plain values) is refused rather than taking any
             // value.
-            if matches!(resolved, Param::Any)
-                && (mentions_generated(&expand(&ty)) || plain.iter().any(|(n, t)| *n == named && mentions_generated(&expand(t))))
-            {
+            if matches!(resolved, Param::Any) {
+                if let Some((_, why)) = type_words(&expand(&ty)).into_iter().find_map(|w| bad.iter().find(|(b, _)| *b == w)) {
+                    return Err((line, format!("{name}: {param}: {why}")));
+                }
+            }
+            if matches!(resolved, Param::Any) && mentions_generated(&expand(&ty)) {
                 return Err((
                     line,
                     format!("{name}: {param}: {ty} holds a generated declaration in a shape the call is not checked against; take the generated type itself (import(\"../types/app\").Name), a list of it, or a group typedef"),
@@ -714,49 +753,92 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
     Ok((handlers, groups, imports, siblings))
 }
 
-/// `ty` with each alias inside it written out, and the aliases inside those (at most one level per
-/// alias, so a cycle ends): `Tabs | null` with `Tabs = Tab[]` is `(import("../types/app").Tab[]) | null`.
-fn expand_aliases(aliases: &[(String, String)], ty: &str, depth: usize) -> String {
-    let mut out = String::with_capacity(ty.len());
-    let (mut word, mut quote, mut after_dot) = (String::new(), None, false);
-    let flush = |word: &mut String, out: &mut String, after_dot: bool| {
-        match aliases.iter().find(|(local, _)| *local == *word).filter(|_| !after_dot && depth <= aliases.len()) {
-            // In parentheses, so `Mode | null` stays one set and `null`, and `Tabs[]` a list of it.
-            Some((_, target)) => {
-                let target = expand_aliases(aliases, target.trim(), depth + 1);
-                if names_union(&target) || target.contains(['|', '[', '<']) {
-                    out.push('(');
-                    out.push_str(&target);
-                    out.push(')');
-                } else {
-                    out.push_str(&target);
-                }
-            }
-            None => out.push_str(word),
+/// Each alias written out, with the aliases inside it written out too: `Tabs = Tab[]` and
+/// `Maybe = Tabs | null` make `Maybe` `(import("../types/app").Tab[]) | null`. Each alias is
+/// written out once and kept; one met again while it is being written out (a cycle, a recursive
+/// `Json`) stays its name, and so does one that would write out past 64 KB, so the work is one
+/// pass over each alias however they refer to each other.
+fn expand_all(aliases: &[(String, String)]) -> Vec<(String, String)> {
+    fn go(i: usize, aliases: &[(String, String)], done: &mut [Option<String>], open: &mut [bool]) -> String {
+        if let Some(out) = &done[i] {
+            return out.clone();
         }
-        word.clear();
-    };
-    for c in ty.chars() {
-        match (c, quote) {
-            (c, Some(q)) => {
-                out.push(c);
-                if c == q {
-                    quote = None;
-                }
+        open[i] = true;
+        let out = substitute(aliases[i].1.trim(), &mut |word| {
+            let j = aliases.iter().position(|(local, _)| local == word)?;
+            if open[j] {
+                return None;
             }
-            (c, None) if c.is_ascii_alphanumeric() || c == '_' || c == '$' => word.push(c),
-            (c, None) => {
-                flush(&mut word, &mut out, after_dot);
-                if c == '"' || c == '\'' {
-                    quote = Some(c);
-                }
-                after_dot = c == '.';
-                out.push(c);
+            Some(go(j, aliases, done, open)).filter(|to| to.len() <= 64 * 1024)
+        });
+        open[i] = false;
+        done[i] = Some(out.clone());
+        out
+    }
+    let mut done = vec![None; aliases.len()];
+    let mut open = vec![false; aliases.len()];
+    (0..aliases.len()).map(|i| (aliases[i].0.clone(), go(i, aliases, &mut done, &mut open))).collect()
+}
+
+/// `ty` with each name `to` gives a type for written as that type, in parentheses where it holds a
+/// `|`, `[` or `<`, so `Mode | null` stays one set and `null`, and `Tabs[]` a list of it. A name
+/// after a `.`, an object's key or a parameter's name (`{ Tab: string }`, `(Tab?: number) => void`)
+/// and text in quotes are left as they are.
+fn substitute(ty: &str, to: &mut dyn FnMut(&str) -> Option<String>) -> String {
+    let chars: Vec<char> = ty.chars().collect();
+    let mut out = String::with_capacity(ty.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if matches!(c, '"' | '\'' | '`') {
+            let end = chars[i + 1..].iter().position(|&d| d == c).map_or(chars.len(), |p| i + 2 + p);
+            out.extend(&chars[i..end]);
+            i = end;
+            continue;
+        }
+        if !(c.is_ascii_alphanumeric() || c == '_' || c == '$') {
+            out.push(c);
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_' || chars[i] == '$') {
+            i += 1;
+        }
+        let word: String = chars[start..i].iter().collect();
+        let after_dot = chars[..start].iter().rev().find(|c| !c.is_whitespace()) == Some(&'.');
+        let mut next = chars[i..].iter().filter(|c| !c.is_whitespace());
+        let key = match next.next() {
+            Some(':') => true,
+            Some('?') => next.next() == Some(&':'),
+            _ => false,
+        };
+        match (!after_dot && !key).then(|| to(&word)).flatten() {
+            Some(target) if target.contains(['|', '[', '<']) => {
+                out.push('(');
+                out.push_str(&target);
+                out.push(')');
             }
+            Some(target) => out.push_str(&target),
+            None => out.push_str(&word),
         }
     }
-    flush(&mut word, &mut out, after_dot);
     out
+}
+
+/// The names a type refers to: not one after a `.`, an object's key or text in quotes.
+fn type_words(ty: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    substitute(ty, &mut |word| {
+        words.push(word.to_string());
+        None
+    });
+    words
+}
+
+/// True when a comment block has `tag` as a tag of its own (at the start of a line).
+fn has_tag(block: &str, tag: &str) -> bool {
+    block.lines().any(|line| line.trim().trim_start_matches("/**").trim_start_matches('*').trim().starts_with(tag))
 }
 
 /// True for a type that is not written as JSON: one only the browser can supply (an element or
@@ -842,44 +924,33 @@ fn holds_names_union(ty: &str) -> bool {
         }
         rest = &body[end..];
     }
-    kept.contains(['"', '\'', '`'])
-}
-
-/// True for a set of names, `"name" | "set"` (or one), also with `null` or `undefined` among
-/// them or optional (`=`). A `|` inside a literal is part of it.
-fn names_union(ty: &str) -> bool {
-    let ty = ty.trim().trim_end_matches('=').trim();
-    let ty = ty.strip_prefix('?').unwrap_or(ty).trim();
-    let mut parts = Vec::new();
-    let (mut start, mut quote, mut depth) = (0, None, 0i32);
-    for (i, c) in ty.char_indices() {
-        match (c, quote) {
-            ('"' | '\'', None) => quote = Some(c),
-            (c, Some(q)) if c == q => quote = None,
-            (_, Some(_)) => {}
-            ('(' | '<' | '[' | '{', None) => depth += 1,
-            (')' | '>' | ']' | '}', None) => depth -= 1,
-            ('|', None) if depth == 0 => {
-                parts.push(&ty[start..i]);
-                start = i + 1;
-            }
-            _ => {}
+    // A literal that is a type, not an object's key (`{ "aria-label": string }`) or an indexed
+    // access (`HTMLElementTagNameMap["dialog"]`). A template literal is a pattern of text, not a
+    // set of names, and is left to `tsc`.
+    let chars: Vec<char> = kept.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let q = chars[i];
+        if q != '"' && q != '\'' {
+            i += 1;
+            continue;
         }
-    }
-    parts.push(&ty[start..]);
-    let mut names = 0;
-    for part in parts.iter().map(|p| p.trim()) {
-        let literal = part.len() >= 2
-            && ((part.starts_with('"') && part.ends_with('"')) || (part.starts_with('\'') && part.ends_with('\'')));
-        match part {
-            "null" | "undefined" => {}
-            _ if literal => names += 1,
-            // A set written in parentheses, or an alias of one written out: `("a" | "b") | null`.
-            _ if part.starts_with('(') && part.ends_with(')') && names_union(&part[1..part.len() - 1]) => names += 1,
-            _ => return false,
+        let end = chars[i + 1..].iter().position(|&c| c == q).map_or(chars.len(), |p| i + 1 + p);
+        let before: Vec<char> = chars[..i].iter().rev().filter(|c| !c.is_whitespace()).take(2).copied().collect();
+        let mut after = chars.get(end + 1..).unwrap_or(&[]).iter().filter(|c| !c.is_whitespace());
+        let key = match after.next() {
+            Some(':') => true,
+            Some('?') => after.next() == Some(&':'),
+            _ => false,
+        };
+        let indexed = before.first() == Some(&'[')
+            && before.get(1).is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | ']' | '>'));
+        if !key && !indexed {
+            return true;
         }
+        i = end + 1;
     }
-    names > 0
+    false
 }
 
 /// `{ rows: HTMLTableRowElement[], all: HTMLInputElement }` as (name, type) pairs.
@@ -964,9 +1035,29 @@ fn description(jsdoc: &str) -> String {
     text.join(" ")
 }
 
+/// `ty` without parentheses around all of it: `(Tab)` is `Tab`, and `(A) | (B)` stays as it is.
+fn unwrap_parens(mut ty: &str) -> &str {
+    while let Some(inner) = ty.strip_prefix('(').and_then(|t| t.strip_suffix(')')) {
+        let mut depth = 0i32;
+        let whole = inner.chars().all(|c| {
+            depth += match c {
+                '(' => 1,
+                ')' => -1,
+                _ => 0,
+            };
+            depth >= 0
+        });
+        if !whole {
+            break;
+        }
+        ty = inner.trim();
+    }
+    ty
+}
+
 /// The Rust bound for a JSDoc type.
 fn param_type(ty: &str) -> Param {
-    let ty = ty.trim().trim_start_matches('(').trim_end_matches(')').trim();
+    let ty = unwrap_parens(ty.trim());
     let element = |t: &str| dom::ELEMENTS.contains(&t);
     // `Holds<Row, HTMLTableSectionElement>` (corten/views): an element that holds Row views.
     if let Some(inner) = ty.strip_prefix("Holds<").and_then(|t| t.strip_suffix('>')) {
@@ -1340,6 +1431,49 @@ function helper() {}
         assert!(parse(&taken).unwrap_err().1.contains("Moving: from"), "a group a handler takes");
     }
 
+    #[test]
+    fn aliases_are_written_out_once_however_they_refer_to_each_other() {
+        // A recursive JSON type beside many aliases, and a long chain: each alias is written out
+        // once, so the time grows with the script, not with the ways aliases nest.
+        let mut source =
+            String::from("/** @typedef {string | number | boolean | null | Json[] | { [key: string]: Json }} Json */\n");
+        for i in 0..40 {
+            source += &format!("/** @typedef {{string}} S{i} */\n");
+        }
+        for i in 0..400 {
+            source += &format!("/** @typedef {{A{} | null}} A{i} */\n", i + 1);
+        }
+        source += "/** @typedef {{ id: string, data: Json }} Saved */\n/** @param {Json} a @param {Saved} b @param {A0} c */\nexport function f(a, b, c) {}";
+        let started = std::time::Instant::now();
+        let (handlers, _) = parse(&source).unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+        assert!(handlers[0].params.iter().all(|(_, p)| *p == Param::Any), "{:?}", handlers[0].params);
+    }
+
+    #[test]
+    fn keys_and_indexed_types_are_not_names_and_a_typedef_holding_a_declaration_is_refused_in_any_shape() {
+        let fine = r#"/** @typedef {import("../types/app").Tab} Tab */
+/** @param {{ "aria-label": string }} a @param {HTMLElementTagNameMap["dialog"]} b @param {{ Tab: string }} c @param {`item-${string}`} d @param {(Tab: number) => void} e */
+export function f(a, b, c, d, e) {}"#;
+        let (handlers, _) = parse(fine).unwrap();
+        assert!(handlers[0].params.iter().all(|(_, p)| *p == Param::Any), "{:?}", handlers[0].params);
+        let plain = "/** @typedef {import(\"../types/app\").Tab} Tab */\n/** @typedef {{ id: string, tab: Tab }} P */\n/** @typedef {{ inner: P }} Outer */\n";
+        for ty in ["P", "P=", "P | null", "P[]", "Outer", "Outer | null"] {
+            let source = format!("{plain}/** @param {{{ty}}} a */\nexport function f(a) {{}}");
+            let why = parse(&source).map(|_| ()).unwrap_err().1;
+            assert!(why.contains("generated declaration"), "{ty}: {why}");
+        }
+        let modes = "/** @typedef {{ id: string, m: \"x\" | \"y\" }} P */\n/** @param {P | null} a */\nexport function f(a) {}";
+        assert!(parse(modes).map(|_| ()).unwrap_err().1.contains("one of several names"));
+        // A view's name, written through a typedef, is still that name.
+        let rows = "/** @typedef {import(\"../types/app\").OrderRow} OrderRow */\n/** @param {Holds<OrderRow, HTMLTableSectionElement>} a */\nexport function f(a) {}";
+        let (handlers, _) = parse(rows).unwrap();
+        assert!(matches!(&handlers[0].params[0].1, Param::Checked(t) if t.starts_with("ts::Holds<")), "{:?}", handlers[0].params);
+        // An error names the type as it was written.
+        let tabs = "/** @typedef {import(\"../types/app\").Tab} Tab */\n/** @typedef {Tab[]} Tabs */\n/** @param {Tabs | null} a */\nexport function f(a) {}";
+        let why = parse(tabs).map(|_| ()).unwrap_err().1;
+        assert!(why.starts_with("f: a: Tabs | null, which is (import(\"../types/app\").Tab[]) | null:"), "{why}");
+    }
     #[test]
     fn a_message_parameter_is_checked_by_its_argument_names() {
         let (handlers, _) = parse(

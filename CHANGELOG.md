@@ -998,11 +998,14 @@ Corten is pre-1.0, so any minor version may change the API.
     (`@param {"name" | "price"} by`) no longer compiles, since it took any value; the error says to
     make it a Rust enum with a generated declaration, and so does a list or a generic of one
     (`Mode[]`, `Record<Mode, number>`, `[Mode, number]`, `{ m: Mode }`): any string literal in a
-    handler parameter's type is refused, outside `import("..")` and `Message<..>`. A `@typedef` of
+    handler parameter's type is refused, outside `import("..")`, `Message<..>`, an object's key and
+    an indexed type. A `@typedef` of
     any type but an object or a generic one (`@template`) (`Tab | null`, `Tab[]`, `string`) is
     checked as the type it names where a handler takes it, through any number of typedefs, and a
     generated declaration a handler's parameter holds in a shape the call is not checked against is
-    refused rather than taking any value; a typedef the script keeps for itself is not checked.
+    refused rather than taking any value, in any shape of a typedef of plain values that holds one;
+    a typedef the script keeps for itself is not checked. Each typedef is written out once, so a
+    recursive one or a long chain costs the macro no more than another.
     What the page gets is unchanged
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
@@ -1600,6 +1603,11 @@ Corten is pre-1.0, so any minor version may change the API.
     a third parameter, `&str` by default, so `Choice<Condition>` still names the same type.
     `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
     ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
+86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
+    one fits is part of correctness in the conflict order: a header, wire format or file format
+    of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
+    (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
+    ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
 87. Breaking: a script's set of names written as string literals (`@param {"name" | "price"} by`,
     also with `null`, optional, through a `@typedef`, or as a group's field) no longer compiles,
     and neither does a generated declaration inside another type (`import("../types/app").Tab[]`,
@@ -1608,12 +1616,6 @@ Corten is pre-1.0, so any minor version may change the API.
     takes is now checked as that type, where it took any value. Make the set a Rust enum with a
     generated declaration and type the value with it, alone
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
-
-86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
-    one fits is part of correctness in the conflict order: a header, wire format or file format
-    of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
-    (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
-    ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
