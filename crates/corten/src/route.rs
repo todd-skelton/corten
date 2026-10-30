@@ -147,6 +147,14 @@ pub use corten_macros::Route;
 /// enum Tab { Open, #[serde(skip_deserializing)] Draft }
 /// ```
 ///
+/// Nor do two variants written as one word, since a link to one would read back as the other:
+///
+/// ```compile_fail
+/// #[derive(corten::UrlValue, serde::Deserialize)]
+/// #[serde(rename_all = "lowercase")]
+/// enum Plan { Ab, AB }
+/// ```
+///
 /// Nor does an attribute that changes the words in a way it does not follow:
 ///
 /// ```compile_fail

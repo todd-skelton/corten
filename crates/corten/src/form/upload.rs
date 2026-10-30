@@ -253,9 +253,10 @@ pub struct File<'a> {
 }
 
 impl File<'_> {
-    /// Whether the file came from the input `field` names.
-    pub fn is(&self, field: FieldName) -> bool {
-        self.field == field.as_str()
+    /// Whether the file came from the input `field` names, at the form's top, in a group or in a
+    /// row.
+    pub fn is<P: super::Place>(&self, field: FieldName<P>) -> bool {
+        field == self.field.as_str()
     }
 
     /// The name of the input it came from.
