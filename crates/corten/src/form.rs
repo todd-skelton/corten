@@ -1545,11 +1545,23 @@ impl SubmitKey {
     /// let html = posted.submit.again(Pay::FIELDS.submit).to_html();
     /// assert_eq!(html, r#"<input type="hidden" name="submit" data-submit value="3f2504e0-4f89-41d3-9a0c-0305e82c3301">"#);
     /// ```
-    pub fn again(&self, name: FieldName) -> SubmitField {
+    ///
+    /// Like [`SubmitKey::field`], it takes only a `SubmitKey` field's name:
+    ///
+    /// ```compile_fail,E0308
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(serde::Deserialize, Fields)]
+    /// struct Pay { amount: u32, submit: SubmitKey }
+    ///
+    /// let posted: Pay = corten::form::from_bytes(b"amount=5&submit=3f2504e0-4f89-41d3-9a0c-0305e82c3301").unwrap();
+    /// let _ = posted.submit.again(Pay::FIELDS.amount);
+    /// ```
+    pub fn again(&self, name: FieldName<SubmitKey>) -> SubmitField {
         // Read only as a UUID (`Deserialize`), so it is 36 ASCII bytes.
         let mut key = [0u8; 36];
         key.copy_from_slice(self.0.as_bytes());
-        SubmitField { name, key }
+        SubmitField { name: name.__untyped(), key }
     }
 
     /// The UUID, lowercase and hyphenated: `3f2504e0-4f89-41d3-9a0c-0305e82c3301`.
