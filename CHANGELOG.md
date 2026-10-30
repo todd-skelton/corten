@@ -1006,7 +1006,18 @@ Corten is pre-1.0, so any minor version may change the API.
     instead when it refuses (a download posted at a stale revision), each `.into()` the answer,
     private like any page and `Public` with a page made for everyone
     ([#415 A handler that answers a file cannot answer a page or a redirect when the file is refused](https://github.com/todd-skelton/corten/issues/415)).
-139. Plural messages: `"cards_one"` and `"cards_other"` (the suffixes i18next uses) are one
+139. `#[route("/{*rest}", any = relay)]`: one handler for every method of a route, those the app
+    never names included (`OPTIONS`, `PROPFIND`), for an app moved onto Corten a slice at a time
+    that relays the rest to its old server, which then answers them instead of Corten's 405. It is
+    the route's only handler (naming another method beside it does not compile). A route with a
+    parameter still holds its handler to taking its `Params`: one relay for several catch-alls is
+    generic over the route (`async fn relay<R: FromUrl>(_: Params<R>, req: Request)`), and the
+    compiler picks the route at each name, so no wrapper per route with a parameter is needed
+    (a route without one has no `Params` and takes a handler without them). A path the app
+    routes itself keeps only the methods it names. Routes without `any` route and cost as
+    before
+    ([#360 A catch-all route's handler must take that route's Params, so one relay cannot serve several routes or every method](https://github.com/todd-skelton/corten/issues/360)).
+140. Plural messages: `"cards_one"` and `"cards_other"` (the suffixes i18next uses) are one
     message, `t.cards(count)`, which picks the form by the count's CLDR plural category in the
     locale and writes the count as `t.number` does; `t.js().cards()` picks it in the browser the
     same way (`format.js`, checked against Intl for every locale). A catalog without a form its
@@ -1616,16 +1627,15 @@ Corten is pre-1.0, so any minor version may change the API.
     a third parameter, `&str` by default, so `Choice<Condition>` still names the same type.
     `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
     ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
-87. `ReadAgain::from` takes the route by value as well as by reference (a borrowed route is a
-    `Route`, and `ReadAgainFrom<'a, R>` is now `ReadAgainFrom<R>`), so a component that is both part
-    of the page and the patch builds the read in its body instead of failing with E0515 or E0597
-    ([#440 ReadAgain::from borrows its route, so a component that is both part of the page and the patch cannot build the read in its body (E0515, E0597)](https://github.com/todd-skelton/corten/issues/440)).
-
 86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
     one fits is part of correctness in the conflict order: a header, wire format or file format
     of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
     (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
     ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
+87. `ReadAgain::from` takes the route by value as well as by reference (a borrowed route is a
+    `Route`, and `ReadAgainFrom<'a, R>` is now `ReadAgainFrom<R>`), so a component that is both part
+    of the page and the patch builds the read in its body instead of failing with E0515 or E0597
+    ([#440 ReadAgain::from borrows its route, so a component that is both part of the page and the patch cannot build the read in its body (E0515, E0597)](https://github.com/todd-skelton/corten/issues/440)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
