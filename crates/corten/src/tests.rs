@@ -4466,6 +4466,9 @@ fn keep_query_keeps_every_key_the_controls_do_not_name() {
     // Text that only looks like a name is not one.
     let html = keep_query(&at, html! { <p>" name=\"q\""</p> }).to_html();
     assert!(html.contains(r#"type="hidden" name="q""#), "{html}");
+    // A link given as `&dyn Href` (a form several pages share) works the same.
+    let shared: &dyn crate::Href = &at;
+    assert!(keep_query(shared, "").to_html().contains(r#"name="pageNo" value="3""#));
     // A route with no query keeps nothing.
     assert_eq!(
         keep_query(&Kept { q: None, tags: vec![], dims: Default::default(), paging: KeptPaging::default() }, "x").to_html(),

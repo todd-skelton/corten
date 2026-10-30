@@ -534,7 +534,9 @@ impl<P: Place> AttrValue for FieldName<P> {
 /// );
 /// ```
 ///
-/// It takes a typed route, so a URL as text does not compile:
+/// Every control the form sends goes inside, a named submit button included: one outside it is
+/// not seen, so its key would be sent twice. It takes a link (a typed route, or the `&dyn Href` a
+/// form several pages share is given), so a URL as text does not compile:
 ///
 /// ```compile_fail,E0277
 /// use corten::prelude::*;
@@ -542,7 +544,7 @@ impl<P: Place> AttrValue for FieldName<P> {
 ///
 /// let _ = html! { <form method="get">{keep_query(&"/slab-pricing?grade=9", html! { <input name="grade"> })}</form> };
 /// ```
-pub fn keep_query<'a, R: crate::route::Route + ?Sized, C: Render>(route: &'a R, controls: C) -> KeepQuery<'a, R, C> {
+pub fn keep_query<'a, R: crate::Href + ?Sized, C: Render>(route: &'a R, controls: C) -> KeepQuery<'a, R, C> {
     KeepQuery { route, controls }
 }
 
@@ -553,13 +555,13 @@ pub struct KeepQuery<'a, R: ?Sized, C> {
     controls: C,
 }
 
-impl<R: crate::route::Route + ?Sized, C: Render> Render for KeepQuery<'_, R, C> {
+impl<R: crate::Href + ?Sized, C: Render> Render for KeepQuery<'_, R, C> {
     fn render(&self, out: &mut String) {
         let start = out.len();
         self.controls.render(out);
         // The route's own encoding, read back: what its links send is what the form keeps.
         let mut href = String::new();
-        self.route.write_href(&mut href, false);
+        self.route.write_link(&mut href, false);
         let query = href.split_once('?').map_or("", |(_, q)| q);
         let query = query.split_once('#').map_or(query, |(q, _)| q);
         if query.is_empty() {

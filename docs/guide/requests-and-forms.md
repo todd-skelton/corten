@@ -590,7 +590,8 @@ each form wraps its controls in `keep_query(&at, html! { .. })`: the controls ar
 key of the route's query that none of them names (`name=`, a `#[route(query)]` set's key, a
 `#[route(prefix)]` entry's) becomes a hidden input, in the encoding the route's links use. There
 is no list of names, so a key is neither dropped nor sent twice, and a field added to the route
-later is kept by every such form.
+later is kept by every such form. Every control the form sends goes inside, a named submit button
+included; the route can be a `&dyn Href` a shared form is given.
 
 ```rust,ignore
 <form method="get" action={&at}>
