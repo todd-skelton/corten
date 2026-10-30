@@ -917,6 +917,15 @@ Corten is pre-1.0, so any minor version may change the API.
     read only by `finish`. A plain GET through the router took 16,673 to 17,022 instructions
     before and 16,864 to 16,866 after (callgrind, release build, 5 runs each); the before runs
     vary more than the two differ.
+128. `examples/auction-room`: a live card auction. Signed-in people bid on the same lots at once;
+    bids are kept in SQLite and checked in one transaction (refused below the price and the step,
+    or after the end, and written once per submit key), every page watching a lot sees it change,
+    and the outbid bidder alone is told, on every page they have open. Its `Identify`s refuse with
+    `sign_in`, `forbidden` (a bidder at the house's desk, the house bidding) and `unavailable`
+    (the store is down); its bid and sign-in limits are areas' middleware refusing with
+    `too_many`; it works without JavaScript; and its smoke has two bidders in two browsers bidding
+    against each other
+    ([#337 No example shows several signed-in users in real time with stored data: a live auction room](https://github.com/todd-skelton/corten/issues/337)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
