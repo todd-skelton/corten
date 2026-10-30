@@ -79,7 +79,8 @@ pub enum Format {
 /// What a handler named in `#[corten::routes]` returns: the type says how the route's failures are
 /// answered ([`Answer::FORMAT`]) and what the handler may read ([`Answer::Inputs`]). Implemented
 /// for [`HtmlResult`], [`JsonResult<T>`], `Result<JsonResponse, JsonError>`, [`Public`], [`NoStore`], text, a bare `StatusCode`,
-/// [`LiveResponse`], feeds, [`Media`] and [`crate::seo::File`]; a crate may add its own.
+/// [`LiveResponse`], feeds, [`Media`], a [`Relay`], [`PageOr`] and [`crate::seo::File`]; a crate may add
+/// its own.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer a route can name",
     label = "the handler returns this",
@@ -227,7 +228,7 @@ impl Answer for HtmlResponse {
 /// [`ForEveryone`] for `ForAll`) only when it sets no cookie.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot be `Public`",
-    note = "a `Public` answer is a page, a patch or a redirect (`HtmlResult`), `JsonResult<T>`, text, a status, a `Relay`, `Media`, a live stream or a feed"
+    note = "a `Public` answer is a page, a patch or a redirect (`HtmlResult`), `JsonResult<T>`, text, a status, a `Relay`, `Media`, a `PageOr` of either, a live stream or a feed"
 )]
 pub trait Shareable {
     /// The answer as [`Public::new`] takes it.
@@ -240,7 +241,7 @@ pub trait Shareable {
 /// closure).
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer made for everyone, so it cannot be `Public`",
-    note = "a page made for one visitor (`HtmlResult`) cannot be: make it in the handler that returns `Public<HtmlResult>`, or have a helper return `corten::Result<HtmlResponse<For>>` for any `For`; a `Public` answer is a page, a patch or a redirect, `JsonResult<T>`, text, a status, a `Relay`, `Media`, a live stream or a feed"
+    note = "a page made for one visitor (`HtmlResult`) cannot be: make it in the handler that returns `Public<HtmlResult>`, or have a helper return `corten::Result<HtmlResponse<For>>` for any `For`; a `Public` answer is a page, a patch or a redirect, `JsonResult<T>`, text, a status, a `Relay`, `Media`, a `PageOr` of either, a live stream or a feed"
 )]
 pub trait ForEveryone: IntoResponse {
     /// The answer type a handler names: `Public<Self::Named>`.
@@ -493,7 +494,8 @@ impl Answer for JsonResponse {
 }
 
 /// A JSON handler's error: an [`Error`] (`?` on any error, as in a page handler) or the
-/// input's field errors, `?` on [`crate::Errors`], answered as the 422 with `fields`. Only a
+/// input's field errors, `?` on [`crate::Errors`], answered as the 422 with `fields` (409 or 410
+/// for [`crate::Errors::refuse`]). Only a
 /// JSON handler takes field errors this way: a page shows its form again with
 /// [`crate::Req::invalid`], so `?` on `Errors` there does not compile:
 ///
@@ -518,7 +520,7 @@ impl Answer for JsonResponse {
 pub enum JsonError {
     /// Any failure, answered as every failure of a JSON route is.
     Error(Error),
-    /// The input's field errors: 422, `{"title","status","detail","fields":{..}}`.
+    /// The input's field errors: 422 (or the refusal's status), `{"title","status","detail","fields":{..}}`.
     Fields(crate::Errors),
 }
 
@@ -806,6 +808,147 @@ impl Answer for Media {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
     type Rows = NotAFeed;
+}
+
+/// A file or a page: what a route that sends a file ([`Media`], a [`Relay`] of another service's)
+/// answers when it may instead send the page with why, or a redirect to it. A download posted
+/// from a page (this run's CSV, at the revision the page showed) is refused when the run moved on,
+/// and the user gets the page again saying so, not an error page. Each is `.into()` the answer.
+///
+/// ```
+/// use corten::{prelude::*, Media, PageOr};
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/runs/{id}", get = run)]
+///     pub struct Run<'a> {
+///         pub id: &'a str,
+///         pub said: Option<&'a str>,
+///     }
+///
+///     #[route("/runs/{id}/download", post = download)]
+///     pub struct Download<'a> {
+///         pub id: &'a str,
+///     }
+/// }
+/// # async fn run(_: Params<url::Run<'_>>) -> &'static str { "run" }
+///
+/// async fn download(req: Req, at: Params<url::Download<'_>>) -> corten::Result<PageOr<Media>> {
+///     let current = at.id.as_str() == "7";
+///     if !current {
+///         return Ok(req.redirect(&url::Run { id: &at.id, said: Some("stale") })?.into());
+///     }
+///     Ok(Media::new("text/csv", "sku,qty\n").into())
+/// }
+/// # let _ = App::new(url::router()).router();
+/// ```
+///
+/// It is for the visitor who asked, as a page is; inside [`Public`] the page is one made for
+/// everyone. `.into()` cannot infer the type through [`Public::new`], so name the variant:
+///
+/// ```
+/// use std::time::Duration;
+/// use corten::{prelude::*, Media, PageOr};
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/reports", get = reports)]
+///     pub struct Reports;
+///
+///     #[route("/reports/latest.csv", get = latest)]
+///     pub struct Latest;
+/// }
+/// # async fn reports() -> &'static str { "reports" }
+///
+/// async fn latest(req: Req) -> Public<corten::Result<PageOr<Media>>> {
+///     let ready = false;
+///     let answer = if ready {
+///         Ok(PageOr::Answer(Media::new("text/csv", "sku,qty\n")))
+///     } else {
+///         req.redirect(&url::Reports).map(PageOr::Page)
+///     };
+///     Public::new(Duration::from_secs(60), answer)
+/// }
+/// # let _ = App::new(url::router()).router();
+/// ```
+///
+/// The other answer is a file, [`Media`] or [`Relay`]; text or a status is not one:
+///
+/// ```compile_fail,E0277
+/// use corten::{Answer, PageOr};
+///
+/// fn route_answer<A: Answer>() {}
+/// route_answer::<PageOr<&'static str>>();
+/// ```
+pub enum PageOr<A, For = ForOne> {
+    /// A page, a patch or a redirect, from [`Req`].
+    Page(HtmlResponse<For>),
+    /// The file.
+    Answer(A),
+}
+
+impl<For> From<HtmlResponse<For>> for PageOr<Media, For> {
+    fn from(page: HtmlResponse<For>) -> Self {
+        PageOr::Page(page)
+    }
+}
+
+impl<For> From<HtmlResponse<For>> for PageOr<Relay, For> {
+    fn from(page: HtmlResponse<For>) -> Self {
+        PageOr::Page(page)
+    }
+}
+
+impl<For> From<Media> for PageOr<Media, For> {
+    fn from(media: Media) -> Self {
+        PageOr::Answer(media)
+    }
+}
+
+impl<For> From<Relay> for PageOr<Relay, For> {
+    fn from(relay: Relay) -> Self {
+        PageOr::Answer(relay)
+    }
+}
+
+impl<A: FileAnswer, For> IntoResponse for PageOr<A, For> {
+    fn into_response(self) -> Response {
+        match self {
+            PageOr::Page(page) => page.into_response(),
+            PageOr::Answer(answer) => answer.into_response(),
+        }
+    }
+}
+
+/// What a [`PageOr`] answers besides a page: a [`Media`] or a [`Relay`]. Sealed, so a page
+/// route's other answers (text, a status, a feed) are not the file slot.
+pub trait FileAnswer: Answer + file_answer::Sealed {}
+
+impl FileAnswer for Media {}
+impl FileAnswer for Relay {}
+
+mod file_answer {
+    pub trait Sealed {}
+    impl Sealed for super::Media {}
+    impl Sealed for super::Relay {}
+}
+
+impl<A: FileAnswer> Answer for PageOr<A> {
+    const FORMAT: Format = Format::Html;
+    type Inputs = AnyInputs;
+    type Rows = NotAFeed;
+}
+
+impl<A: FileAnswer + ForEveryone<Named = A> + Shareable<ForAll = A>> Shareable for PageOr<A> {
+    type ForAll = PageOr<A, ForAll>;
+}
+
+impl<A: FileAnswer + ForEveryone<Named = A> + Shareable<ForAll = A>> ForEveryone for PageOr<A, ForAll> {
+    type Named = PageOr<A>;
+
+    fn for_all(self) -> Self {
+        self
+    }
 }
 
 /// On a [`Relay`]'s response: its failure status and its encoding are the upstream's, passed on
