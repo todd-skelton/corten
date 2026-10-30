@@ -18,8 +18,8 @@ const LANGUAGES = `af am ar as az be bg bn bs ca cs cy da de el en es et eu fa f
 const REGIONS = `en-GB en-AU en-CA en-IN en-IE en-NZ en-ZA en-SG en-PH es-MX es-419 es-AR es-CO es-CL es-US fr-CA fr-CH fr-BE de-AT de-CH it-CH nl-BE pt-PT zh-Hant zh-TW zh-HK sr-Latn ar-EG ar-SA ar-AE ar-MA ms-SG sv-FI`.split(" ");
 
 // The styles, in the order of LocaleData::dates: four dates, each date with each time, two times,
-// then the month and year without the day, short and long (after the others, so their indices
-// stay as they were).
+// then the month and year without the day, short and long, then the month and day without the
+// year, short and long (each after the others, so their indices stay as they were).
 const DATE = [
   { year: "numeric", month: "numeric", day: "numeric" },
   { year: "numeric", month: "short", day: "numeric" },
@@ -34,13 +34,17 @@ const MONTH = [
   { year: "numeric", month: "short" },
   { year: "numeric", month: "long" },
 ];
+const DAY = [
+  { month: "short", day: "numeric" },
+  { month: "long", day: "numeric" },
+];
 // Plural categories, in the order of LocaleData::relative's templates.
 const PLURALS = ["zero", "one", "two", "few", "many", "other"];
 // A time relative to now: the styles, and the units with their seconds (`RelativeStyle` order).
 const RELATIVE_STYLES = ["long", "short", "narrow"];
 const RELATIVE_UNITS = ["second", "minute", "hour", "day"];
 const RELATIVE_SECONDS = [1, 60, 3600, 86400];
-const BAGS = [...DATE, ...DATE.flatMap((d) => TIME.map((t) => ({ ...d, ...t }))), ...TIME, ...MONTH];
+const BAGS = [...DATE, ...DATE.flatMap((d) => TIME.map((t) => ({ ...d, ...t }))), ...TIME, ...MONTH, ...DAY];
 
 const at = (y, mo, d, h = 0, mi = 0, s = 0) => new Date(Date.UTC(y, mo - 1, d, h, mi, s));
 const SAMPLE = at(2026, 3, 22, 15, 4, 5); // a Sunday
