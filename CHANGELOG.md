@@ -2040,6 +2040,18 @@ Corten is pre-1.0, so any minor version may change the API.
     statement, ui-gallery's activity card and listings-feed's move status, which were the only
     fixed text those one-locale apps put in their catalogs, are literals now
     ([#218 Examples write user-facing text two ways: watchlist has a catalog but writes most text as literals](https://github.com/todd-skelton/corten/issues/218)).
+31. Every prop is written where a component is used, an empty one too (`head=""`). The views guide
+    says why: stable Rust cannot leave a field to a default, and filling a left-out `impl Render`
+    prop would fix its type. It also shows how several answers share one component's props, with
+    a function for the common value and `..` for the rest. A `compile_fail` doctest on
+    `#[component]` covers a left-out prop. ui-gallery's five answers build their `Gallery` that
+    way, where each wrote all six props
+    ([#210 A component prop cannot be left out, so pages pass head="" and other empty values](https://github.com/todd-skelton/corten/issues/210)).
+32. The views guide says how a layout gets who is signed in: as a prop from the `Caller` its
+    handler took, not by reading the request. Rendering is synchronous and `Identify` is async, so
+    the alternative needs a second async step before full-page renders, with its own rules for a
+    failed lookup, caching and the page key
+    ([#209 Every page handler extracts the viewer only to pass it to the layout](https://github.com/todd-skelton/corten/issues/209)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
