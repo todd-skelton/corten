@@ -550,6 +550,96 @@ impl<P: Place, T> AttrValue for FieldName<T, P> {
     }
 }
 
+/// A GET form's controls, and the rest of a typed route's query as hidden inputs: a GET form
+/// sends only its own controls (and drops its `action`'s query), so a form that changes the
+/// research on a screen whose address also holds the seller and the page would lose them.
+/// `controls` is drawn first; every key of the route's query that no control in it names
+/// (`name="grade"`, a set's `sortBy`, a prefixed `dim.color`) is then kept as a hidden input, in
+/// the encoding the route's links use (an `Option` only when set, a list once per item, an enum
+/// by its word). A field added to the route is kept by every such form without a change to it,
+/// and a control's key is never sent twice, so there is no list of names to keep in step.
+///
+/// ```
+/// use corten::prelude::*;
+/// use corten::form::keep_query;
+///
+/// #[derive(Clone, Default, serde::Deserialize, Route, Fields)]
+/// #[route("/slab-pricing")]
+/// struct Choice { cert: Option<String>, seller: Option<String>, #[serde(default)] trail: Vec<String>, grade: Option<u8> }
+///
+/// let at = Choice { cert: Some("a&b".into()), seller: None, trail: vec!["p1".into(), "p2".into()], grade: Some(9) };
+/// let f = Choice::FIELDS;
+/// let form = html! {
+///     <form method="get" action={&at}>
+///         {keep_query(&at, html! { <input name={f.grade} value="10"> <button>"Price"</button> })}
+///     </form>
+/// };
+/// assert_eq!(
+///     form.to_html(),
+///     concat!(
+///         r#"<form method="get" action="/slab-pricing?cert=a%26b&amp;trail=p1&amp;trail=p2&amp;grade=9">"#,
+///         r#"<input name="grade" value="10"><button>Price</button>"#,
+///         r#"<input type="hidden" name="cert" value="a&amp;b">"#,
+///         r#"<input type="hidden" name="trail" value="p1"><input type="hidden" name="trail" value="p2">"#,
+///         r#"</form>"#,
+///     )
+/// );
+/// ```
+///
+/// Every control the form sends goes inside, a named submit button included: one outside it is
+/// not seen, so its key would be sent twice. It takes a link (a typed route, or the `&dyn Href` a
+/// form several pages share is given), so a URL as text does not compile:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+/// use corten::form::keep_query;
+///
+/// let _ = html! { <form method="get">{keep_query(&"/slab-pricing?grade=9", html! { <input name="grade"> })}</form> };
+/// ```
+pub fn keep_query<'a, R: crate::Href + ?Sized, C: Render>(route: &'a R, controls: C) -> KeepQuery<'a, R, C> {
+    KeepQuery { route, controls }
+}
+
+/// What [`keep_query`] returns: the controls, then hidden inputs for the route's query keys they
+/// do not name.
+pub struct KeepQuery<'a, R: ?Sized, C> {
+    route: &'a R,
+    controls: C,
+}
+
+impl<R: crate::Href + ?Sized, C: Render> Render for KeepQuery<'_, R, C> {
+    fn render(&self, out: &mut String) {
+        let start = out.len();
+        self.controls.render(out);
+        // The route's own encoding, read back: what its links send is what the form keeps.
+        let mut href = String::new();
+        self.route.write_link(&mut href, false);
+        let query = href.split_once('?').map_or("", |(_, q)| q);
+        let query = query.split_once('#').map_or(query, |(q, _)| q);
+        if query.is_empty() {
+            return;
+        }
+        let mut named = String::new();
+        let mut kept = String::new();
+        for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+            // The names the controls wrote, as they wrote them: escaped, in ` name="..."`.
+            named.clear();
+            named.push_str(" name=\"");
+            escape_into(&key, &mut named);
+            named.push('"');
+            if out[start..].contains(named.as_str()) {
+                continue;
+            }
+            kept.push_str(r#"<input type="hidden""#);
+            kept.push_str(&named);
+            kept.push_str(r#" value=""#);
+            escape_into(&value, &mut kept);
+            kept.push_str(r#"">"#);
+        }
+        out.push_str(&kept);
+    }
+}
+
 /// Where a form struct's fields are, written in front of each field's name: implemented by
 /// [`Root`], [`Group`], [`Row`] and [`RowGroup`]. Sealed.
 pub trait Place: Copy + PartialEq + std::hash::Hash + private::Sealed {
@@ -1107,8 +1197,10 @@ impl fmt::Display for Kept {
 }
 
 /// Why a submit was refused, which [`Req::invalid`](crate::Req::invalid) answers with its status.
-/// A closed set: a refusal is the client's to fix, so it is a 4xx, and a 2xx or a 5xx (or any
-/// `StatusCode`) does not compile.
+/// A closed set: a refusal is the client's to fix (a 4xx), or a failure of a service the handler
+/// calls that the user can only retry (502); a 2xx, any other 5xx, or any `StatusCode`, does not
+/// compile. A failure of the app itself (a database error) is no refusal: it is `?`'d, and the
+/// error page answers it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Refusal {
     /// 422: the input breaks a rule ([`Errors::add`], [`Errors::add_form`]).
@@ -1120,6 +1212,11 @@ pub enum Refusal {
     Conflict,
     /// 410: what the submit acts on is gone (deleted meanwhile).
     Gone,
+    /// 502: a service the handler calls for the submit (a payment provider, a carrier, another
+    /// app) failed or did not answer. Nothing the user sent is at fault, and the same submit may
+    /// succeed later. Whether the service applied it is not known, so the runtime keeps the
+    /// form's [`SubmitKey`](crate::SubmitKey): a retry is the same submission.
+    Upstream,
 }
 
 impl Refusal {
@@ -1130,6 +1227,7 @@ impl Refusal {
             Refusal::Invalid => StatusCode::UNPROCESSABLE_ENTITY,
             Refusal::Conflict => StatusCode::CONFLICT,
             Refusal::Gone => StatusCode::GONE,
+            Refusal::Upstream => StatusCode::BAD_GATEWAY,
         }
     }
 }
@@ -1178,10 +1276,11 @@ impl Errors {
         self.form.get_or_insert_with(|| message.into());
     }
 
-    /// Refuses the submit for the state it was made against, not its input: the form's message
-    /// (in place of one [`Errors::add_form`] recorded, so the status and the message agree),
-    /// answered with the refusal's status (409 for
-    /// [`Refusal::Conflict`]) by [`Req::invalid`](crate::Req::invalid) in every mode. The form
+    /// Refuses the submit for something other than its input (the state it was made against, or a
+    /// service the handler calls that failed): the form's message (in place of one
+    /// [`Errors::add_form`] recorded, so the status and the message agree), answered with the
+    /// refusal's status (409 for [`Refusal::Conflict`], 502 for [`Refusal::Upstream`]) by
+    /// [`Req::invalid`](crate::Req::invalid) in every mode. The form
     /// is drawn again with what the user typed and the message at its top.
     ///
     /// ```
@@ -1431,6 +1530,28 @@ impl SubmitKey {
         SubmitField { name: name.__untyped(), key: uuid_v4(crate::security::random_hex()) }
     }
 
+    /// The hidden input that carries this key again, for a form drawn again from the post that
+    /// sent it (refused, or a service it calls failed): a browser without JavaScript sends what the
+    /// page holds, so the redrawn form must hold the key it sent, or a retry after a 502 whose
+    /// write did apply would be a new submission. The runtime keeps the form's key itself.
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(serde::Deserialize, Fields)]
+    /// struct Pay { amount: u32, submit: SubmitKey }
+    ///
+    /// let posted: Pay = corten::form::from_bytes(b"amount=5&submit=3f2504e0-4f89-41d3-9a0c-0305e82c3301").unwrap();
+    /// let html = posted.submit.again(Pay::FIELDS.submit).to_html();
+    /// assert_eq!(html, r#"<input type="hidden" name="submit" data-submit value="3f2504e0-4f89-41d3-9a0c-0305e82c3301">"#);
+    /// ```
+    pub fn again(&self, name: FieldName) -> SubmitField {
+        // Read only as a UUID (`Deserialize`), so it is 36 ASCII bytes.
+        let mut key = [0u8; 36];
+        key.copy_from_slice(self.0.as_bytes());
+        SubmitField { name, key }
+    }
+
     /// The UUID, lowercase and hyphenated: `3f2504e0-4f89-41d3-9a0c-0305e82c3301`.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -1600,6 +1721,8 @@ mod tests {
         assert_eq!((e.refusal().status().as_u16(), e.form()), (410, Some("The sheet was deleted.")));
         e.add_form("later");
         assert_eq!(e.form(), Some("The sheet was deleted."), "add_form keeps the first, as before");
+        e.refuse(Refusal::Upstream, "The carrier did not answer. Try again.");
+        assert_eq!((e.refusal().status().as_u16(), e.form()), (502, Some("The carrier did not answer. Try again.")));
     }
 
     #[test]

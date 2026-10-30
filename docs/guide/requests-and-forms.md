@@ -145,7 +145,13 @@ async fn search(req: Req, Params(search): Params<url::Search<'_>>) -> HtmlResult
 ```
 
 A missing parameter is `None` for an `Option`, empty for a list, and a field's
-`#[serde(default)]` for anything else, as a link leaves those out. In a `#[corten::routes]`
+`#[serde(default)]` for anything else, as a link leaves those out. A word an enum parameter
+does not have (`?state=due_now` after the app renamed it, or an address edited by hand) reads as
+missing too, so a filter, a sort or a tab falls back to its default and the page still shows: a
+bookmark outlives the words it was written with; a `#[route(prefix = ..)]` entry whose key or
+value is such a word is left out of the map. A parameter with neither `Option` nor a default
+still refuses it (400), and so does a value that is not a word (`?page=two`), a list holding one,
+or a form's body, which the page that sent it just wrote. In a `#[corten::routes]`
 module a route with a parameter in its path holds each of its handlers to taking its own
 `Params`: one that reads the path another way (axum's `Path`), or reads another route's, does
 not compile.
@@ -296,7 +302,17 @@ step already taken or out of order, a record deleted meanwhile) is
 `errors.refuse(Refusal::Conflict, text)` (`Refusal::Gone` for a deleted one). It is the form's
 message, and `req.invalid` answers it with 409 (410) in every mode instead of 422: the form
 drawn again with what the user typed, the page without JavaScript, the Problem Details document
-for a data client. A post that can be refused is a `data-patch` form: a plain post's refusal
+for a data client. A service the handler calls for the submit that failed or did not answer
+(a carrier, a payment provider, another app) is `errors.refuse(Refusal::Upstream, text)`: 502,
+the same three answers, with the form drawn again so the user can send it once more. The
+service may have applied it, so the retry must be the same submission: the runtime keeps the
+form's `SubmitKey` (below) over whatever key the patch drew, and the form drawn for the page
+without JavaScript writes the posted key again, `input.submit.again(f.submit)` where it would
+write `SubmitKey::field(f.submit)`. A proxy in front of the app that swaps 5xx bodies for a page
+of its own (nginx's `proxy_intercept_errors`, a CDN's error pages) hides the redrawn form; let
+the app's 502 through. A failure of the
+app itself (its database) is no refusal: it is `?`'d, and the error page answers it. A post
+that can be refused is a `data-patch` form: a plain post's refusal
 draws the whole page and leaves the address at the action's URL, whose GET may not exist. The
 one exception is a download, which must be a plain post ([below](#files)): its refusal redirects
 to the page that says why.
@@ -324,7 +340,8 @@ The same key is sent for as long as the submission has no answer: a page reloade
 posts it again, and the runtime sends a `data-patch` form again with it after a network error, a
 5xx, an abort (a navigation) or an answer whose body was cut off on the way. Once a whole answer
 arrives, any status below 500, the runtime gives the form a new key, so the next submit is a new
-one; a page or patch the server draws has a new key anyway. A form sent again before the first had an answer (a
+one. A patch never sets the key: the runtime keeps the form's own over the one the patch drew, so
+a 5xx patch (`Refusal::Upstream`) cannot swap in a fresh key before the retry. A form sent again before the first had an answer (a
 browser without JavaScript, a data client) is the same submission: the app answers it with what
 it did the first time, and the user sees that and can send the change. A `data-patch` form's
 change made while its write is out waits for the answer instead, and goes under the new key
@@ -584,6 +601,24 @@ patches the page it was sent from: a `target` or `formtarget` on it is not follo
 <form method="get" action={url::Search} data-keep-place on:change={js::apply(target)}>
     <label><input type="checkbox" name={f.in_stock} checked={q.in_stock}>"In stock"</label>
     <button>"Apply"</button>
+</form>
+```
+
+A GET form sends only its own controls, and drops its `action`'s query. On a screen whose address
+holds more than one form changes (the seller and the page, and the research a second form sets),
+each form wraps its controls in `keep_query(&at, html! { .. })`: the controls are drawn, and every
+key of the route's query that none of them names (`name=`, a `#[route(query)]` set's key, a
+`#[route(prefix)]` entry's) becomes a hidden input, in the encoding the route's links use. There
+is no list of names, so a key is neither dropped nor sent twice, and a field added to the route
+later is kept by every such form. Every control the form sends goes inside, a named submit button
+included; the route can be a `&dyn Href` a shared form is given.
+
+```rust,ignore
+<form method="get" action={&at}>
+    {keep_query(&at, html! {
+        <select name={f.grade}>..</select>
+        <button>"Price"</button>
+    })}
 </form>
 ```
 

@@ -1071,7 +1071,64 @@ Corten is pre-1.0, so any minor version may change the API.
     per locale (from Node's Intl, checked against it, and in the cases the browser's `format.js` is
     checked with); no other format changes
     ([#473 t.date has no month-and-day style without the year (Intl { month: 'short', day: 'numeric' }), so chart labels hand-build month names](https://github.com/todd-skelton/corten/issues/473)).
-
+145. A handler parameter typed by a declaration `corten::types` generated
+    (`@param {import("../types/app").SortBy} by`, or a `@typedef` of it) takes a value of the Rust
+    type of that name in the component's module, so `js::sortBy(target, SortBy::Price)` compiles
+    and `42` or `"prodcut"` do not: one handler serves every name of a fixed set, and a renamed
+    variant fails to build. A call to a handler whose parameter is a string literal union
+    (`@param {"name" | "price"} by`) no longer compiles, since it took any value; the error and a
+    warning on the call say to make it a Rust enum with a generated declaration, and so does a
+    list or a generic of one (`Mode[]`, `Record<Mode, number>`, `[Mode, number]`, `{ m: Mode }`):
+    any string literal in the parameter's type counts, outside `import("..")`, `Message<..>`, a key
+    (an object's, an indexed type's, the keys and members `Pick`, `Omit` and `Exclude` take) and a
+    callback's parameter names; a set in a template literal's `${..}` counts. The script still compiles, so an export only other
+    scripts import types its parameters as it needs. A `@typedef` of
+    any type but an object or a generic one (`@template`) (`Tab | null`, `Tab[]`, `string`) is
+    checked as the type it names where a handler takes it, through any number of typedefs, and a
+    generated declaration a handler's parameter holds in a shape the call is not checked against is
+    refused rather than taking any value, in any shape of a typedef of plain values that holds one;
+    a typedef the script keeps for itself is not checked. Typedefs that refer to each other (a
+    recursive `Json`, a `Tree` and `Forest`) are seen through as one, and each typedef is
+    written out once, so a recursive one, a long chain or a type with thousands of declarations
+    costs the macro no more than another.
+    What the page gets is unchanged
+    ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
+146. A route costly to draw says `#[route("/reports/suggested", get = suggested, prefetch = false)]` (`Route::PREFETCH`), and every link to it, `href={..}` with the route or a `&dyn Href` holding it, is written with `data-no-prefetch`, so hovering it starts no work and only a click does; the route says it once instead of each link. The runtime now aborts a prefetch it drops (the 8-newest limit, a stale entry, a form post, a visit left before the prefetched answer is used), so the server sees the client go instead of drawing the page to the end, and the views guide describes prefetch, `data-no-prefetch` and `data-reload`. The minified runtime grows by 83 bytes (26,536 to 26,619), 29 gzipped (9,642 to 9,671), 33 with brotli (8,709 to 8,742). The item page's render runs 0.11% more instructions (median of 3, callgrind, release build: 35,623,327,994 against 35,584,847,328 on its base), the check each link makes of its route's `PREFETCH`.
+    ([#421 Hover prefetch starts a costly GET page's work; the data-no-prefetch opt-out is undocumented, per link, and a discarded prefetch never aborts](https://github.com/todd-skelton/corten/issues/421)).
+147. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
+    answer (a carrier, a payment provider, another app), answered by `req.invalid` and
+    `req.invalid_with` with 502 in every mode: the form drawn again with the message, the page
+    without JavaScript, the Problem Details document for a data client, which got the HTML page
+    from a handler that set the status by hand. The retry is the same submission: the runtime now keeps a form's
+    `SubmitKey` over the key a patch draws (a 5xx patch used to swap in a fresh one, so a retry of a
+    write that did apply upstream applied twice), and `SubmitKey::again` draws the posted key into
+    the form a browser without JavaScript gets. The minified runtime grows by 172 bytes (26,619 to
+    26,791), 36 gzipped (9,671 to 9,707), 29 with brotli (8,742 to 8,771). An agent tool gets the message as `ToolError::Upstream` ("try again later"),
+    not as a refusal of a stale state. Still a closed set: no other 5xx, and no `StatusCode`. An
+    app's exhaustive `match` on `Refusal` or `ToolError` gains an arm
+    ([#480 A post refused because a service it calls failed has no Refusal (502/503), so it cannot use req.invalid_with and a JSON client gets the HTML page](https://github.com/todd-skelton/corten/issues/480)).
+148. `corten::form::keep_query(&at, html! { controls })`: a GET form's controls, then the
+    rest of a typed route's query as hidden inputs, for a form that changes some of its fields (a
+    GET form sends only its own controls and drops its action's query). Every key of the route's
+    query that no control names (a field, a `#[route(query)]` set's key, a `#[route(prefix)]`
+    entry) is kept, written as the route's links write it, so there is no list of names: a key is
+    neither dropped nor sent twice, and a field the route gains is kept by every such form, where a
+    hand-written list silently dropped it. It costs a form about 3.5 µs where hidden inputs
+    written by hand cost about 0.5 µs (release build, 200,000 renders, 3 rounds: it writes the
+    route's address again and reads it back); nothing else renders differently
+    ([#439 A GET form that changes some of a typed route's query fields must write every other field as a hidden input by hand, and a missed or doubled one compiles](https://github.com/todd-skelton/corten/issues/439)).
+149. corten-ui's `ChoiceGroup` and `ShownFor`: one choice (a radio group) whose value shows and
+    hides parts anywhere on the page, the figures and, below a chart, the list worded from them.
+    Both take a `Chosen { id, value }`, the choice's `#[derive(Id)]` id and the value the handler
+    read, so a part's values are the choice's type (another enum's word does not compile) and its
+    group cannot be text. The server checks the value and draws every part for another `hidden`;
+    without JavaScript each option is a typed link to the page with that choice; with it, the arrow
+    keys and Space choose in place, the address follows in the keys the options differ in (another
+    control's, a tab's, stay), and every part, also one a patch adds later, follows the choice. No
+    stylesheet repeats the server's values. `TabGroup`'s address now follows the same way, in the
+    keys its tabs differ in, so selecting a tab keeps a choice's key (it took the tab link's whole
+    query)
+    ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1716,8 +1773,17 @@ Corten is pre-1.0, so any minor version may change the API.
     label="Menu" items={&items} />` becomes `<MenuButton id="m" label="Menu">` with an element per
     item
     ([#413 MenuButton items are only a link or a field-less post, so a row menu with a download, a new-tab link, a post with a field or a confirm dialog is hand-built](https://github.com/todd-skelton/corten/issues/413)).
+92. Breaking: a call to a handler whose parameter is a set of names written as string literals
+    (`@param {"name" | "price"} by`, also with `null`, optional, through a `@typedef`, or as a
+    group's field) no longer compiles, and neither does one to a handler whose parameter holds a
+    generated declaration inside another type (`import("../types/app").Tab[]`,
+    `.. | null`, a typedef of plain values holding one): each took any value at the call. A
+    typedef of a plain type (`@typedef {string} Id`, `@typedef {HTMLElement} Root`) a handler
+    takes is now checked as that type, where it took any value. Make the set a Rust enum with a
+    generated declaration and type the value with it, alone
+    ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
-92. Breaking: a form's `FieldName` carries the type its control sends, `FieldName<T = Untyped, P = Root>`
+93. Breaking: a form's `FieldName` carries the type its control sends, `FieldName<T = Untyped, P = Root>`
     (`condition: Option<Condition>` is a `FieldName<Condition>`, an `Option` and a `Vec` taken off),
     so a control given another field's name does not compile: corten-ui's `Picker::new` takes only a
     field that reads its choices' type, `Number::new` only a field that reads a number,
@@ -2201,6 +2267,13 @@ Corten is pre-1.0, so any minor version may change the API.
     item page's `render_cost` (release, callgrind, 3 runs) is 35,567,415,208 instructions against
     35,548,560,642 on main (+0.05%; the page writes no boxed link, so this is layout)
     ([#457 Box<dyn Href> is an Href but not an attribute value, so href={boxed} fails with an error naming a private method](https://github.com/todd-skelton/corten/issues/457)).
+81. A query word an enum parameter does not have (`?state=due_now`, an old bookmark or an address
+    edited by hand) reads as missing, `None` or the field's `#[serde(default)]`, so `Params` shows
+    the page with its filter, sort or tab at its default where it answered 400 with serde's text, and
+    a `#[route(prefix = ..)]` entry holding one is left out of the map. A
+    parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
+    and a form's body are still refused. Links write what they did
+    ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
 
 ### Documentation
 

@@ -168,7 +168,8 @@ A refusal that belongs to no field (a cross-field rule, or the backend saying no
 Never attach it to an arbitrary field, and never pass it beside `Errors` in a separate prop: data
 clients and agents only see what is in `Errors`. A refusal for a stale state (another save came
 first, a step out of order) is `errors.refuse(Refusal::Conflict, text)`, a 409 from
-`req.invalid`; never set a status on the response by hand. Make such a form `data-patch`
+`req.invalid`; a service the handler calls that failed (a carrier, a payment provider) is
+`Refusal::Upstream`, a 502 with the form drawn again; never set a status on the response by hand. Make such a form `data-patch`
 (a download is the exception: a plain post whose refusal redirects to the page with the reason).
 A field helper several forms share takes `e: &corten::Within<'_, I>`.
 

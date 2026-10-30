@@ -984,6 +984,13 @@ function replaceKeeping(root, fresh, sent, took) {
   /** File inputs of `fresh` and the files to give them once they are in the page. @type {[any, FileList | null][]} */
   const files = [];
   for (const f of [root, ...Array.from(root.querySelectorAll("input, textarea, select"))]) {
+    // A submit key stays the form's own: renewed in place once an answer took the write, and kept
+    // as sent after a 5xx (which may hide a write that applied), whatever key the answer drew.
+    if (f instanceof HTMLInputElement && f.hasAttribute("data-submit")) {
+      const to = counterpart(root, fresh, f, true);
+      if (to instanceof HTMLInputElement && to.hasAttribute("data-submit")) to.value = f.value;
+      continue;
+    }
     const now = stateOf(f);
     // Only a field found by id or name gets the user's text: by place, rows that moved could
     // put it into another row's field.
@@ -1220,15 +1227,19 @@ function focusInvalid(form) {
  * Navigation responses fetched ahead of a likely click, by URL without the hash, oldest first.
  * At most `PREFETCH_MAX`: a page hovered and never followed is dropped (its body cancelled) once
  * newer ones push it out or it goes stale, so a long session does not hold every page it hovered.
- * @type {Map<string, { at: number, response: Promise<Response> }>}
+ * @type {Map<string, { at: number, response: Promise<Response>, stop: AbortController }>}
  */
 const prefetched = new Map();
 const PREFETCH_FRESH_MS = 10_000;
 const PREFETCH_MAX = 8;
 
-/** @param {{ response: Promise<Response> } | undefined} entry */
+/**
+ * Drops a prefetch: aborting it cancels the request (so the server sees the client go, as for a
+ * navigation away) or, once it has answered, the body.
+ * @param {{ stop: AbortController } | undefined} entry
+ */
 function discard(entry) {
-  entry?.response.then((res) => res.body?.cancel()).catch(() => {});
+  entry?.stop.abort();
 }
 
 /** @param {URL} url */
@@ -1260,9 +1271,10 @@ function prefetch(target) {
     prefetched.delete(old);
     discard(entry);
   }
-  const response = fetch(key, { headers: { corten: "nav" }, priority: "low" });
-  response.catch(() => prefetched.delete(key));
-  prefetched.set(key, { at: now, response });
+  const stop = new AbortController();
+  const response = fetch(key, { headers: { corten: "nav" }, priority: "low", signal: stop.signal });
+  response.catch(() => prefetched.get(key)?.stop === stop && prefetched.delete(key));
+  prefetched.set(key, { at: now, response, stop });
 }
 
 /** @type {ReturnType<typeof setTimeout> | undefined} */
@@ -1291,7 +1303,10 @@ async function visit(url, signal, redirected, again, place, source) {
   const hit = again ? undefined : prefetched.get(key);
   prefetched.delete(key);
   const fresh = hit && performance.now() - hit.at < PREFETCH_FRESH_MS;
-  if (!fresh) discard(hit);
+  // A redirected visit has its answer already, so a prefetch of the same page goes unused.
+  if (!fresh || redirected) discard(hit);
+  // A visit left before its prefetched answer is used stops that request too.
+  else signal.addEventListener("abort", () => discard(hit), { once: true });
   // Marked busy as this visit's (past a form control named setAttribute): a newer visit's mark
   // is not cleared when this one ends.
   const mine = {};

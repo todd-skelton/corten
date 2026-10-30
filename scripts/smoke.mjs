@@ -526,6 +526,44 @@ async function run(browser) {
   );
   await page.evaluate(() => document.querySelector("#keyed")?.remove());
 
+  // A 5xx patch that draws the form again (Refusal::Upstream: the service may have applied the
+  // write) cannot swap in the key it drew: the retry is the same submission.
+  await page.evaluate((zero) =>
+    document.querySelector("main")?.insertAdjacentHTML(
+      "beforeend",
+      `<form id="keyed" method="post" action="/watch-upstream" data-patch><input type="hidden" name="submit" data-submit value="${zero}"><button>Watch</button></form>`,
+    ), zero);
+  /** @type {(string | null)[]} */
+  const upstreamKeys = [];
+  let upstreamFails = true;
+  await page.route("**/watch-upstream", (route) => {
+    upstreamKeys.push(new URLSearchParams(route.request().postData() ?? "").get("submit"));
+    const fail = upstreamFails;
+    upstreamFails = false;
+    const other = "11111111-1111-4111-8111-111111111111";
+    return route.fulfill({
+      status: fail ? 502 : 200,
+      headers: { "content-type": "text/html; charset=utf-8", "corten-patch": "1" },
+      body: `<form id="keyed" method="post" action="/watch-upstream" data-patch><input type="hidden" name="submit" data-submit value="${other}"><p id="upstream-said">${fail ? "The carrier did not answer." : "Watching."}</p><button>Watch</button></form>`,
+    });
+  });
+  const upstreamLogged = errors.length;
+  await page.click("#keyed button");
+  await page.waitForSelector("#upstream-said");
+  const afterUpstream = await page.inputValue("#keyed [name=submit]");
+  await page.click("#keyed button");
+  await page.waitForFunction(() => document.querySelector("#upstream-said")?.textContent === "Watching.", null, { timeout: 5000 }).catch(() => {});
+  const afterAnswer = await page.inputValue("#keyed [name=submit]");
+  check(
+    "a 5xx patch keeps the form's submit key, and the retry sends it",
+    afterUpstream === zero && upstreamKeys.length === 2 && upstreamKeys.every((k) => k === zero) && afterAnswer !== zero && afterAnswer !== "11111111-1111-4111-8111-111111111111",
+    `${upstreamKeys.join(", ")}: after 502 ${afterUpstream}, after 200 ${afterAnswer}`,
+  );
+  await page.unroute("**/watch-upstream");
+  await page.evaluate(() => document.querySelector("#keyed")?.remove());
+  // The browser logs the 502.
+  errors.splice(upstreamLogged, errors.length, ...errors.slice(upstreamLogged).filter((e) => !/502|Bad Gateway/i.test(e)));
+
   // So is one whose answer's body is cut off on the way: its headers came, but the write it answers
   // may be the one a retry must not repeat. A server of the smoke's own sends the headers and part
   // of the body, then drops the connection (a route cannot stream a body to fail midway).
@@ -1489,6 +1527,31 @@ async function run(browser) {
     );
     await page.evaluate(() => document.querySelectorAll("header a.hovered").forEach((a) => a.remove()));
 
+    // A prefetch pushed out while its answer is still coming is aborted, so the server sees the
+    // client go: the oldest of 9 hovered links is held until it is dropped.
+    /** @type {() => void} */
+    let release = () => {};
+    const held = new Promise((resolve) => (release = () => resolve(undefined)));
+    await page.route("**/news?q=0", async (route) => {
+      await held;
+      await route.continue().catch(() => {});
+    });
+    const aborted = page.waitForEvent("requestfailed", { predicate: (r) => r.url().endsWith("/news?q=0"), timeout: 5000 }).then(
+      () => true,
+      () => false,
+    );
+    await page.evaluate(() =>
+      document.querySelector("header nav")?.insertAdjacentHTML("beforeend", Array.from({ length: 9 }, (_, i) => `<a class="hovered" href="/news?q=${i}">${i}</a>`).join(" ")),
+    );
+    for (let i = 0; i < 9; i += 1) {
+      await page.hover(`header a.hovered[href="/news?q=${i}"]`);
+      await page.waitForTimeout(150);
+    }
+    check("a prefetch dropped before it answers is aborted", await aborted);
+    release();
+    await page.unroute("**/news?q=0");
+    await page.evaluate(() => document.querySelectorAll("header a.hovered").forEach((a) => a.remove()));
+
     // A section stylesheet that fails to load: the runtime loads the page in full instead of
     // showing it unstyled. A fresh document, so the stylesheet is not already in it.
     await page.goto(base);
@@ -1514,6 +1577,7 @@ async function run(browser) {
       'data-nav="section" marks the link on pages under it',
       "data-no-prefetch: hovering the link fetches nothing",
       "prefetch keeps the 8 newest pages",
+      "a prefetch dropped before it answers is aborted",
       "a section stylesheet that fails to load makes the page load in full",
     ])
       skip(name, noSwaps);

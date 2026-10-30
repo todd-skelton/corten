@@ -90,6 +90,15 @@ layout to a page in another loads it in full, with no `data-reload`. A prop that
 layout around `<main>` (a promo bar on some pages only) is not seen by a navigation: make that a
 second layout.
 
+The runtime fetches a same-origin link's page after the pointer rests on it for 65 ms (or a
+touch starts), so the click shows it at once; it keeps the 8 newest for 10 seconds and aborts
+the request of one it drops, so the server sees the client go. A page that is costly to draw (a
+report that takes seconds) says so on its route, `#[route("/reports/suggested", get = suggested,
+prefetch = false)]`: every `href={..}` to it, a route held as `&dyn Href` included, is written
+with `data-no-prefetch`, and only a click starts its work. `data-no-prefetch` by hand on a link
+or an element around links does the same for links that are not routes, and `data-reload` loads
+the page in full instead of a client navigation (and is never prefetched).
+
 Who is signed in reaches the layout the same way as everything else, as a prop the handler
 passes: `viewer={viewer.as_deref()}` from the `Option<Caller<Viewer>>` it took. A layout does not
 read the request itself. Rendering is synchronous and `Identify` is not (a session store, a

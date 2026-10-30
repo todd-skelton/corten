@@ -973,6 +973,16 @@ fn a_nav_marks_the_deepest_entry_that_holds_the_page() {
     let links = written(nav_links("/a%22b%7Cc", [(NavTo::page(&odd), ())]));
     assert!(links[0].starts_with(r#" href="/a%22b%7Cc?q=&quot;|&quot;" data-nav data-nav-group=""#), "{links:?}");
     assert!(links[0].ends_with(r#" aria-current="page""#), "{links:?}");
+
+    // A route that says `prefetch = false` keeps saying so in a nav, as in `href={..}`.
+    #[derive(crate::Route)]
+    #[route("/reports/suggested", prefetch = false)]
+    struct Suggested;
+    let links = written(nav_links("/", [(NavTo::page(&Suggested), ()), (NavTo::page(&Home), ())]));
+    assert!(links[0].ends_with(" data-no-prefetch") && !links[1].contains("data-no-prefetch"), "{links:?}");
+    let mut one = String::new();
+    crate::page::Nav { path: "/reports/suggested", to: &Suggested, section: false }.render_attrs(&mut one);
+    assert_eq!(one, r#" href="/reports/suggested" data-nav aria-current="page" data-no-prefetch"#);
 }
 
 #[test]
@@ -1015,11 +1025,15 @@ fn sheet_form(errors: &Errors) -> impl crate::Patch + '_ {
 }
 
 fn refused_routes() -> Router {
+    refused_by(crate::Refusal::Conflict, "Someone saved first.")
+}
+
+fn refused_by(why: crate::Refusal, message: &'static str) -> Router {
     Router::new().route(
         "/",
-        get(|req: Req| async move {
+        get(move |req: Req| async move {
             let mut errors = Errors::new();
-            errors.refuse(crate::Refusal::Conflict, "Someone saved first.");
+            errors.refuse(why, message);
             let page = || async { req.test_page("Sheet", html! { <p>"page with the refusal"</p> }) };
             req.invalid(&errors, sheet_form(&errors), page).await
         }),
@@ -1044,6 +1058,36 @@ async fn a_stale_submit_answers_409_with_the_form_message_in_each_mode() {
         assert_eq!(
             body,
             r#"{"title":"Conflict","status":409,"detail":"Someone saved first.","form":"Someone saved first.","fields":{}}"#
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_failed_service_answers_502_with_the_form_message_in_each_mode() {
+    let routes = || refused_by(crate::Refusal::Upstream, "The carrier did not answer. Try again.");
+    let (status, headers, body) = call(app(routes(), None), "GET", Some("action")).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert_eq!(headers["corten-patch"], "1", "the form, not the error page");
+    assert_eq!(
+        body,
+        r#"<form id="sign-up"><p class="form-error" role="alert">The carrier did not answer. Try again.</p></form>"#
+    );
+
+    let (status, _, body) = call(app(routes(), None), "GET", None).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert!(
+        body.contains("<p>page with the refusal</p>") && body.contains("<html"),
+        "no JavaScript: the whole page, not the error page: {body}"
+    );
+
+    #[cfg(feature = "json")]
+    {
+        let (status, headers, body) = call_with(app(routes(), None), "GET", "/", None, Some("application/json")).await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(headers["content-type"], "application/problem+json");
+        assert_eq!(
+            body,
+            r#"{"title":"Bad Gateway","status":502,"detail":"The carrier did not answer. Try again.","form":"The carrier did not answer. Try again.","fields":{}}"#
         );
     }
 }
@@ -2155,6 +2199,59 @@ fn a_query_set_reads_back_what_its_links_write() {
     assert_eq!(empty, DefaultedSet { page: 1, size: 0, facets: Default::default() });
     let link = ShownSetLink { set: ShownSet { tab: Some(Shown("a b".into())) } };
     assert_eq!(link.href(), "/shown-set?tab=a%20b");
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, crate::UrlValue)]
+#[serde(rename_all = "snake_case")]
+pub enum Filter {
+    #[default]
+    All,
+    Due,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, crate::Route)]
+#[route(query)]
+pub struct FilterSet {
+    pub state: Option<Filter>,
+}
+
+#[derive(crate::Route)]
+#[route("/filtered")]
+pub struct Filtered {
+    pub sort: Option<Filter>,
+    #[serde(default)]
+    pub shown: Filter,
+    #[route(query)]
+    pub set: FilterSet,
+}
+
+#[test]
+fn a_query_word_the_app_no_longer_has_reads_as_missing() {
+    use crate::route::FromUrl;
+    let read = <Filtered as FromUrl>::__read((), "sort=due_now&shown=gone&state=old").unwrap();
+    assert_eq!((read.sort, read.shown, read.set.state), (None, Filter::All, None));
+    let read = <Filtered as FromUrl>::__read((), "sort=due&shown=due&state=due").unwrap();
+    assert_eq!((read.sort, read.shown, read.set.state), (Some(Filter::Due), Filter::Due, Some(Filter::Due)));
+    assert!(<Filtered as FromUrl>::__read((), "sort=due&sort=all").is_err(), "sent twice is still refused");
+}
+
+#[derive(crate::Route)]
+#[route("/faceted")]
+pub struct Faceted {
+    #[route(prefix = "f.")]
+    pub facets: std::collections::BTreeMap<Filter, Filter>,
+    #[route(prefix = "n.")]
+    pub counts: Vec<(Filter, u32)>,
+}
+
+#[test]
+fn a_prefixed_entry_the_app_no_longer_has_is_left_out() {
+    use crate::route::FromUrl;
+    let read = <Faceted as FromUrl>::__read((), "f.due=all&f.gone=due&f.all=gone&n.due=2&n.old=3").unwrap();
+    assert_eq!(read.facets, std::collections::BTreeMap::from([(Filter::Due, Filter::All)]));
+    assert_eq!(read.counts, vec![(Filter::Due, 2)]);
+    let err = <Faceted as FromUrl>::__read((), "n.due=two").err().expect("a value that is not a word is refused");
+    assert!(err.to_string().contains("n.due: "), "the error names the parameter: {err}");
 }
 
 /// Every kind of parameter a route has, which its handler reads back as the link wrote it.
@@ -4413,4 +4510,65 @@ async fn a_file_route_answers_a_page_when_it_refuses() {
     assert_eq!(headers[header::LOCATION], "/runs/8?said=stale");
     assert_eq!(headers[header::CACHE_CONTROL], "private, no-cache");
     assert!(headers.contains_key(header::CONTENT_SECURITY_POLICY));
+}
+
+#[derive(Default, crate::Route)]
+#[route(query)]
+#[serde(rename_all = "camelCase")]
+pub struct KeptPaging {
+    pub sort_by: Option<String>,
+    pub page_no: Option<u32>,
+}
+
+#[derive(crate::Route)]
+#[route("/kept")]
+pub struct Kept {
+    pub q: Option<String>,
+    pub tags: Vec<String>,
+    #[route(prefix = "dim.")]
+    pub dims: std::collections::BTreeMap<String, String>,
+    #[route(query)]
+    pub paging: KeptPaging,
+}
+
+#[test]
+fn keep_query_keeps_every_key_the_controls_do_not_name() {
+    use crate::form::keep_query;
+    let at = Kept {
+        q: Some("a \"b\" <c>".into()),
+        tags: vec!["x".into(), "y".into()],
+        dims: [("color".to_string(), "red".to_string()), ("size".to_string(), "9".to_string())].into(),
+        paging: KeptPaging { sort_by: Some("price".into()), page_no: Some(3) },
+    };
+    // A set's field, a prefixed entry and a list, each named by a control: none is kept.
+    let html = keep_query(
+        &at,
+        html! {
+            <select name="sortBy"><option>"price"</option></select>
+            <input name="dim.color" value="blue">
+            for tag in ["x", "z"] { <input type="checkbox" name="tags" value={tag}> }
+        },
+    )
+    .to_html();
+    assert!(!html.contains(r#"type="hidden" name="sortBy""#) && !html.contains(r#"type="hidden" name="tags""#), "{html}");
+    assert!(!html.contains(r#"type="hidden" name="dim.color""#), "{html}");
+    assert!(
+        html.ends_with(concat!(
+            r#"<input type="hidden" name="q" value="a &quot;b&quot; &lt;c&gt;">"#,
+            r#"<input type="hidden" name="dim.size" value="9">"#,
+            r#"<input type="hidden" name="pageNo" value="3">"#,
+        )),
+        "the rest, escaped, in the route's order: {html}"
+    );
+    // Text that only looks like a name is not one.
+    let html = keep_query(&at, html! { <p>" name=\"q\""</p> }).to_html();
+    assert!(html.contains(r#"type="hidden" name="q""#), "{html}");
+    // A link given as `&dyn Href` (a form several pages share) works the same.
+    let shared: &dyn crate::Href = &at;
+    assert!(keep_query(shared, "").to_html().contains(r#"name="pageNo" value="3""#));
+    // A route with no query keeps nothing.
+    assert_eq!(
+        keep_query(&Kept { q: None, tags: vec![], dims: Default::default(), paging: KeptPaging::default() }, "x").to_html(),
+        "x"
+    );
 }

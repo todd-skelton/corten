@@ -21,11 +21,22 @@ pub type Pair<'a> = (Cow<'a, str>, Cow<'a, str>);
 
 /// Why a form or query string did not read into its type: the field and what was wrong.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FormError(String);
+pub struct FormError {
+    message: String,
+    /// A word a unit-variant enum does not have: a query value written by an older version of
+    /// the app, or by hand.
+    unknown_word: bool,
+}
+
+impl FormError {
+    fn new(message: impl Into<String>) -> Self {
+        FormError { message: message.into(), unknown_word: false }
+    }
+}
 
 impl fmt::Display for FormError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.message)
     }
 }
 
@@ -33,7 +44,14 @@ impl std::error::Error for FormError {}
 
 impl de::Error for FormError {
     fn custom<T: fmt::Display>(msg: T) -> Self {
-        FormError(msg.to_string())
+        FormError::new(msg.to_string())
+    }
+
+    #[cold]
+    fn unknown_variant(variant: &str, expected: &'static [&'static str]) -> Self {
+        // serde's own wording, marked so a query parameter can read the word as missing.
+        let message = <de::value::Error as de::Error>::unknown_variant(variant, expected).to_string();
+        FormError { message, unknown_word: true }
     }
 }
 
@@ -66,7 +84,38 @@ pub fn field<T: de::DeserializeOwned>(pairs: &[Pair<'_>], key: &str, default: Op
     match (&pairs[start..end], default) {
         ([], Some(default)) => Ok(default()),
         ([], None) => T::deserialize(Missing(key)),
-        (values, _) => T::deserialize(Values(values)).map_err(|e| FormError(format!("{key}: {e}"))),
+        (values, default) => T::deserialize(Values(values)).or_else(|e| {
+            // A word the app no longer has (an old bookmark, an address edited by hand) reads as
+            // if the key were missing, so a filter, a sort or a tab falls back to its default
+            // instead of refusing the page. A field that must have a value still refuses it.
+            if e.unknown_word && values.len() == 1 {
+                if let Some(read) = default.map(|default| default()).map(Ok).or_else(|| T::deserialize(Absent).ok().map(Ok)) {
+                    return read;
+                }
+            }
+            Err(FormError::new(format!("{key}: {e}")))
+        }),
+    }
+}
+
+/// A key read as missing in place of a word the app does not know: `None` for an `Option`, and
+/// an error for anything else.
+struct Absent;
+
+impl<'de> Deserializer<'de> for Absent {
+    type Error = FormError;
+
+    fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, FormError> {
+        Err(FormError::new("absent"))
+    }
+
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
+        visitor.visit_none()
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf
+        unit unit_struct newtype_struct seq tuple tuple_struct map struct enum identifier ignored_any
     }
 }
 
@@ -75,6 +124,22 @@ pub fn field<T: de::DeserializeOwned>(pairs: &[Pair<'_>], key: &str, default: Op
 pub fn prefixed<'b>(pairs: &'b [Pair<'_>], prefix: &'b str) -> impl Iterator<Item = (&'b str, &'b str)> {
     let start = pairs.partition_point(|(k, _)| k.as_ref() < prefix);
     pairs[start..].iter().map_while(move |(k, v)| Some((k.strip_prefix(prefix)?, v.as_ref())))
+}
+
+/// One entry of a `#[route(prefix = "dim.")]` field, its key and its value each read as a form
+/// field's value is. An entry whose key or value is a word the app does not have (a dimension
+/// renamed since the address was written) is left out, as a missing key would be; any other
+/// error names the parameter.
+pub fn entry<K: de::DeserializeOwned, V: de::DeserializeOwned>(
+    prefix: &str,
+    key: &str,
+    value: &str,
+) -> Result<Option<(K, V)>, FormError> {
+    match one(key).and_then(|k| Ok((k, one(value)?))) {
+        Ok(pair) => Ok(Some(pair)),
+        Err(e) if e.unknown_word => Ok(None),
+        Err(e) => Err(FormError::new(format!("{prefix}{key}: {e}"))),
+    }
 }
 
 /// One text read into `T` as a form field's value is.
@@ -89,7 +154,7 @@ impl<'de> Deserializer<'de> for Missing<'_> {
     type Error = FormError;
 
     fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, FormError> {
-        Err(FormError(format!("missing field `{}`", self.0)))
+        Err(FormError::new(format!("missing field `{}`", self.0)))
     }
 
     fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
@@ -200,7 +265,7 @@ impl<'de> MapAccess<'de> for Groups<'_, '_> {
     fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, FormError> {
         let Some((sep, skip)) = self.nested else {
             let values = self.values;
-            return seed.deserialize(Values(values)).map_err(|e| FormError(format!("{}: {e}", values[0].0)));
+            return seed.deserialize(Values(values)).map_err(|e| FormError::new(format!("{}: {e}", values[0].0)));
         };
         nested_value(self.values, sep, skip, seed)
     }
@@ -230,10 +295,10 @@ impl Nested<'_, '_> {
     /// serde's own errors ("missing field", "unknown field") name the field alone: the group's
     /// path goes in front, unless a value's error already starts with its full key.
     fn at(&self, error: FormError) -> FormError {
-        if error.0.starts_with(self.path) {
+        if error.message.starts_with(self.path) {
             error
         } else {
-            FormError(format!("{}: {}", self.path, error.0))
+            FormError::new(format!("{}: {}", self.path, error.message))
         }
     }
 }
@@ -244,7 +309,7 @@ impl<'de> Deserializer<'de> for Nested<'_, '_> {
     /// A value that is not a group or rows (`go: bool` with only an image button's `go.x` sent):
     /// keys under its name are read as a group's or rows', so it was not sent as itself.
     fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, FormError> {
-        Err(FormError(format!(
+        Err(FormError::new(format!(
             "{0}: sent only as {0}. or {0}[ keys, which are a group's or rows', and not as {0} itself",
             self.path
         )))
@@ -266,7 +331,7 @@ impl<'de> Deserializer<'de> for Nested<'_, '_> {
         visitor: V,
     ) -> Result<V::Value, FormError> {
         if self.rows {
-            return Err(FormError(format!("{}: rows are a map from each row's key to its fields", self.path)));
+            return Err(FormError::new(format!("{}: rows are a map from each row's key to its fields", self.path)));
         }
         visitor.visit_map(Groups::new(self.pairs, self.skip, Some(fields))).map_err(|e| self.at(e))
     }
@@ -310,7 +375,7 @@ impl<'de> MapAccess<'de> for Rows<'_, '_> {
         let close = local
             .find(']')
             .filter(|close| matches!(local.as_bytes().get(close + 1), Some(b'.') | None))
-            .ok_or_else(|| FormError(format!("{first}: a row's field is named rows[key].field, a map's value map[key]")))?;
+            .ok_or_else(|| FormError::new(format!("{first}: a row's field is named rows[key].field, a map's value map[key]")))?;
         let value = close + 1 == local.len();
         self.row = self.skip + close + if value { 1 } else { 2 };
         let prefix = &first[..self.row];
@@ -322,19 +387,19 @@ impl<'de> MapAccess<'de> for Rows<'_, '_> {
         let (values, rest) = self.rest.split_at(count);
         (self.values, self.rest) = (values, rest);
         let key = decode_key(&local[..close])
-            .ok_or_else(|| FormError(format!("{first}: the row's key is not written the way the form writes it")))?;
+            .ok_or_else(|| FormError::new(format!("{first}: the row's key is not written the way the form writes it")))?;
         let pair: Pair<'_> = (Cow::Borrowed(""), key);
         seed.deserialize(RowKeyText(std::slice::from_ref(&pair)))
             .map(Some)
             // The row's or the map value's whole name: `lines[x]`, not the `.` after a row's.
-            .map_err(|e| FormError(format!("{}: key: {e}", &first[..self.skip + close + 1])))
+            .map_err(|e| FormError::new(format!("{}: key: {e}", &first[..self.skip + close + 1])))
     }
 
     fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, FormError> {
         let full = self.values.first().map_or("", |(k, _)| k.as_ref());
         if self.row == full.len() {
             // A map's value: the key's own values.
-            return seed.deserialize(Values(self.values)).map_err(|e| FormError(format!("{full}: {e}")));
+            return seed.deserialize(Values(self.values)).map_err(|e| FormError::new(format!("{full}: {e}")));
         }
         seed.deserialize(Nested { pairs: self.values, skip: self.row, rows: false, path: &full[..self.row - 1] })
     }
@@ -472,8 +537,8 @@ impl<'b> Values<'_, 'b> {
     fn one(&self) -> Result<&'b str, FormError> {
         match self.0 {
             [(_, value)] => Ok(value),
-            [] => Err(FormError("no value".into())),
-            _ => Err(FormError(format!("sent {} times; a field that takes several values is a Vec", self.0.len()))),
+            [] => Err(FormError::new("no value")),
+            _ => Err(FormError::new(format!("sent {} times; a field that takes several values is a Vec", self.0.len()))),
         }
     }
 }
@@ -577,7 +642,7 @@ impl<'de> Deserializer<'de> for Values<'_, '_> {
     }
 
     fn deserialize_map<V: Visitor<'de>>(self, _: V) -> Result<V::Value, FormError> {
-        Err(FormError("a form field is text, not a map; name each field in the form struct".into()))
+        Err(FormError::new("a form field is text, not a map; name each field in the form struct"))
     }
 
     fn deserialize_struct<V: Visitor<'de>>(
@@ -586,7 +651,7 @@ impl<'de> Deserializer<'de> for Values<'_, '_> {
         _: &'static [&'static str],
         _: V,
     ) -> Result<V::Value, FormError> {
-        Err(FormError("a form field is text, not a struct; name each field in the form struct".into()))
+        Err(FormError::new("a form field is text, not a struct; name each field in the form struct"))
     }
 
     /// A unit variant, by its name: `<select name="sort">` into `enum Sort { Price, New }`.
@@ -613,7 +678,9 @@ impl<'de> SeqAccess<'de> for List<'_, '_> {
 
     fn next_element_seed<T: DeserializeSeed<'de>>(&mut self, seed: T) -> Result<Option<T::Value>, FormError> {
         match self.0.next() {
-            Some(pair) => seed.deserialize(Values(std::slice::from_ref(pair))).map(Some),
+            // A list holding a word the app does not have is refused, not read as missing: the
+            // word is one of several the address chose, not the whole parameter.
+            Some(pair) => seed.deserialize(Values(std::slice::from_ref(pair))).map(Some).map_err(|e| FormError::new(e.message)),
             None => Ok(None),
         }
     }
@@ -649,6 +716,28 @@ mod tests {
         max: Option<u32>,
         note: Option<String>,
         sort: Sort,
+    }
+
+    #[test]
+    fn a_query_word_the_app_does_not_know_reads_as_missing() {
+        let pairs = sorted_pairs("sort=due_now&page=2");
+        assert_eq!(field::<Option<Sort>>(&pairs, "sort", None).unwrap(), None, "an Option: unset");
+        assert_eq!(field::<Sort>(&pairs, "sort", Some(|| Sort::New)).unwrap(), Sort::New, "a default: the default");
+        let required = field::<Sort>(&pairs, "sort", None).unwrap_err().to_string();
+        assert!(required.starts_with("sort: unknown variant `due_now`, expected `price` or `new`"), "{required}");
+        assert_eq!(field::<Option<Sort>>(&sorted_pairs("sort=new"), "sort", None).unwrap(), Some(Sort::New));
+        // Only a word: a number that does not parse is still refused, and so is a list with one.
+        assert!(field::<Option<u32>>(&sorted_pairs("page=two"), "page", None).is_err());
+        assert!(field::<Vec<Sort>>(&sorted_pairs("sort=new&sort=old"), "sort", Some(Vec::new)).is_err());
+        assert!(field::<Vec<Sort>>(&sorted_pairs("sort=old"), "sort", Some(Vec::new)).is_err(), "a list with only one");
+        assert!(field::<Option<Vec<Sort>>>(&sorted_pairs("sort=old"), "sort", None).is_err());
+        // A form's body is read as sent: an unknown word in a post is refused.
+        #[derive(Debug, Deserialize)]
+        struct Filter {
+            #[allow(dead_code)]
+            sort: Option<Sort>,
+        }
+        assert!(from_bytes::<Filter>(b"sort=due_now").is_err());
     }
 
     #[test]
