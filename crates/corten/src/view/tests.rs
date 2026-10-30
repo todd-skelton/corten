@@ -158,6 +158,48 @@ fn components_take_props_children_and_paths() {
     );
 }
 
+#[component]
+fn Bar<'a>(action: &'a dyn Render) -> impl Render {
+    html! { <div>{action}</div> }
+}
+
+#[component]
+fn Slot<C: Render>(view: C) -> impl Render {
+    html! { <b>{view}</b> }
+}
+
+/// A view written as a prop borrows what it uses, so the rest of the page reads the same local
+/// (#414), as a view in a view in a prop does, and one given by value (`view={html! { .. }}`).
+#[test]
+fn a_view_in_a_prop_borrows_what_it_uses() {
+    let name = Some(String::from("Ship"));
+    let view = html! {
+        <Panel title="Steps" owned={String::new()}>
+            <Bar action={&html! { if let Some(n) = &name { <span>{n}</span> } }} />
+            <Slot view={html! { <Bar action={&html! { {name.as_deref().unwrap_or("")} }} /> {&name} }} />
+            if let Some(n) = &name { <p>{n}</p> }
+        </Panel>
+    };
+    assert_eq!(
+        view.to_html(),
+        r#"<section data-owned=""><h2>Steps</h2><div><span>Ship</span></div><b><div>Ship</div>Ship</b><p>Ship</p></section>"#
+    );
+    // Within an element too, at the top of a view that is not one component.
+    let name = String::from("Ship");
+    let view = html! { <main><Bar action={&html! { {&name} }} />{&name}</main> };
+    assert_eq!(view.to_html(), "<main><div>Ship</div>Ship</main>");
+}
+
+/// A view returned from a function still owns what it uses, its props' views included.
+fn shipped(name: String) -> impl Render {
+    html! { <Slot view={html! { <i>{&name}</i> }} /> }
+}
+
+#[test]
+fn a_returned_view_owns_its_props_views() {
+    assert_eq!(shipped(String::from("Ship")).to_html(), "<b><i>Ship</i></b>");
+}
+
 /// A view that is one component whose props borrow what it makes: the `let`s inside the markup
 /// belong to the view, so it can be returned (#77).
 fn counted(n: usize) -> impl Render {

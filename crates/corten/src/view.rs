@@ -44,7 +44,9 @@
 //! - In a component with a script ([`crate::script`]), `ref={save}` names an element for its
 //!   handlers and `on:click={js::confirm(event, dialog)}` calls one of them.
 //! - A view owns what it uses and renders once, so it can be returned from a function and markup
-//!   can move or match the values it captured.
+//!   can move or match the values it captured. A view written as a prop's whole value inside
+//!   another view (`action={&html! { .. }}`) renders inside it, so it borrows what it uses and the
+//!   rest of the markup can read the same locals.
 //! - `<Card title="x" compact>children</Card>` builds the struct `Card` (from [`component`] or
 //!   written by hand) with those fields, `compact` meaning `compact: true`, and the children in
 //!   its `children` field. A missing or misspelled prop is a compile error.

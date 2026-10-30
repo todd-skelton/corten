@@ -144,6 +144,14 @@ fn job_dialog(job: &Job) -> impl Render + '_ {
 With the `let` outside the `html!`, the view would borrow a local of a function that has
 returned (E0515). `let`s and a layout component are a document, like the layout alone, and `let`s and a patch
 component are a patch.
+
+A view written as a prop's whole value (`action={&html! { .. }}`, `view={html! { .. }}`) is built
+and rendered inside the view around it, so it borrows what it uses instead of owning it: a step
+bar's action and the panel below it read the same `name`, without `let name = name.as_ref();`
+first. The props of a view that is one component are evaluated where the view is written, so a
+view there still owns what it uses and can be returned with it. A view inside a closure of its
+own (`.map(|row| html! { .. })`) also owns what it uses.
+
 ## Typed links and messages
 
 The strings that usually drift between files are Rust types, checked when the app compiles.
