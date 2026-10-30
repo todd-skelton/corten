@@ -78,11 +78,11 @@
 .history button { flex: 1; }
 .status { min-height: 20px; color: var(--muted); font-size: 13px; }
 .status > span:not(:first-child) { display: none; }
-.status[data-state="saving"] > .saving, .status[data-state="updated"] > .updated, .status[data-state="offline"] > .offline { display: inline; }
+.status[data-state="saving"] > .saving, .status[data-state="saved"] > .saved, .status[data-state="updated"] > .updated, .status[data-state="offline"] > .offline { display: inline; }
 .status:not([data-state=""]) > span:first-child { display: none; }
 .status .offline { color: var(--danger); }
 .status .offline button { padding: 1px 8px; margin-left: 4px; }
-.status > span:first-child:not(:empty)::before { content: "\2713  " / ""; color: var(--relic); }
+.status > span:first-child:not(:empty)::before, .status > .saved::before { content: "\2713  " / ""; color: var(--relic); }
 .conflict { display: grid; gap: 8px; padding: 12px; border-radius: 8px; background: light-dark(#fff4e5, #3a2410); border: 1px solid light-dark(#f5c88a, #7c4a14); }
 .conflict p { margin: 0; font-weight: 500; }
 .conflict button:first-of-type { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }

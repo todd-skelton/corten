@@ -23,6 +23,7 @@ import { CollectionRow, DeckLine, rows } from "corten/views";
  * @property {Holds<DeckLine, HTMLUListElement>} lines
  * @property {Holds<DeckLine, HTMLTemplateElement>} template
  * @property {HTMLFormElement} form
+ * @property {HTMLInputElement} generation
  * @property {HTMLInputElement} version
  * @property {HTMLInputElement} draft
  * @property {HTMLOutputElement} total
@@ -75,7 +76,8 @@ import { CollectionRow, DeckLine, rows } from "corten/views";
 
 /**
  * What the builder keeps between events. One object, since a component has one state.
- * `drawn` is the deck the page shows; `base` the deck saved at `version`, which the last save the
+ * `drawn` is the deck the page shows; `base` the deck saved at `version` of `generation` (the
+ * deck feed's sequence number, which only counts within one generation), which the last save the
  * server took (or the feed) said; `history` the undo and redo stacks, and `kept` them as they
  * were at that save, which a refused save goes back to.
  */
@@ -83,6 +85,7 @@ const kept = () =>
   keep(() => ({
     /** @type {Deck} */ drawn: new Map(),
     /** @type {Deck} */ base: new Map(),
+    generation: "",
     version: 0,
     /** A save is on its way. */
     sending: false,
@@ -96,6 +99,7 @@ const kept = () =>
     waiting: false,
     /** The saved deck as its feed says, and its version. @type {Deck} */
     theirs: new Map(),
+    theirGeneration: "",
     theirVersion: 0,
     /** @type {Change[]} */ undo: [],
     /** @type {Change[]} */ redo: [],
@@ -121,16 +125,19 @@ const names = new Intl.Collator(document.documentElement.lang || undefined);
  */
 export function start(parts, feed, signal) {
   const s = kept();
+  s.generation = parts.generation.value;
   s.version = Number(parts.version.value);
   s.drawn = typedDeck(parts);
   s.base = new Map(s.drawn);
   s.theirs = new Map(s.drawn);
+  s.theirGeneration = s.generation;
   s.theirVersion = s.version;
   subscribe(
     feed,
     {
-      snapshot: (slots, seq) => {
+      snapshot: (slots, seq, epoch) => {
         s.theirs = new Map(slots.map((slot) => [slot.id, slot.count]));
+        s.theirGeneration = epoch;
         s.theirVersion = seq;
         heard(s, parts);
       },
@@ -282,9 +289,10 @@ function draw(s, parts, deck) {
 }
 
 /**
- * Shows one of the status line's states (`saving`, `updated`, `offline`), or none: then the save
- * note says what the last save did.
- * @param {Parts} parts @param {"" | "saving" | "updated" | "offline"} state
+ * Shows one of the status line's states (`saving`, `saved` when the feed showed a save whose
+ * answer was lost was made, `updated`, `offline`), or none: then the save note says what the last
+ * save did.
+ * @param {Parts} parts @param {"" | "saving" | "saved" | "updated" | "offline"} state
  */
 function say(parts, state) {
   parts.status.dataset.state = state;
@@ -325,7 +333,7 @@ export function answered(event, parts) {
   if (event.outcome === "saved") {
     const sent = s.unanswered.find((u) => u.draft === event.draft);
     if (sent && event.version >= s.version) {
-      known(s, parts, sent.deck, event.version);
+      known(s, parts, sent.deck, s.generation, event.version);
       s.saved = sent.history;
     }
     s.unanswered = [];
@@ -343,8 +351,9 @@ export function answered(event, parts) {
 }
 
 /**
- * The feed brought the saved deck at a newer version, or a save's answer came (whatever the feed
- * brought meanwhile waited for it). The deck is one this page sent whose answer was lost: the
+ * The feed brought the saved deck at a newer version (or of another generation: the server
+ * restarted, and its numbers start again), or a save's answer came (whatever the feed brought
+ * meanwhile waited for it). The deck is one this page sent whose answer was lost: the
  * page knows it now and sends what is left. A send's answer was lost and the deck is not one of
  * them: the server is asked by sending again (with the same key, which saves nothing twice and
  * says which deck it saved), unless it cannot be reached. Else another tab saved it: with nothing
@@ -352,13 +361,15 @@ export function answered(event, parts) {
  * @param {State} s @param {Parts} parts
  */
 function heard(s, parts) {
-  if (s.theirVersion <= s.version || s.sending) return;
+  const news = s.theirGeneration !== s.generation || s.theirVersion > s.version;
+  if (!news || s.sending) return;
   const sent = s.unanswered.find((u) => same(u.deck, s.theirs));
   if (sent) {
     s.waiting = false;
-    known(s, parts, new Map(s.theirs), s.theirVersion);
+    known(s, parts, new Map(s.theirs), s.theirGeneration, s.theirVersion);
     s.saved = sent.history;
     s.unanswered = [];
+    say(parts, "saved");
     save(s, parts);
   } else if (s.unanswered.length > 0) {
     if (parts.status.dataset.state === "offline") return;
@@ -366,7 +377,7 @@ function heard(s, parts) {
     save(s, parts);
   } else if (same(s.drawn, s.base)) {
     s.waiting = false;
-    known(s, parts, new Map(s.theirs), s.theirVersion);
+    known(s, parts, new Map(s.theirs), s.theirGeneration, s.theirVersion);
     draw(s, parts, new Map(s.theirs));
     say(parts, "updated");
   } else {
@@ -406,18 +417,21 @@ export function reload(parts) {
 }
 
 /**
- * The saved deck is `deck`, at `version`: what the next save is built on, which the form sends.
- * @param {State} s @param {Parts} parts @param {Deck} deck @param {number} version
+ * The saved deck is `deck`, at `version` of `generation`: what the next save is built on, which
+ * the form sends.
+ * @param {State} s @param {Parts} parts @param {Deck} deck @param {string} generation @param {number} version
  */
-function known(s, parts, deck, version) {
+function known(s, parts, deck, generation, version) {
   s.base = deck;
+  s.generation = generation;
   s.version = version;
+  parts.generation.value = generation;
   parts.version.value = String(version);
 }
 
 /** The conflict is over: the saved deck is the feed's. @param {State} s @param {Parts} parts */
 function settle(s, parts) {
-  known(s, parts, new Map(s.theirs), s.theirVersion);
+  known(s, parts, new Map(s.theirs), s.theirGeneration, s.theirVersion);
   s.conflict = false;
   s.waiting = false;
   parts.conflict.hidden = true;

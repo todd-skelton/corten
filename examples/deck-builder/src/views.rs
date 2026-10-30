@@ -93,7 +93,7 @@ pub fn screen<'a>(
     let mut lines: Vec<Line> =
         saved.iter().filter_map(|(id, &count)| builder.card(id).map(|card| Line { card, count })).collect();
     lines.sort_by_cached_key(|l| (l.card.cost, l.card.name.to_lowercase()));
-    html! { <DeckBuilder t={t} cards={cards} lines={lines} version={version} view={view} answer={answer} /> }
+    html! { <DeckBuilder t={t} cards={cards} lines={lines} generation={builder.generation()} version={version} view={view} answer={answer} /> }
 }
 
 /// Whether the filter's words find `card`: its name, set or kind, as the page's script filters.

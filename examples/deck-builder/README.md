@@ -14,7 +14,7 @@ saves it as the user works.
 | The same moves by keyboard | Space picks up, the arrow keys move between the collection and the deck, Space drops, Escape puts back, each announced |
 | Undo and redo | the buttons, Ctrl+Z and Ctrl+Shift+Z; each step is a change, saved like any other |
 | The count, the cost curve, the count by kind, the deck list | drawn again from the deck after each change (the curve is SVG bars, no `style`) |
-| Autosave | the deck's form, sent one save at a time with the version it was built on; the answer is the save note, whose event says what became of it |
+| Autosave | the deck's form, sent one save at a time with the version it was built on (the deck feed's generation and number); the answer is the save note, whose event says what became of it. A save whose answer was lost is sent again with its submit key, and the server answers with what it did |
 | A refused change | the page goes back to the saved deck, and its history to what it was then, with the rule's words |
 | Another tab's edit | the page follows the saved deck's feed: with nothing unsaved it takes the edit; with a change of its own it offers to keep both or take the other tab's deck |
 
@@ -40,7 +40,8 @@ docker run --rm -p 3000:8080 corten-deck-builder
 ```
 
 `DECK_CARDS` sets how many cards the collection has (240). The deck is kept in memory: a restart
-starts again from the starter deck.
+starts again from the starter deck, in a new generation, so a page left open across it is told the
+deck changed.
 
 ## Where things are
 

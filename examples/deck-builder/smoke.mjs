@@ -1,6 +1,7 @@
 // Browser smoke test and timings for the deck builder: every move in the browser, autosave with
 // its refusals, another tab's edits, and the same deck built without JavaScript.
 // Usage: node examples/deck-builder/smoke.mjs http://localhost:18487
+import http from "node:http";
 import { chromium } from "@playwright/test";
 import { stall } from "../../scripts/stall.mjs";
 
@@ -280,6 +281,74 @@ try {
   const once = (await comesToShow(page, "pearl-diver", 3)) && (await comesToShow(page, "undertow-serpent", 2));
   check("a save whose answer was lost is not made twice", once && (await comesToShow(other, "undertow-serpent", 2)) && !(await page.isVisible("[role=alert]")), JSON.stringify(await deck(page)));
 
+  // The same, where only the server can say: a tab whose feed is held (so it cannot learn of the
+  // save that way) saves, the server commits it, and the answer's body is cut off after its
+  // headers. Another tab saves meanwhile. Try again goes with the same key, and the server answers
+  // with the save it made: the change is in the deck once. A proxy of the smoke's own cuts the body
+  // (a route cannot stream one to fail midway).
+  const app = new URL(base);
+  const cutProxy = http.createServer((req, res) => {
+    const sent = [];
+    req.on("data", (c) => sent.push(c));
+    req.on("end", () => {
+      const headers = { ...req.headers, host: app.host };
+      const upstream = http.request(new URL(req.url ?? "/", base), { method: req.method, headers }, (answer) => {
+        const body = [];
+        answer.on("data", (c) => body.push(c));
+        answer.on("end", () => {
+          const whole = Buffer.concat(body);
+          const { "transfer-encoding": _, ...kept } = answer.headers;
+          res.writeHead(answer.statusCode ?? 502, { ...kept, "content-length": String(whole.length) });
+          res.write(whole.subarray(0, whole.length >> 1), () => res.socket?.destroy());
+        });
+      });
+      upstream.end(Buffer.concat(sent));
+    });
+  });
+  await new Promise((resolve) => cutProxy.listen(0, "127.0.0.1", () => resolve(undefined)));
+  const proxyPort = /** @type {import("node:net").AddressInfo} */ (cutProxy.address()).port;
+  const third = await context.newPage();
+  third.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  third.on("pageerror", (e) => errors.push(e.message));
+  let liveAsked = () => {};
+  const asked = new Promise((resolve) => (liveAsked = () => resolve(undefined)));
+  let letLive = () => {};
+  const held = new Promise((resolve) => (letLive = () => resolve(undefined)));
+  await third.route("**/feed/deck/live**", async (route) => {
+    liveAsked();
+    await held;
+    await route.continue().catch(() => {});
+  });
+  await third.goto(base);
+  // The snapshot has arrived when the feed asks for its live stream.
+  await asked;
+  /** @type {string[]} */
+  const keys = [];
+  third.on("request", (r) => r.method() === "POST" && r.url().endsWith("/deck") && keys.push(new URLSearchParams(r.postData() ?? "").get("submit") ?? ""));
+  const herald = (await deck(third))["moth-court-herald"] ?? 0;
+  // A card in no deck yet and none the steps after this one add.
+  const spare = await third.evaluate(() => {
+    const taken = new Set(["salt-oracle", "regent-of-ash", "crown-of-thorns-and-glass", "kiln-colossus"]);
+    for (const li of Array.from(document.querySelectorAll("ul li[data-key]"))) taken.add(li.getAttribute("data-key") ?? "");
+    return Array.from(document.querySelectorAll("tbody tr[data-key]"), (tr) => tr.getAttribute("data-key") ?? "").find((id) => !taken.has(id)) ?? "";
+  });
+  await third.route("**/deck", (route) => route.continue({ url: `http://127.0.0.1:${proxyPort}/deck` }));
+  await row(third, "moth-court-herald").locator("button", { hasText: "Add" }).click();
+  await third.waitForFunction(() => /** @type {HTMLElement} */ (document.querySelector("[role=status][data-state]")).dataset.state === "offline");
+  await third.unroute("**/deck");
+  await comesToShow(other, "moth-court-herald", herald + 1);
+  await row(other, spare).locator("button", { hasText: "Add" }).click();
+  await settled(other);
+  await third.click("button:has-text('Try again')");
+  await settled(third);
+  check("Try again after a cut-off answer sends the same submit key", keys.length === 2 && keys[0] === keys[1], keys.join(", "));
+  check("and the server answers with the save it made, once", (await deck(third))["moth-court-herald"] === herald + 1, JSON.stringify(await deck(third)));
+  letLive();
+  check("the held feed then brings the other tab's save", await comesToShow(third, spare, 1));
+  check("which keeps the change once", (await comesToShow(other, "moth-court-herald", herald + 1)) && (await deck(third))["moth-court-herald"] === herald + 1 && !(await third.isVisible("[role=alert]")));
+  await third.close();
+  cutProxy.close();
+
   // After adds, removals, rollbacks and another tab's decks: the list is the lines as shown.
   const listed = await page.inputValue("textarea");
   const shownLines = await page.evaluate(() =>
@@ -329,8 +398,9 @@ try {
   await plain.waitForLoadState("load");
   check("the filter is a GET form the server answers", plain.url().includes("q=oracle") && (await plain.locator("tbody tr:not([hidden])").count()) === 1);
 
-  // The refused, stale and unreachable saves above are the browser's own lines for those answers.
-  const unexpected = errors.filter((e) => !/Failed to load resource: (the server responded with a status of (409|422)\b|net::ERR_FAILED)/.test(e));
+  // The refused, stale, unreachable and cut-off saves above are the browser's own lines for those
+  // answers.
+  const unexpected = errors.filter((e) => !/Failed to load resource: (the server responded with a status of (409|422)\b|net::ERR_(FAILED|CONTENT_LENGTH_MISMATCH))/.test(e));
   check("no other errors in the console", unexpected.length === 0, unexpected.join(" | "));
 } finally {
   await browser.close();

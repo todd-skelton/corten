@@ -39,7 +39,7 @@ const BAR: u32 = 48;
 /// and each collection row's count in the deck are drawn again from the deck the page shows.
 ///
 /// Each change is then saved: the deck's form is sent (`data-patch`) with the version it was
-/// built on, one save at a time. The answer is the save note, which tells the builder whether the
+/// built on (the deck feed's generation and sequence number), one save at a time. The answer is the save note, which tells the builder whether the
 /// server took it (the new version), refused it (the change is rolled back, with the rule's
 /// words) or found it stale (another tab saved first: the builder offers to keep both changes or
 /// take the other tab's deck). The page follows the saved deck's feed, so another tab's save is
@@ -53,13 +53,14 @@ pub fn DeckBuilder<'a>(
     t: Msg,
     cards: Vec<Shown<'a>>,
     lines: Vec<Line<'a>>,
+    generation: &'a str,
     version: u64,
     view: &'a DeckQuery,
     answer: &'a Answer,
 ) -> impl Render {
     let (cards_zone, deck_zone, rows, pick, grip, add, all, picked, shown, none) = refs();
     let (lines_ref, template, lift, copies, form, version_ref, total, bars, tallies, kinds) = refs();
-    let (undo, redo, status, conflict, list, empty, announce, draft) = refs();
+    let (undo, redo, status, conflict, list, empty, announce, draft, generation_ref) = refs();
     let (f, q) = (DeckInput::FIELDS, DeckQuery::FIELDS);
     let number = t.js().number();
     let parts = js::Parts {
@@ -67,6 +68,7 @@ pub fn DeckBuilder<'a>(
         lines: lines_ref,
         template,
         form,
+        generation: generation_ref,
         version: version_ref,
         draft,
         total,
@@ -247,6 +249,7 @@ pub fn DeckBuilder<'a>(
                 <div ref={status} class={Status} role="status" data-state="">
                     <SaveNote answer={answer} />
                     <span class={Saving}>"Saving…"</span>
+                    <span class={Saved}>"Saved."</span>
                     <span class={Updated}>"Updated from another tab."</span>
                     <span class={Offline}>
                         "Not saved yet: the server could not be reached. "
@@ -284,6 +287,7 @@ pub fn DeckBuilder<'a>(
                     }
                 </dl>
                 <form ref={form} id={DeckFormId} method="post" action={url::Save} data-patch novalidate>
+                    <input ref={generation_ref} type="hidden" name={f.generation} value={generation}>
                     <input ref={version_ref} type="hidden" name={f.version} value={version}>
                     {SubmitKey::field(f.submit)}
                     <input ref={draft} type="hidden" name={f.draft} value="0">
