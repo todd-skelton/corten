@@ -997,9 +997,13 @@ Corten is pre-1.0, so any minor version may change the API.
     variant fails to build. A string literal union as a handler's parameter
     (`@param {"name" | "price"} by`) no longer compiles, since it took any value; the error says to
     make it a Rust enum with a generated declaration, and so does a list or a generic of one
-    (`Mode[]`, `Record<Mode, number>`). A `@typedef` of any type but an object (`Tab | null`,
-    `Tab[]`, `string`) is checked as the type it names where a handler takes it; a typedef the
-    script keeps for itself is not checked. What the page gets is unchanged
+    (`Mode[]`, `Record<Mode, number>`, `[Mode, number]`, `{ m: Mode }`): any string literal in a
+    handler parameter's type is refused, outside `import("..")` and `Message<..>`. A `@typedef` of
+    any type but an object or a generic one (`@template`) (`Tab | null`, `Tab[]`, `string`) is
+    checked as the type it names where a handler takes it, through any number of typedefs, and a
+    generated declaration a handler's parameter holds in a shape the call is not checked against is
+    refused rather than taking any value; a typedef the script keeps for itself is not checked.
+    What the page gets is unchanged
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
 ### Removed
@@ -1599,8 +1603,10 @@ Corten is pre-1.0, so any minor version may change the API.
 86. Breaking: a script's set of names written as string literals (`@param {"name" | "price"} by`,
     also with `null`, optional, through a `@typedef`, or as a group's field) no longer compiles,
     and neither does a generated declaration inside another type (`import("../types/app").Tab[]`,
-    `.. | null`): each took any value at the call. Make the set a Rust enum with a generated
-    declaration and type the value with it, alone
+    `.. | null`, a typedef of plain values holding one): each took any value at the call. A
+    typedef of a plain type (`@typedef {string} Id`, `@typedef {HTMLElement} Root`) a handler
+    takes is now checked as that type, where it took any value. Make the set a Rust enum with a
+    generated declaration and type the value with it, alone
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
 ### Fixed
