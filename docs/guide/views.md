@@ -21,6 +21,14 @@ render of the same call site.
 component renders inside a page and on its own as a patch, and the two cannot drift. A view owns
 what it captures and renders once, so it can be returned from a function.
 
+Every prop is written where the component is used, an empty one too: `head=""` for a page that
+adds no head tags, `toast={None}` for no toast. A prop left out does not compile, so the markup
+always says what the component gets. Rust has no stable way to leave a struct field to a default
+(default field values are unstable), and filling a left-out `impl Render` prop would fix its type
+for every caller. When several answers build one component with most props the same, a function
+gives the common value and each answer changes its part:
+`Gallery { toast: Some(SAVED), ..listings(&req, &none) }`.
+
 ## The document
 
 A page is a whole HTML document, built from components like everything else: the app's layout
@@ -81,6 +89,15 @@ their head tags); a page that needs a different document uses another layout. Ea
 layout to a page in another loads it in full, with no `data-reload`. A prop that changes the
 layout around `<main>` (a promo bar on some pages only) is not seen by a navigation: make that a
 second layout.
+
+Who is signed in reaches the layout the same way as everything else, as a prop the handler
+passes: `viewer={viewer.as_deref()}` from the `Option<Caller<Viewer>>` it took. A layout does not
+read the request itself. Rendering is synchronous and `Identify` is not (a session store, a
+token check), so a layout could not look the viewer up while it renders. Reading it there would
+need a second async step before each full-page render, and its own rules for a failed lookup,
+for caching it per request and for the page key. In the handler the lookup runs once, only on the
+routes that ask for it, and the type says which pages show a viewer. A page with more than one call site keeps the viewer in its own
+function's parameters (`fn alerts_page(req: &Req, viewer: Option<&Viewer>, ..)`), as watchlist does.
 
 A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
 `href`, `data-nav` and `aria-current="page"` when it is the page (`req.nav_section` for a link
@@ -160,13 +177,23 @@ req.patch(html! { {Remove(OfferId(&sold.id))} })                             // 
 | `#[derive(Route)]` | the path names a parameter the struct lacks, a parameter is not a whole segment, a link leaves a field out |
 | `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument, or passes one that is not text, an integer or a value `t` formats (a float goes through `t.number`) |
 | `#[derive(UrlValue)]` | the enum has a variant with fields, a variant serde does not read (`skip_deserializing`), or a serde attribute that changes its words in a way it does not follow |
-| `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol); the struct holds more than one key |
+| `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol, `corten__two_ids_are__offer`); the struct holds more than one key |
+| `#[component(css)]`, `#[component(js)]` | two components in one program have the same name, so they would style one `.name__*` or serve one `scripts/name.js` (each is a linker symbol, `corten__two_components_style__offer_list`, `corten__two_scripts_are__offer_list`) |
 
 An id is the type's name without `Id`, in kebab case (`OfferId` is `offer-`, then the key; a
 unit struct, `StatusId`, is just `status`). Use one for every element a patch replaces or
 removes, and for `for`, `popovertarget` or `commandfor` across components. Its name is a linker
-symbol, so two copies of one library in a program (two versions) that both define an id do
-not link.
+symbol, and so is the class prefix of a component with a stylesheet and the name of one with a
+script: names are global to the app, so two features that each write a `SettingsForm` (or a
+`SettingsFormId`) fail to build, at the second one, rather than the app when it starts. Name
+them by feature (`ShippingSettingsForm`). `cargo check` does not link, so it does not see this;
+`cargo build` and `cargo test` (and `corten check`) do, and so does a `script!` module, served
+by its name as a component's script is. The check is the declaration's, not the page's: two
+identical declarations of one component (a module declared in both `lib.rs` and `main.rs`, a
+macro that writes one component in several modules) fail too, so declare each once. A library's
+ids and scripts (a crate with a script prefix, which their names in the page carry) also carry
+its version, so two versions of one library in a program still link; its classes do not carry
+the prefix (`.card__*`), so a library's `Card` with a stylesheet and the app's clash.
 
 Routes write their URL straight into the page (path parameters percent-encoded, `None` query
 parameters left out). A query field is anything `Display`; an enum in an address (a tab, a sort,

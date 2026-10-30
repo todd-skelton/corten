@@ -100,18 +100,23 @@ fn gallery(req: &Req, gallery: Gallery<'_>) -> HtmlResult {
 
 const TITLE: &str = "Sell Ashen Drake | corten-ui";
 
+/// The listings tab with nothing to report: what each answer below changes one part of
+/// (`Gallery { toast: Some(SAVED), ..listings(&req, &none) }`), since every prop is written.
+fn listings<'a>(req: &Req, none: &'a Errors) -> Gallery<'a> {
+    Gallery {
+        tab: MarketTab::Listings,
+        result: "",
+        toast: None,
+        sale: false,
+        times: times(req),
+        rename: RenameDialog { name: "", errors: none },
+    }
+}
+
 async fn home(req: Req, Params(q): Params<url::Home>) -> HtmlResult {
-    gallery(
-        &req,
-        Gallery {
-            tab: q.tab.unwrap_or(MarketTab::Listings),
-            result: "",
-            toast: None,
-            sale: q.sale == Some(Sale::Last),
-            times: times(&req),
-            rename: RenameDialog { name: "", errors: &Errors::new() },
-        },
-    )
+    let none = Errors::new();
+    let tab = q.tab.unwrap_or(MarketTab::Listings);
+    gallery(&req, Gallery { tab, sale: q.sale == Some(Sale::Last), ..listings(&req, &none) })
 }
 
 #[derive(Deserialize, Fields)]
@@ -156,57 +161,24 @@ async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
         errors.add(f.floor, "Enter the lowest offer you accept.");
     }
     if let Some((_, message)) = errors.iter().next() {
-        let page = || async {
-            gallery(
-                &req,
-                Gallery {
-                    tab: MarketTab::Listings,
-                    result: message,
-                    toast: None,
-                    sale: false,
-                    rename: RenameDialog { name: "", errors: &Errors::new() },
-                    times: times(&req),
-                },
-            )
-        };
+        let none = Errors::new();
+        let page = || async { gallery(&req, Gallery { result: message, ..listings(&req, &none) }) };
         return req.invalid(&errors, OrderResult { text: message }, page).await;
     }
     let condition = form.condition.label();
     // Some here: a price that does not read is refused above.
     let price = price.map(|cents| t.money(cents, USD).to_string()).unwrap_or_default();
     let text = format!("Listed {} {condition} {CARD} at {price} each, {:.1} oz to ship.", form.qty, form.weight);
-    let page = || async {
-        gallery(
-            &req,
-            Gallery {
-                tab: MarketTab::Listings,
-                result: &text,
-                toast: None,
-                sale: false,
-                times: times(&req),
-                rename: RenameDialog { name: "", errors: &Errors::new() },
-            },
-        )
-    };
+    let none = Errors::new();
+    let page = || async { gallery(&req, Gallery { result: &text, ..listings(&req, &none) }) };
     req.patch_or(OrderResult { text: &text }, page).await
 }
 
 /// Answers with a toast: the message as a patch, or in the page without JavaScript.
 async fn save(req: Req) -> HtmlResult {
     const SAVED: &str = "Draft saved.";
-    let page = || async {
-        gallery(
-            &req,
-            Gallery {
-                tab: MarketTab::Listings,
-                result: "",
-                toast: Some(SAVED),
-                sale: false,
-                times: times(&req),
-                rename: RenameDialog { name: "", errors: &Errors::new() },
-            },
-        )
-    };
+    let none = Errors::new();
+    let page = || async { gallery(&req, Gallery { toast: Some(SAVED), ..listings(&req, &none) }) };
     req.patch_or(Toast { message: Some(SAVED) }, page).await
 }
 
@@ -224,19 +196,7 @@ async fn rename(req: Req, Form(form): Form<RenameForm>) -> HtmlResult {
     }
     let mut errors = Errors::new();
     errors.add(RenameForm::FIELDS.name, "Give the draft a name.");
-    let page = || async {
-        gallery(
-            &req,
-            Gallery {
-                tab: MarketTab::Listings,
-                result: "",
-                toast: None,
-                sale: false,
-                times: times(&req),
-                rename: RenameDialog { name, errors: &errors },
-            },
-        )
-    };
+    let page = || async { gallery(&req, Gallery { rename: RenameDialog { name, errors: &errors }, ..listings(&req, &errors) }) };
     req.invalid(&errors, RenameDialog { name, errors: &errors }, page).await
 }
 

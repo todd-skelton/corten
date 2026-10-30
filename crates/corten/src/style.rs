@@ -87,6 +87,31 @@
 //! }
 //! ```
 //!
+//! Its classes are global to the app (`.badge-list__*`), so two components with one name in
+//! different modules (each feature's `SettingsForm`) fail to build, at link, rather than the app
+//! when it starts; the error names the symbol `corten__two_components_style__badge_list`. Rename
+//! one (`ShippingSettingsForm`):
+//!
+//! ```compile_fail
+//! mod shipping {
+//!     use corten::prelude::*;
+//!     #[component(css)]
+//!     pub fn BadgeList() -> impl Render {
+//!         html! { <ul class={(List, Badge, Hot)}></ul> }
+//!     }
+//! }
+//! mod settings {
+//!     use corten::prelude::*;
+//!     #[component(css)]
+//!     pub fn BadgeList() -> impl Render {
+//!         html! { <ul class={(List, Badge, Hot)}></ul> }
+//!     }
+//! }
+//! fn main() {
+//!     let _ = (shipping::BadgeList, settings::BadgeList);
+//! }
+//! ```
+//!
 //! and a class belongs to its component; another one cannot use it:
 //!
 //! ```compile_fail

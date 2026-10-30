@@ -33,7 +33,7 @@ use crate::{
     route::{Methods, Prefix, Route as TypedRoute, Routes},
     security::{Applied, NonceSlot, Policy},
     signal::{self, Watch},
-    task::{Running, Task},
+    task::{Finishing, Running, Task},
     Mode, Signal,
 };
 
@@ -297,6 +297,9 @@ pub struct App<M = ()> {
     apis: Vec<(Mount, Router)>,
     tasks: Vec<Task>,
     grace: Duration,
+    /// Work its handlers finish whether or not they are dropped ([`Signal::finish`]), which
+    /// `serve` waits for at shutdown.
+    finishing: Arc<Finishing>,
     connections: Connections,
     layers: Vec<Box<dyn FnOnce(Router) -> Router + Send>>,
     middleware: M,
@@ -336,6 +339,7 @@ impl App {
             apis: Vec::new(),
             tasks: Vec::new(),
             grace: Duration::from_secs(5),
+            finishing: Arc::default(),
             connections: Connections::default(),
             layers: Vec::new(),
             middleware: (),
@@ -368,6 +372,7 @@ impl App {
             apis: self.apis,
             tasks: self.tasks,
             grace: self.grace,
+            finishing: self.finishing,
             connections: self.connections,
             layers: self.layers,
             middleware,
@@ -674,7 +679,8 @@ impl<M: Middleware> App<M> {
     }
 
     /// How long [`serve`] waits, once shutdown begins, for the app's [tasks](App::task) to
-    /// return (5 seconds unless set). Keep it under the time the platform waits before it kills
+    /// return, and for work its handlers finish ([`crate::Signal::finish`]) whose handler is gone
+    /// (5 seconds unless set). Keep it under the time the platform waits before it kills
     /// the process (`docker stop`: 10 seconds; Kubernetes: 30).
     pub fn shutdown_grace(mut self, grace: Duration) -> Self {
         self.grace = grace;
@@ -795,6 +801,7 @@ impl<M: Middleware> App<M> {
 
         let error_page = self.error_page.unwrap_or_else(|| error_page_fn(default_error_page, ()));
         let mut shared = Shared::new(error_page, assets, head);
+        shared.finishing = self.finishing.clone();
         shared.offline = offline;
         shared.locales = self.locales;
         shared.client_zone = self.client_zone;
@@ -912,7 +919,8 @@ impl<M: Middleware> From<App<M>> for Router {
 ///
 /// Shutdown, on the first Ctrl-C or `SIGTERM`: the app's [tasks](App::task) are told to stop,
 /// live streams end, the listeners close, requests in progress finish, and `serve` returns once
-/// the tasks have too (or [`App::shutdown_grace`] has passed).
+/// the tasks and work handlers finish ([`crate::Signal::finish`]) have too (or
+/// [`App::shutdown_grace`] has passed).
 ///
 /// A tower layer of the app's own goes around it with [`App::layer`]. To serve it on listeners of
 /// the app's own (a Unix socket, a socket a supervisor hands over) with the same shutdown, see
@@ -946,7 +954,7 @@ pub async fn listeners(port: u16) -> std::io::Result<Vec<tokio::net::TcpListener
 /// [`Listener`](axum::serve::Listener), such as a Unix socket or a socket a supervisor hands
 /// over. Shutdown is `serve`'s, across all of them: on Ctrl-C or `SIGTERM` the app's tasks are
 /// told, live streams end, every listener closes and finishes its requests, and it returns once
-/// the tasks have finished too. HTTPS is [`serve_wrapped`], which runs the handshake on each
+/// the tasks and work handlers finish ([`crate::Signal::finish`]) have finished too. HTTPS is [`serve_wrapped`], which runs the handshake on each
 /// connection under the app's connection limits; a listener that ran it before handing the
 /// connection over would have it outside them.
 pub async fn serve_on<L, M>(listeners: Vec<L>, app: App<M>) -> std::io::Result<()>
@@ -997,8 +1005,8 @@ pub(crate) fn plain<I>(io: I) -> std::future::Ready<Result<I, std::convert::Infa
 }
 
 /// Serves `app` on `listeners` with its tasks running until `stop` resolves; then tells the tasks
-/// to stop, lets each listener finish its requests and waits for the tasks, up to the app's
-/// grace from when `stop` resolved. `wrap` is each connection's step before HTTP
+/// and work handlers finish to stop, lets each listener finish its requests and waits for the
+/// tasks, then the work, up to the app's grace from when `stop` resolved. `wrap` is each connection's step before HTTP
 /// ([`serve_wrapped`]), [`plain`] for none.
 pub(crate) async fn run<L, W, F, Io, E, M>(
     listeners: Vec<L>,
@@ -1015,9 +1023,10 @@ where
     M: Middleware,
 {
     let (tasks, grace, connections) = (std::mem::take(&mut app.tasks), app.grace, app.connections);
+    let finishing = app.finishing.clone();
     // Built first: a startup panic (a misplaced area) starts no task.
     let router = app.router();
-    let running = Running::start(tasks);
+    let running = Running::start(tasks, finishing.signal().clone());
     let stopped = std::sync::OnceLock::new();
     let served = serve_router(listeners, wrap, router, connections, async {
         stop.await;
@@ -1028,6 +1037,7 @@ where
     // A listener that failed ends the tasks too, with the same grace.
     let began = stopped.get().copied().unwrap_or_else(tokio::time::Instant::now);
     running.finish(began + grace, grace).await;
+    finishing.wait(began + grace, grace).await;
     served
 }
 

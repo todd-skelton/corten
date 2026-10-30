@@ -80,6 +80,21 @@ pub use corten_macros::html;
 /// Parameters that are `Copy` (references, numbers, `bool`) arrive with their declared type;
 /// others arrive by reference. The function body runs when the component renders.
 ///
+/// Every prop is written where the component is used, even an empty one (`head=""`, an
+/// `Option` as `None`), so the markup says what the component gets. A prop left out does not
+/// compile:
+///
+/// ```compile_fail,E0063
+/// use corten::prelude::*;
+///
+/// #[component]
+/// fn Panel<'a>(title: &'a str, children: impl Render) -> impl Render {
+///     html! { <section><h2>{title}</h2>{children}</section> }
+/// }
+///
+/// let _ = html! { <Panel>"Sold out"</Panel> };
+/// ```
+///
 /// `#[component(css)]` gives the component the stylesheet named after it, next to it
 /// (`panel.css`), and `#[component(css = Panel)]` shares another component's; see
 /// [`crate::style`].
@@ -336,7 +351,8 @@ fn mark_head_tags(html: &str, out: &mut String) {
 /// assert_eq!(html! { {Remove(RowId("i7"))} }.to_html(), r#"<template id="row-i7" data-remove></template>"#);
 /// ```
 ///
-/// Two ids with the same name in one program fail to build (each name is a linker symbol). A
+/// Two ids with the same name in one program fail to build (each name is a linker symbol,
+/// `corten__two_ids_are__row`, which the error names). A
 /// library's ids (a crate with `[package.metadata.corten] scripts = "prefix"`) are told apart by
 /// version too, so two incompatible versions of one library still build together. Their ids are
 /// the same in the page, so render only one of them on a page.
