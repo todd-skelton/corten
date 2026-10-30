@@ -1533,6 +1533,15 @@ Corten is pre-1.0, so any minor version may change the API.
     `corten check` runs it in place of its own `cargo fmt --check`. Given paths, or outside a
     package, `corten fmt` still lays out only the markup
     ([#379 corten fmt does not run cargo fmt, so a check that fails on rustfmt is not fixed by it](https://github.com/todd-skelton/corten/issues/379)).
+82. corten-ui's `Choice` writes its value as its `Display`, as a route writes a field, in place of
+    its `AsRef<str>`, so a row picked by its numeric id is a `Choice<i32>` and the form's field is
+    `line: i32` (as for a route's field, `Display` must write what the field's `Deserialize` reads) ([#376 corten-ui choices must be AsRef<str>, so a row picked by its numeric id cannot use the typed picker](https://github.com/todd-skelton/corten/issues/376)).
+    A choice also has `terms`, other words that find it without being shown (a card number, a
+    SKU, a grade), and `ComboBox` lists the matches ranked: a label or term typed whole, then one
+    that starts with the text, then one that holds it, each kind in the options' order. A choice
+    is built with `Choice::new(value, label)` and its terms set with
+    `Choice { terms: &["NM"], ..Choice::new(..) }`. examples/ui-gallery finds a condition by its
+    grade (`mp`) ([#420 corten-ui ComboBox matches only a substring of the label, so a picker cannot search other terms (a card number) or rank the matches](https://github.com/todd-skelton/corten/issues/420)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
