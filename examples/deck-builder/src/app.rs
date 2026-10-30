@@ -466,8 +466,11 @@ mod tests {
         assert!(note.contains("Not saved: You own 2 copies of Ashen Drake."), "{note}");
         assert!(note.contains("&quot;refused&quot;,0,0,false)"), "{note}");
         assert_eq!(builder.deck.seq(), 0);
-        let (status, _, note) =
-            send(&router, post("generation=g&version=0&submit=3f2504e0-4f89-41d3-9a0c-0305e82c3301&card=gravel-sprite&count=two", true)).await;
+        let (status, _, note) = send(
+            &router,
+            post("generation=g&version=0&submit=3f2504e0-4f89-41d3-9a0c-0305e82c3301&card=gravel-sprite&count=two", true),
+        )
+        .await;
         assert!(status == StatusCode::UNPROCESSABLE_ENTITY && note.contains("Enter a number of copies"), "{note}");
     }
 

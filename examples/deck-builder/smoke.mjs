@@ -351,6 +351,63 @@ try {
   await third.close();
   cutProxy.close();
 
+  // The server has forgotten a key (it keeps them a day): a tab saves, the answer is lost, another
+  // tab saves, and Try again is stale, and the server cannot say whether the lost save was made.
+  // The retry goes with a fresh key, as the server would see the forgotten one, and its answer says
+  // it is unsure. The page does not offer to add its change again, and taking the other tab's deck
+  // sends nothing more: the change is in it once.
+  const fourth = await context.newPage();
+  fourth.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  fourth.on("pageerror", (e) => errors.push(e.message));
+  let fourthAsked = () => {};
+  const fourthFeed = new Promise((resolve) => (fourthAsked = () => resolve(undefined)));
+  let letFourth = () => {};
+  const fourthHeld = new Promise((resolve) => (letFourth = () => resolve(undefined)));
+  await fourth.route("**/feed/deck/live**", async (route) => {
+    fourthAsked();
+    await fourthHeld;
+    await route.continue().catch(() => {});
+  });
+  await fourth.goto(base);
+  await fourthFeed;
+  const [lost, theirsToo] = await fourth.evaluate((skip) => {
+    const taken = new Set(["salt-oracle", "regent-of-ash", "crown-of-thorns-and-glass", "kiln-colossus", ...skip]);
+    for (const li of Array.from(document.querySelectorAll("ul li[data-key]"))) taken.add(li.getAttribute("data-key") ?? "");
+    return Array.from(document.querySelectorAll("tbody tr[data-key]"), (tr) => tr.getAttribute("data-key") ?? "").filter((id) => !taken.has(id)).slice(0, 2);
+  }, [mine, spare]);
+  await fourth.route(`${app.origin}/deck`, async (route) => {
+    await route.fetch();
+    await route.abort();
+  });
+  await row(fourth, lost).locator("button", { hasText: "Add" }).click();
+  await fourth.waitForFunction(() => /** @type {HTMLElement} */ (document.querySelector("[role=status][data-state]")).dataset.state === "offline");
+  await fourth.unroute(`${app.origin}/deck`);
+  await comesToShow(other, lost, 1);
+  await row(other, theirsToo).locator("button", { hasText: "Add" }).click();
+  await settled(other);
+  let sentAfter = 0;
+  await fourth.route(`${app.origin}/deck`, async (route) => {
+    const form = new URLSearchParams(route.request().postData() ?? "");
+    form.set("submit", crypto.randomUUID());
+    const answer = await route.fetch({ postData: form.toString() });
+    const body = (await answer.text()).replace(/(&quot;stale&quot;,\d+,\d+,)false\)/, "$1true)");
+    await route.fulfill({ response: answer, body });
+  });
+  await fourth.click("button:has-text('Try again')");
+  await fourth.waitForFunction(() => document.getElementById("save-note")?.textContent?.startsWith("Not saved: this deck was changed"));
+  await fourth.unroute(`${app.origin}/deck`);
+  letFourth();
+  await fourth.waitForSelector("[role=alert]:not([hidden])");
+  check(
+    "a stale retry the server cannot place warns and does not offer to keep both changes",
+    !(await fourth.isVisible("button:has-text('Keep both changes')")) && (await fourth.isVisible("text=Your last change may already be in it")),
+  );
+  fourth.on("request", (r) => r.method() === "POST" && r.url().endsWith("/deck") && (sentAfter += 1));
+  await fourth.click("button:has-text(\"Use the other tab's deck\")");
+  const unsureDeck = await deck(fourth);
+  check("taking the other tab's deck then keeps the change once and sends nothing", unsureDeck[lost] === 1 && unsureDeck[theirsToo] === 1 && sentAfter === 0, JSON.stringify(unsureDeck));
+  await fourth.close();
+
   // After adds, removals, rollbacks and another tab's decks: the list is the lines as shown.
   const listed = await page.inputValue("textarea");
   const shownLines = await page.evaluate(() =>
