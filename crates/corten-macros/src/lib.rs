@@ -209,6 +209,8 @@ fn fields(input: TokenStream) -> Result<String, String> {
         let mut ident = None;
         let mut kind = Kind::Plain;
         let mut ty: Vec<TokenTree> = Vec::new();
+        // A file input is never among the text fields, so a form always leaves it out.
+        let mut is_files = false;
         let mut j = 0;
         while j < field.len() {
             match &field[j] {
@@ -260,6 +262,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
                         Some("Files")
                     ) {
                         files.push(id.to_string());
+                        is_files = true;
                     }
                     if matches!(kind, Kind::Rows | Kind::Map) && !default {
                         return Err(format!(
@@ -295,7 +298,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
                 "Fields: `{bare}` is named {wire:?} in the form, and . [ ] name a group's or a row's fields: rename it without them"
             ));
         }
-        leave_out &= default || is_option(&ty);
+        leave_out &= default || is_files || is_option(&ty);
         let shape = match kind {
             Kind::Plain => Shape::Plain,
             Kind::Group => {
@@ -346,7 +349,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
     for (ident, ty) in &bare_groups {
         shape += &format!(
             " if <{ty} as ::corten::form::Fields>::LEAVE_OUT {{ ::core::panic!({:?}) }}",
-            format!("corten: `{ident}` is a group whose fields a form can all leave out (an unchecked checkbox sends nothing), so it can send none of them; add #[serde(default)] so the form reads it as its default")
+            format!("corten: `{ident}` is a group whose fields a form can all leave out (an unchecked checkbox sends nothing, and a file input is never a text field), so it can send none of them; add #[serde(default)] so the form reads it as its default")
         );
     }
     for (suffix, lifetime, place, _) in places {
@@ -511,6 +514,11 @@ fn fields_kind(attribute: &Group) -> Result<Option<Kind>, String> {
 fn nested_type(field: &str, ty: &[TokenTree], what: &str) -> Result<String, String> {
     if ty.iter().any(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == '\'')) {
         return Err(format!("Fields: `{field}` is a {what}, and a {what}'s type cannot borrow (`'a`); give it owned fields"));
+    }
+    if is_option(ty) {
+        return Err(format!(
+            "Fields: `{field}` is a {what}, and a {what} is never an Option: a form sends its fields or leaves them out one by one; make the fields Options and give the {what} #[serde(default)]"
+        ));
     }
     let text: String = ty.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(" ");
     if text.is_empty() {

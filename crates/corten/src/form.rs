@@ -248,8 +248,9 @@
 //! let _ = Order::FIELDS;
 //! ```
 //!
-//! A group whose fields a form can all leave out (checkboxes, `Option`s) needs a default of its
-//! own, or a form that sends none of them is refused:
+//! A group whose fields a form can all leave out (checkboxes, `Option`s, file inputs, which are
+//! never among the text fields) needs a default of its own, or a form that sends none of them is
+//! refused:
 //!
 //! ```compile_fail,E0080
 //! # use corten::prelude::*;
@@ -258,6 +259,15 @@
 //! #[derive(serde::Deserialize, Fields)]
 //! struct Account { name: String, #[fields(group)] notices: Notices }
 //! let _ = Account::FIELDS;
+//! ```
+//!
+//! ```compile_fail,E0080
+//! # use corten::prelude::*;
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Proof { scan: Files }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Claim { title: String, #[fields(group)] proof: Proof }
+//! let _ = Claim::FIELDS;
 //! ```
 //!
 //! ```
@@ -269,6 +279,17 @@
 //! let _ = Account::FIELDS;
 //! let read: Account = corten::form::from_bytes(b"name=Ada").unwrap();
 //! assert_eq!(read.notices, Notices::default());
+//! ```
+//!
+//! A group is never an `Option`: a form sends a group's fields one by one, so it is a group of
+//! `Option`s with a default, as above.
+//!
+//! ```compile_fail
+//! # use corten::prelude::*;
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Address { street: Option<String> }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Order { #[fields(group)] #[serde(default)] ship_to: Option<Address> }
 //! ```
 
 use std::fmt;
@@ -717,6 +738,35 @@ fn encode_key(key: &str, out: &mut String) {
 /// A key of a [`Rows`] field, written in its fields' names as the form reads it back: text, an
 /// integer, or a `#[derive(UrlValue)]` enum (its word). A newtype key implements it as the value
 /// it wraps (`self.0.key_text(buf)`), and must read back from that text.
+///
+/// An enum with a variant serde reads by more than its word (`#[serde(alias)]`, `#[serde(other)]`)
+/// is no row's key: two keys the form tells apart would be one row on the server, so naming its
+/// row does not compile:
+///
+/// ```compile_fail,E0277
+/// use std::collections::BTreeMap;
+/// use corten::prelude::*;
+///
+/// #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, UrlValue, serde::Deserialize)]
+/// #[serde(rename_all = "kebab-case")]
+/// enum Condition { #[serde(alias = "nm")] NearMint, Played }
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Price { cents: u32 }
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Prices {
+///     #[fields(rows)]
+///     #[serde(default)]
+///     by_condition: BTreeMap<Condition, Price>,
+/// }
+/// let _ = Prices::FIELDS.by_condition.at(&Condition::NearMint).cents;
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "{Self} is not a row's key",
+    label = "names a row by a {Self}",
+    note = "a row's key is text, an integer, a newtype of one, or a #[derive(UrlValue)] enum whose every variant serde reads by its word alone (no alias, no other)"
+)]
 pub trait RowKey {
     /// The key as text, as the form's field reads it back: its own text, or written into `buf`
     /// when it has none stored (an integer), so naming a row allocates nothing.

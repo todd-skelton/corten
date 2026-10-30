@@ -210,7 +210,7 @@ number stays a number). A component draws the group once for every form that has
 names: `<AddressInputs f={f.ship_to} />`, where `f: AddressGroupFields` (the
 names of an `Address` put in a form as a group; in a row it is `AddressRowGroupFields<'k>`, so a
 group drawn both at a form's top and in its rows takes a component for each). A group whose
-fields a form can all leave out (checkboxes, `Option`s) needs `#[serde(default)]` on the group's
+fields a form can all leave out (checkboxes, `Option`s, file inputs) needs `#[serde(default)]` on the group's
 field as well, or it does not compile: a form that sends none of them would otherwise be refused.
 Keys under a field's name (`go.x`, `go.y`) are its group's, so a plain field sent only that way (an
 image button `name={f.go}` sends `go.x` and `go.y`, never `go`) is refused with a message that

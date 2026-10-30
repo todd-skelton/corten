@@ -43,6 +43,9 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     }
     let Some(body) = &item.body else { return err(item.name.span(), "UrlValue: expected the enum's variants") };
     let mut arms = TokenStream::new();
+    // Whether a variant reads more than its own word (`alias`, `other`): such a key reaches one
+    // row by several words, so two rows would become one, and it is no row's key.
+    let mut many_words = false;
     for tokens in split(body.stream(), ',') {
         let mut j = 0;
         let mut attrs = Vec::new();
@@ -72,7 +75,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
                     )
                 }
                 // Other words serde also reads, and what only writing JSON uses.
-                ("alias" | "other" | "skip_serializing" | "serialize_with" | "bound", _) => {}
+                ("alias" | "other", _) => many_words = true,
+                ("skip_serializing" | "serialize_with" | "bound", _) => {}
                 _ => {
                     return err(
                         arg.span,
@@ -120,6 +124,9 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             }",
         ),
     ] {
+        if many_words && header.contains("RowKey") {
+            continue;
+        }
         out.extend(q("#[automatically_derived] impl", &[]));
         out.extend(item.impl_generics.clone());
         out.extend(q(header, &[]));
