@@ -204,6 +204,13 @@ impl Policy {
         self
     }
 
+    /// A stricter `Referrer-Policy` for every answer than `strict-origin-when-cross-origin`; one
+    /// part of the app only: [`Sources::referrer`].
+    pub fn referrer(mut self, referrer: Referrer) -> Self {
+        self.sources = self.sources.referrer(referrer);
+        self
+    }
+
     /// Sends `Cross-Origin-Opener-Policy: unsafe-none` (the browser's default): another site's
     /// window this page opens, or that opened it, can still reach it. This is for an embed whose
     /// sign-in runs in a popup on the provider's origin that talks back to the page, such as
@@ -370,6 +377,90 @@ pub struct Sources {
     form_action: Vec<String>,
     style_attributes: bool,
     opener: Opener,
+    referrer: Sent,
+}
+
+/// A stricter `Referrer-Policy` than Corten's `strict-origin-when-cross-origin`, for pages whose
+/// address must not reach other sites or the app's own logs (an OAuth consent, a password reset,
+/// an invitation, a magic link): [`Sources::referrer`] for an area, [`Policy::referrer`] for the
+/// app. There is no weaker value, so no part of the app can send more than the default does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Referrer {
+    /// `strict-origin`: only the origin, to this site and to others (over HTTPS).
+    StrictOrigin,
+    /// `same-origin`: the whole address to this site, nothing to others.
+    SameOrigin,
+    /// `no-referrer`: nothing, to anyone.
+    NoReferrer,
+}
+
+/// How much of the address a policy sends, from nothing: what an area asks for is the least of
+/// each, so it can only send less.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Part {
+    Nothing,
+    Origin,
+    Address,
+}
+
+/// What a `Referrer-Policy` sends to this origin and to others.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Sent {
+    same: Part,
+    cross: Part,
+}
+
+impl Default for Sent {
+    /// `strict-origin-when-cross-origin`.
+    fn default() -> Self {
+        Sent { same: Part::Address, cross: Part::Origin }
+    }
+}
+
+impl Sent {
+    fn of(referrer: Referrer) -> Self {
+        match referrer {
+            Referrer::StrictOrigin => Sent { same: Part::Origin, cross: Part::Origin },
+            Referrer::SameOrigin => Sent { same: Part::Address, cross: Part::Nothing },
+            Referrer::NoReferrer => Sent { same: Part::Nothing, cross: Part::Nothing },
+        }
+    }
+
+    /// The least of each.
+    fn and(self, other: Sent) -> Sent {
+        Sent { same: self.same.min(other.same), cross: self.cross.min(other.cross) }
+    }
+
+    /// A header's policy, for the ones that send no more than the default; `None` for another
+    /// (`unsafe-url`, `origin`, a list, a typo), which is not kept.
+    fn parse(value: &HeaderValue) -> Option<Sent> {
+        // The last policy the browser knows is the one it uses; one Corten does not keep is not
+        // kept at all.
+        let last = value.to_str().ok()?.rsplit(',').map(str::trim).find(|p| !p.is_empty())?;
+        Some(match last.to_ascii_lowercase().as_str() {
+            "strict-origin-when-cross-origin" => Sent::default(),
+            "strict-origin" => Sent::of(Referrer::StrictOrigin),
+            "same-origin" => Sent::of(Referrer::SameOrigin),
+            "no-referrer" => Sent::of(Referrer::NoReferrer),
+            _ => return None,
+        })
+    }
+
+    /// Built per answer from constants, which costs less than cloning a stored value.
+    fn header(self) -> HeaderValue {
+        const DEFAULT: HeaderValue = HeaderValue::from_static("strict-origin-when-cross-origin");
+        const STRICT_ORIGIN: HeaderValue = HeaderValue::from_static("strict-origin");
+        const SAME_ORIGIN: HeaderValue = HeaderValue::from_static("same-origin");
+        const NO_REFERRER: HeaderValue = HeaderValue::from_static("no-referrer");
+        match (self.same, self.cross) {
+            (Part::Address, Part::Origin) => DEFAULT,
+            (Part::Origin, Part::Origin) => STRICT_ORIGIN,
+            (Part::Address, Part::Nothing) => SAME_ORIGIN,
+            // Less than `strict-origin` to this site and nothing to others has no name of its own:
+            // nothing, to anyone.
+            _ => NO_REFERRER,
+        }
+    }
 }
 
 /// `Cross-Origin-Opener-Policy`, from the most isolated: an area only moves it down the list.
@@ -453,11 +544,22 @@ impl Sources {
         self
     }
 
+    /// A stricter `Referrer-Policy` for these pages and every answer under them, so an address
+    /// that carries a secret (`/consent?token=..`) is not sent with the requests the page makes,
+    /// its own stylesheet's included. Given twice, or by an area inside another, each sends the
+    /// least either allows. A navigation into or out of these pages loads the whole document,
+    /// since a document keeps the policy it loaded with.
+    pub fn referrer(mut self, referrer: Referrer) -> Self {
+        self.referrer = self.referrer.and(Sent::of(referrer));
+        self
+    }
+
     pub(crate) fn is_empty(&self) -> bool {
-        let Sources { script, style, img, connect, frame, font, form_action, style_attributes, opener } = self;
+        let Sources { script, style, img, connect, frame, font, form_action, style_attributes, opener, referrer } = self;
         [script, style, img, connect, frame, font, form_action].iter().all(|list| list.is_empty())
             && !style_attributes
             && *opener == Opener::SameOrigin
+            && *referrer == Sent::default()
     }
 
     /// Adds `more`'s sources, each once.
@@ -480,6 +582,7 @@ impl Sources {
         }
         self.style_attributes |= more.style_attributes;
         self.opener = self.opener.max(more.opener);
+        self.referrer = self.referrer.and(more.referrer);
     }
 }
 
@@ -569,18 +672,20 @@ pub(crate) struct Applied {
     api_csp: HeaderValue,
 }
 
-/// One CSP for pages, split around the nonce once, at startup, and the opener policy sent with it.
+/// One CSP for pages, split around the nonce once, at startup, and the opener and referrer
+/// policies sent with it.
 pub(crate) struct Csp {
     parts: Vec<String>,
     without_nonce: HeaderValue,
     opener: HeaderValue,
+    referrer: Sent,
 }
 
 impl Csp {
     fn new(policy: &Policy, import_map: &str) -> Self {
         let parts = policy.csp_with(Some("\0"), import_map).split('\0').map(str::to_string).collect();
         let without_nonce = HeaderValue::try_from(policy.csp_with(None, import_map)).expect("CSP sources are checked tokens");
-        Csp { parts, without_nonce, opener: policy.sources.opener.header() }
+        Csp { parts, without_nonce, opener: policy.sources.opener.header(), referrer: policy.sources.referrer }
     }
 }
 
@@ -611,12 +716,13 @@ impl Applied {
                 }
                 let area = Csp::new(&merged, import_map);
                 // An area that adds nothing the app lacks keeps the app's policy and shell key.
-                if area.without_nonce == csp.without_nonce && area.opener == csp.opener {
+                if area.without_nonce == csp.without_nonce && area.opener == csp.opener && area.referrer == csp.referrer {
                     return None;
                 }
                 let mut hasher = std::hash::DefaultHasher::new();
                 std::hash::Hash::hash(area.without_nonce.as_bytes(), &mut hasher);
                 std::hash::Hash::hash(area.opener.as_bytes(), &mut hasher);
+                std::hash::Hash::hash(area.referrer.header().as_bytes(), &mut hasher);
                 Some((prefix, area, std::hash::Hasher::finish(&hasher) | 1))
             })
             .collect();
@@ -653,7 +759,10 @@ impl Applied {
         headers.reserve(6 + usize::from(self.hsts) + usize::from(!headers.contains_key(header::VARY)));
         let csp_header =
             if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
-        let opener = page.map_or(&self.csp.opener, |(_, csp)| &csp.opener).clone();
+        let (opener, ours) = match page {
+            Some((_, csp)) => (csp.opener.clone(), csp.referrer),
+            None => (self.csp.opener.clone(), self.csp.referrer),
+        };
         let csp = match page.map(|(slot, csp)| (slot.taken(), csp)) {
             None => Some(self.api_csp.clone()),
             Some((None, csp)) => Some(csp.without_nonce.clone()),
@@ -665,7 +774,10 @@ impl Applied {
         }
         let headers = res.headers_mut();
         headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-        headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("strict-origin-when-cross-origin"));
+        // An answer that brings a stricter policy (a relayed one, a handler's own) keeps it.
+        if let Some(brought) = headers.insert(header::REFERRER_POLICY, ours.header()) {
+            stricter_referrer(headers, ours, &brought);
+        }
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
         headers.insert(HeaderName::from_static("cross-origin-opener-policy"), opener);
         if self.hsts {
@@ -683,6 +795,15 @@ impl Applied {
                 if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
             res.headers_mut().insert(name, brought);
         }
+    }
+}
+
+/// The policy an answer brought, where it sends no more than `ours`: the least of both.
+#[cold]
+#[inline(never)]
+fn stricter_referrer(headers: &mut axum::http::HeaderMap, ours: Sent, brought: &HeaderValue) {
+    if let Some(theirs) = Sent::parse(brought) {
+        headers.insert(header::REFERRER_POLICY, ours.and(theirs).header());
     }
 }
 

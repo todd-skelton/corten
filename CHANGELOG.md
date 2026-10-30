@@ -939,6 +939,14 @@ Corten is pre-1.0, so any minor version may change the API.
     A page without one checks one empty set per bubbling event it listens for.
     The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
     and 61 with brotli (8,287 to 8,348).
+130. `Sources::referrer(Referrer::NoReferrer)` (also `StrictOrigin`, `SameOrigin`) makes an area's
+    `Referrer-Policy` stricter, so a page whose address carries a secret (a consent token, a reset
+    link) does not send it with the requests it makes; `Policy::referrer` does it for the app. There
+    is no looser value; nested areas send the least any of them allows, and a changed policy gives
+    the area its own shell key. An answer that brings a stricter policy (a relayed redirect) keeps
+    it, and a looser one is replaced. Choosing the header per answer costs a plain GET 12 to 21
+    instructions (20,344 to 20,356-20,365 under callgrind, about 0.1%)
+    ([#390 A page or a relayed answer cannot choose a stricter Referrer-Policy: Corten replaces it on every answer](https://github.com/todd-skelton/corten/issues/390)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

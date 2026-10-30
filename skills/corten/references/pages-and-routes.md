@@ -255,6 +255,10 @@ sets the session cookie on the answer, `Ok(req.redirect(&next)?.with_cookie(SetC
 &token)))` (`SetCookie::remove("session")` signs out); never append a `Set-Cookie` header by hand.
 A token from another service goes through `SetCookie::try_new`, so a value a cookie cannot carry is
 an error the handler answers (a 502), not a panic.
+A page whose address carries a secret (a consent token, a reset or invitation link) gets an area
+with `.policy(|p| p.referrer(Referrer::NoReferrer))` (`corten::security::Referrer`), so the
+address is not sent with its requests; never set `Referrer-Policy` or `<meta name="referrer">`
+by hand.
 
 ## Data from another service
 

@@ -1022,6 +1022,24 @@ their own shell key:
 .area(|area| settings::url::area(area).policy(|p| p.script_src("https://connect-js.stripe.com").allow_cross_origin_opener()))
 ```
 
+Every answer is sent with `Referrer-Policy: strict-origin-when-cross-origin`: other sites get the
+origin only. A page whose address carries a secret (an OAuth consent's `?token=`, a password reset,
+an invitation, a magic link) should not send it even to the app's own logs with the stylesheet and
+font requests it makes, so its area makes the policy stricter with `referrer(Referrer::StrictOrigin)`
+(the origin only, to everyone), `Referrer::SameOrigin` (nothing to other sites) or
+`Referrer::NoReferrer` (nothing at all); `Policy::referrer` does it for the whole app. There is no
+looser value, so nothing sends more than the default; nested areas, the app and the area each send
+the least any of them allows, and like a CSP source a changed policy gives the area's pages their
+own shell key. An answer that brings a stricter policy of its own (a relayed service's redirect, a
+handler's response) keeps it; a looser one (`unsafe-url`) is replaced. A `<meta name="referrer">`
+in the page applies only from where the parser reaches it, after the layout's own requests, so use
+the area:
+
+```rust,ignore
+use corten::security::Referrer;
+.area(|area| consent::url::area(area).policy(|p| p.referrer(Referrer::NoReferrer)))
+```
+
 ## Error pages
 
 Every way a request can fail is a `Failure`, given to the app's error page for a browser
