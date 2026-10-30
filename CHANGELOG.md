@@ -1495,6 +1495,15 @@ Corten is pre-1.0, so any minor version may change the API.
     fails `tsc`, and a plain string is not a feed's URL. Each mistake has a `compile_fail` doctest
     or an `@ts-expect-error` line. The page's HTML and the runtime's bytes are unchanged
     ([#326 A feed's row type does not reach subscribe(), so a script's row type is whatever its JSDoc says](https://github.com/todd-skelton/corten/issues/326)).
+81. `corten fmt` runs `cargo fmt` first, then lays out `html!` across the package, and again
+    until neither changes anything, so the one command fixes what `corten check` reports (a
+    check that failed on rustfmt was not fixed by it). It stops after four rounds and names the
+    files still changing (rustfmt's `hard_tabs` undoes the layout's spaces), runs `cargo fmt` in
+    the package it found from a subdirectory, keeps a CRLF file's line endings, prints each warning
+    once, and refuses a flag it does not know. `corten fmt --check` checks both, and
+    `corten check` runs it in place of its own `cargo fmt --check`. Given paths, or outside a
+    package, `corten fmt` still lays out only the markup
+    ([#379 corten fmt does not run cargo fmt, so a check that fails on rustfmt is not fixed by it](https://github.com/todd-skelton/corten/issues/379)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
