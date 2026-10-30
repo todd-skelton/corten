@@ -150,14 +150,19 @@ struct Groups<'a, 'b> {
     values: &'b [Pair<'a>],
     /// The current key's group (`.`) or rows (`[`), and its prefix's length.
     nested: Option<(u8, usize)>,
-    /// The last key read as a value of its own: a field sent as `x` is not also a group, so
-    /// `x.y` keys after it (an image button's `x.x`) are left to serde, as on any form.
-    plain: &'b str,
+    /// Every key of this map, sorted: a field sent as `x` is a value of its own, not a group, so
+    /// `x.y` keys beside it (an image button's `x.x`) are left to serde, as on any form.
+    all: &'b [Pair<'a>],
 }
 
 impl<'a, 'b> Groups<'a, 'b> {
     fn new(rest: &'b [Pair<'a>], skip: usize, fields: Option<&'static [&'static str]>) -> Self {
-        Groups { rest, skip, fields, values: &[], nested: None, plain: "" }
+        Groups { rest, skip, fields, values: &[], nested: None, all: rest }
+    }
+
+    /// Whether the form sent `key` itself, as a value.
+    fn sent(&self, key: &str) -> bool {
+        self.all.binary_search_by(|(k, _)| k.as_ref().cmp(key)).is_ok()
     }
 }
 
@@ -171,12 +176,12 @@ impl<'de> MapAccess<'de> for Groups<'_, '_> {
             // Bytes, not chars: `.` and `[` are ASCII, and most keys have neither.
             let at = local.bytes().position(|b| b == b'.' || b == b'[')?;
             let head = &local[..at];
-            (head != self.plain && !fields.contains(&local) && fields.contains(&head)).then_some(at)
+            let split = !fields.contains(&local) && fields.contains(&head);
+            (split && !self.sent(&first[..self.skip + at])).then_some(at)
         });
         let (count, key) = match split {
             None => {
                 self.nested = None;
-                self.plain = local;
                 (self.rest.iter().take_while(|(k, _)| k == first).count(), local)
             }
             Some(at) => {
@@ -236,10 +241,13 @@ impl Nested<'_, '_> {
 impl<'de> Deserializer<'de> for Nested<'_, '_> {
     type Error = FormError;
 
-    /// A value that is not a group or rows (`go: String` with only an image button's `go.x`
-    /// sent): its own key is missing, as before groups.
+    /// A value that is not a group or rows (`go: bool` with only an image button's `go.x` sent):
+    /// keys under its name are read as a group's or rows', so it was not sent as itself.
     fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, FormError> {
-        Err(FormError(format!("missing field `{}`", self.path)))
+        Err(FormError(format!(
+            "{0}: sent only as {0}. or {0}[ keys, which are a group's or rows', and not as {0} itself",
+            self.path
+        )))
     }
 
     fn deserialize_map<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
@@ -316,7 +324,7 @@ impl<'de> MapAccess<'de> for Rows<'_, '_> {
         let key = decode_key(&local[..close])
             .ok_or_else(|| FormError(format!("{first}: the row's key is not written the way the form writes it")))?;
         let pair: Pair<'_> = (Cow::Borrowed(""), key);
-        seed.deserialize(Values(std::slice::from_ref(&pair)))
+        seed.deserialize(RowKeyText(std::slice::from_ref(&pair)))
             .map(Some)
             .map_err(|e| FormError(format!("{}: key: {e}", &prefix[..prefix.len() - 1])))
     }
@@ -332,6 +340,93 @@ impl<'de> MapAccess<'de> for Rows<'_, '_> {
 
     fn size_hint(&self) -> Option<usize> {
         None
+    }
+}
+
+/// A row's key, read as its type (text, an integer, an enum's word). An integer is read only as
+/// it writes itself (not `07`, `+7` or `-0`), so one integer key cannot reach a row two ways.
+struct RowKeyText<'a, 'b>(&'b [Pair<'a>]);
+
+macro_rules! strict_integers {
+    ($($method:ident => $visit:ident: $t:ty,)*) => {$(
+        fn $method<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
+            let text = Values(self.0).one()?;
+            match text.parse::<$t>() {
+                Ok(value) if value.to_string() == text => visitor.$visit(value),
+                _ => Err(de::Error::invalid_value(de::Unexpected::Str(text), &"an integer as the form writes it")),
+            }
+        }
+    )*};
+}
+
+macro_rules! as_values {
+    ($($method:ident,)*) => {$(
+        fn $method<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
+            Values(self.0).$method(visitor)
+        }
+    )*};
+}
+
+impl<'de> Deserializer<'de> for RowKeyText<'_, '_> {
+    type Error = FormError;
+
+    strict_integers! {
+        deserialize_i8 => visit_i8: i8,
+        deserialize_i16 => visit_i16: i16,
+        deserialize_i32 => visit_i32: i32,
+        deserialize_i64 => visit_i64: i64,
+        deserialize_i128 => visit_i128: i128,
+        deserialize_u8 => visit_u8: u8,
+        deserialize_u16 => visit_u16: u16,
+        deserialize_u32 => visit_u32: u32,
+        deserialize_u64 => visit_u64: u64,
+        deserialize_u128 => visit_u128: u128,
+    }
+
+    as_values! {
+        deserialize_any, deserialize_bool, deserialize_f32, deserialize_f64, deserialize_char, deserialize_str,
+        deserialize_string, deserialize_bytes, deserialize_byte_buf, deserialize_option, deserialize_unit,
+        deserialize_seq, deserialize_map, deserialize_identifier, deserialize_ignored_any,
+    }
+
+    fn deserialize_unit_struct<V: Visitor<'de>>(self, name: &'static str, visitor: V) -> Result<V::Value, FormError> {
+        Values(self.0).deserialize_unit_struct(name, visitor)
+    }
+
+    fn deserialize_newtype_struct<V: Visitor<'de>>(self, _: &'static str, visitor: V) -> Result<V::Value, FormError> {
+        // A newtype key (`struct Sku(u32)`) is read as the value it wraps, strictly too.
+        visitor.visit_newtype_struct(self)
+    }
+
+    fn deserialize_tuple<V: Visitor<'de>>(self, len: usize, visitor: V) -> Result<V::Value, FormError> {
+        Values(self.0).deserialize_tuple(len, visitor)
+    }
+
+    fn deserialize_tuple_struct<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, FormError> {
+        Values(self.0).deserialize_tuple_struct(name, len, visitor)
+    }
+
+    fn deserialize_struct<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, FormError> {
+        Values(self.0).deserialize_struct(name, fields, visitor)
+    }
+
+    fn deserialize_enum<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, FormError> {
+        Values(self.0).deserialize_enum(name, variants, visitor)
     }
 }
 

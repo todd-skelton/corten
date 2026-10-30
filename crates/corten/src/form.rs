@@ -138,7 +138,7 @@
 //!
 //! A row is named by the map's key type only:
 //!
-//! ```compile_fail
+//! ```compile_fail,E0308
 //! # use std::collections::BTreeMap;
 //! # use corten::prelude::*;
 //! # #[derive(serde::Deserialize, Fields)]
@@ -154,7 +154,7 @@
 //!
 //! and a row's field is reached through its row:
 //!
-//! ```compile_fail
+//! ```compile_fail,E0609
 //! # use std::collections::BTreeMap;
 //! # use corten::prelude::*;
 //! # #[derive(serde::Deserialize, Fields)]
@@ -178,6 +178,38 @@
 //! }
 //! ```
 //!
+//! and so does a map:
+//!
+//! ```compile_fail
+//! # use std::collections::BTreeMap;
+//! #[derive(serde::Deserialize, corten::Fields)]
+//! struct Counts {
+//!     #[fields(map)]
+//!     counts: BTreeMap<u32, u32>,
+//! }
+//! ```
+//!
+//! A field is `#[fields(group)]`, `#[fields(rows)]` or `#[fields(map)]`, and a name in the form
+//! has no `.`, `[` or `]` of its own (they name a group's or a row's fields):
+//!
+//! ```compile_fail
+//! # use std::collections::BTreeMap;
+//! #[derive(serde::Deserialize, corten::Fields)]
+//! struct Counts {
+//!     #[fields(list)]
+//!     #[serde(default)]
+//!     counts: BTreeMap<u32, u32>,
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! #[derive(serde::Deserialize, corten::Fields)]
+//! struct Order {
+//!     #[serde(rename = "ship.zip")]
+//!     zip: String,
+//! }
+//! ```
+//!
 //! A group's fields are plain, so a group of a type with groups or rows does not compile, and a
 //! row holds plain fields and groups, not rows:
 //!
@@ -187,6 +219,18 @@
 //! struct Street { line: String }
 //! #[derive(serde::Deserialize, Fields)]
 //! struct Address { #[fields(group)] street: Street }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Order { #[fields(group)] ship_to: Address }
+//! let _ = Order::FIELDS;
+//! ```
+//!
+//! ```compile_fail,E0080
+//! # use std::collections::BTreeMap;
+//! # use corten::prelude::*;
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Line { qty: u32 }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Address { #[fields(rows)] #[serde(default)] lines: BTreeMap<u32, Line> }
 //! #[derive(serde::Deserialize, Fields)]
 //! struct Order { #[fields(group)] ship_to: Address }
 //! let _ = Order::FIELDS;
@@ -690,8 +734,9 @@ impl KeyBuf {
         KeyBuf { bytes: [0; 40], len: 0 }
     }
 
-    /// Writes `value` (at most 40 bytes of it) and gives it back as text.
-    pub fn write(&mut self, value: impl fmt::Display) -> &str {
+    /// Writes an integer and gives it back as text. Private: an integer fits (`i128::MIN` is 40
+    /// bytes), and any other key has text of its own (a newtype gives its field's).
+    fn write(&mut self, value: impl fmt::Display) -> &str {
         use fmt::Write;
         self.len = 0;
         let _ = write!(self, "{value}");
@@ -968,8 +1013,8 @@ impl Errors {
         self.fields.push((Kept::new(field), message.into()));
     }
 
-    /// Where `field`'s message is: a row's by the index, any other by reading the list (as long as
-    /// the form's own fields).
+    /// Where `field`'s message is: a row's by the index, any other by reading the list of messages
+    /// (one per field given one, rows' included).
     fn find<P: Place>(&self, field: &FieldName<P>) -> Option<usize> {
         match field.at.row() {
             None => self.fields.iter().position(|(f, _)| f.is(field)),

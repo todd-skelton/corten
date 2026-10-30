@@ -290,6 +290,11 @@ fn fields(input: TokenStream) -> Result<String, String> {
             (None, Some(rule)) => apply_rule(&bare, rule)?,
             (None, None) => bare.clone(),
         };
+        if wire.contains(['.', '[', ']']) {
+            return Err(format!(
+                "Fields: `{bare}` is named {wire:?} in the form, and . [ ] name a group's or a row's fields: rename it without them"
+            ));
+        }
         leave_out &= default || is_option(&ty);
         let shape = match kind {
             Kind::Plain => Shape::Plain,

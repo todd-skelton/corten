@@ -1430,9 +1430,16 @@ struct Search {
     go: Option<String>,
 }
 
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Moded {
+    q: String,
+    #[serde(rename = "q-mode")]
+    mode: String,
+}
+
 /// What a client sends is not trusted: a key sent another way than the form writes it is
-/// refused, a plain form's stray `x.y` keys are left alone as before groups, and many rows'
-/// errors cost each row its own lookup.
+/// refused, stray `x.y` keys beside a field sent as `x` are left alone, and many rows' errors
+/// cost each row its own lookup.
 #[test]
 fn rows_read_only_their_own_keys_and_scale_with_their_count() {
     // `a` as `%61`, lowercase hex, a character the form would encode: each refused.
@@ -1447,6 +1454,16 @@ fn rows_read_only_their_own_keys_and_scale_with_their_count() {
     // An image button (`go.x`, `go.y`) and a stray `q.x` beside `q`: read as a plain form was.
     let search: Search = crate::form::from_bytes(b"q=cards&q.x=1&go.x=3&go.y=4").expect("reads");
     assert_eq!((search.q.as_str(), search.go), ("cards", None));
+    // A key between `q` and `q.x` (`q-mode`) does not make `q.x` a group.
+    let moded: Moded = crate::form::from_bytes(b"q=a&q-mode=b&q.x=1").expect("q is sent as itself");
+    assert_eq!((moded.q.as_str(), moded.mode.as_str()), ("a", "b"));
+
+    // An integer key is read only as it is written, so one row cannot be sent two ways.
+    for key in ["07", "%2B7", "-0"] {
+        let body = format!("lines%5B{key}%5D.qty=1");
+        let err = crate::form::from_bytes::<Numbered>(body.as_bytes()).unwrap_err().to_string();
+        assert!(err.contains("as the form writes it") || err.contains("the way the form writes it"), "{key}: {err}");
+    }
 
     // Integer keys, written without allocating, and each row's errors found by its key.
     let f = Numbered::FIELDS;
