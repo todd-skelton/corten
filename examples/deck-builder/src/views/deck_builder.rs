@@ -60,7 +60,8 @@ pub fn DeckBuilder<'a>(
 ) -> impl Render {
     let (cards_zone, deck_zone, rows, pick, grip, add, all, picked, shown, none) = refs();
     let (lines_ref, template, lift, copies, form, version_ref, total, bars, tallies, kinds) = refs();
-    let (undo, redo, status, conflict, list, empty, announce, draft, generation_ref) = refs();
+    let (undo, redo, status, conflict, list, empty, announce, draft, generation_ref, keep) = refs();
+    let unsure = refs();
     let (f, q) = (DeckInput::FIELDS, DeckQuery::FIELDS);
     let number = t.js().number();
     let parts = js::Parts {
@@ -79,6 +80,8 @@ pub fn DeckBuilder<'a>(
         redo,
         status,
         conflict,
+        keep,
+        unsure,
         list,
         empty,
         number,
@@ -258,7 +261,10 @@ pub fn DeckBuilder<'a>(
                 </div>
                 <div ref={conflict} class={Conflict} role="alert" hidden>
                     <p>"This deck was changed in another tab while you were changing it here."</p>
-                    <button type="button" on:click={js::merge(parts)}>"Keep both changes"</button>
+                    // A save whose answer was lost and whose key the server has since forgotten
+                    // may be in the other deck already: keeping both could add it twice.
+                    <p ref={unsure} hidden>"Your last change may already be in it: check the deck before you change it again."</p>
+                    <button ref={keep} type="button" on:click={js::merge(parts)}>"Keep both changes"</button>
                     <button type="button" on:click={js::reload(parts)}>"Use the other tab's deck"</button>
                 </div>
                 <figure class={Curve}>

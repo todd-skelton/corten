@@ -270,7 +270,8 @@ try {
     await route.abort();
   });
   await row(page, "undertow-serpent").locator("button", { hasText: "Add" }).click();
-  await page.waitForFunction(() => /** @type {HTMLElement} */ (document.querySelector("[role=status][data-state]")).dataset.state === "offline");
+  // Not saved, or, when the feed has already brought the deck with this change, saved.
+  await page.waitForFunction(() => ["offline", "saved"].includes(/** @type {HTMLElement} */ (document.querySelector("[role=status][data-state]")).dataset.state ?? ""));
   await page.unroute("**/deck");
   // The other tab has the saved deck from the feed, then saves its own change.
   await comesToShow(other, "undertow-serpent", 2);
@@ -291,7 +292,9 @@ try {
     const sent = [];
     req.on("data", (c) => sent.push(c));
     req.on("end", () => {
-      const headers = { ...req.headers, host: app.host };
+      // As the browser sent it to the app: the override makes it look cross-site, which the app
+      // refuses for a write.
+      const headers = { ...req.headers, host: app.host, origin: app.origin, "sec-fetch-site": "same-origin" };
       const upstream = http.request(new URL(req.url ?? "/", base), { method: req.method, headers }, (answer) => {
         const body = [];
         answer.on("data", (c) => body.push(c));
@@ -325,27 +328,26 @@ try {
   /** @type {string[]} */
   const keys = [];
   third.on("request", (r) => r.method() === "POST" && r.url().endsWith("/deck") && keys.push(new URLSearchParams(r.postData() ?? "").get("submit") ?? ""));
-  const herald = (await deck(third))["moth-court-herald"] ?? 0;
-  // A card in no deck yet and none the steps after this one add.
-  const spare = await third.evaluate(() => {
+  // Two cards in no deck yet and none the steps after this one add: this tab's and the other's.
+  const [mine, spare] = await third.evaluate(() => {
     const taken = new Set(["salt-oracle", "regent-of-ash", "crown-of-thorns-and-glass", "kiln-colossus"]);
     for (const li of Array.from(document.querySelectorAll("ul li[data-key]"))) taken.add(li.getAttribute("data-key") ?? "");
-    return Array.from(document.querySelectorAll("tbody tr[data-key]"), (tr) => tr.getAttribute("data-key") ?? "").find((id) => !taken.has(id)) ?? "";
+    return Array.from(document.querySelectorAll("tbody tr[data-key]"), (tr) => tr.getAttribute("data-key") ?? "").filter((id) => !taken.has(id)).slice(0, 2);
   });
-  await third.route("**/deck", (route) => route.continue({ url: `http://127.0.0.1:${proxyPort}/deck` }));
-  await row(third, "moth-court-herald").locator("button", { hasText: "Add" }).click();
+  await third.route(`${app.origin}/deck`, (route) => route.continue({ url: `http://127.0.0.1:${proxyPort}/deck` }));
+  await row(third, mine).locator("button", { hasText: "Add" }).click();
   await third.waitForFunction(() => /** @type {HTMLElement} */ (document.querySelector("[role=status][data-state]")).dataset.state === "offline");
-  await third.unroute("**/deck");
-  await comesToShow(other, "moth-court-herald", herald + 1);
+  await third.unroute(`${app.origin}/deck`);
+  await comesToShow(other, mine, 1);
   await row(other, spare).locator("button", { hasText: "Add" }).click();
   await settled(other);
   await third.click("button:has-text('Try again')");
   await settled(third);
   check("Try again after a cut-off answer sends the same submit key", keys.length === 2 && keys[0] === keys[1], keys.join(", "));
-  check("and the server answers with the save it made, once", (await deck(third))["moth-court-herald"] === herald + 1, JSON.stringify(await deck(third)));
+  check("and the server answers with the save it made, once", (await deck(third))[mine] === 1, JSON.stringify(await deck(third)));
   letLive();
   check("the held feed then brings the other tab's save", await comesToShow(third, spare, 1));
-  check("which keeps the change once", (await comesToShow(other, "moth-court-herald", herald + 1)) && (await deck(third))["moth-court-herald"] === herald + 1 && !(await third.isVisible("[role=alert]")));
+  check("which keeps the change once", (await comesToShow(other, mine, 1)) && (await deck(third))[mine] === 1 && !(await third.isVisible("[role=alert]")), JSON.stringify(await deck(third)));
   await third.close();
   cutProxy.close();
 

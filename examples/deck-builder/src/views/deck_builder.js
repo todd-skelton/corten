@@ -34,6 +34,8 @@ import { CollectionRow, DeckLine, rows } from "corten/views";
  * @property {HTMLButtonElement} redo
  * @property {HTMLDivElement} status
  * @property {HTMLDivElement} conflict
+ * @property {HTMLButtonElement} keep
+ * @property {HTMLParagraphElement} unsure
  * @property {HTMLTextAreaElement} list
  * @property {HTMLParagraphElement} empty
  * @property {NumberFormat} number
@@ -97,6 +99,9 @@ const kept = () =>
     conflict: false,
     /** A save was stale and the feed has not yet brought the deck that made it so. */
     waiting: false,
+    /** That save sent again a send whose answer was lost, and the server could not say whether it
+     * made it: the deck may hold this page's change already, so it is not added again. */
+    unsure: false,
     /** The saved deck as its feed says, and its version. @type {Deck} */
     theirs: new Map(),
     theirGeneration: "",
@@ -343,6 +348,8 @@ export function answered(event, parts) {
     s.redo = s.saved.redo.slice();
     draw(s, parts, new Map(s.base));
   } else if (event.outcome === "stale") {
+    // More than this send unanswered: this one went with the key of one whose answer was lost.
+    s.unsure = event.unsure && s.unanswered.length > 1;
     s.unanswered = [];
     s.waiting = true;
   }
@@ -383,6 +390,8 @@ function heard(s, parts) {
   } else {
     s.waiting = false;
     s.conflict = true;
+    parts.unsure.hidden = !s.unsure;
+    parts.keep.hidden = s.unsure;
     parts.conflict.hidden = false;
   }
 }
@@ -390,7 +399,8 @@ function heard(s, parts) {
 /**
  * Keeps both: the other tab's deck with this page's changes on top of it (what each did to each
  * card since the deck both started from), then saves that. Every send was answered by now (a
- * conflict waits for that), so the changes are none the server already has.
+ * conflict waits for that), so the changes are none the server already has; when the server could
+ * not say (`unsure`), the button is hidden.
  * @param {Parts} parts
  */
 export function merge(parts) {
@@ -434,6 +444,7 @@ function settle(s, parts) {
   known(s, parts, new Map(s.theirs), s.theirGeneration, s.theirVersion);
   s.conflict = false;
   s.waiting = false;
+  s.unsure = false;
   parts.conflict.hidden = true;
 }
 

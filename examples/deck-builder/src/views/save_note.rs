@@ -18,8 +18,10 @@ pub enum Answer {
         version: u64,
         message: String,
     },
+    /// `unsure`: a save the server no longer remembers may have been this one (`Outcome::Stale`).
     Stale {
         version: u64,
+        unsure: bool,
     },
 }
 
@@ -37,7 +39,7 @@ impl Answer {
     fn version(&self) -> u64 {
         match self {
             Answer::None => 0,
-            Answer::Saved { version, .. } | Answer::Refused { version, .. } | Answer::Stale { version } => *version,
+            Answer::Saved { version, .. } | Answer::Refused { version, .. } | Answer::Stale { version, .. } => *version,
         }
     }
 
@@ -47,15 +49,21 @@ impl Answer {
             _ => 0,
         }
     }
+
+    fn unsure(&self) -> bool {
+        matches!(self, Answer::Stale { unsure: true, .. })
+    }
 }
 
 /// A save's answer, told to the builder around the note: what became of it (`saved`, `refused`,
-/// `stale`), the deck's version after it, and which send was saved. It bubbles from the note.
+/// `stale`), the deck's version after it, which send was saved, and, when stale, whether a save
+/// the server no longer remembers may have been it. It bubbles from the note.
 #[corten::script::event]
 pub struct DeckAnswered {
     pub outcome: String,
     pub version: u64,
     pub draft: u64,
+    pub unsure: bool,
 }
 
 /// What became of the last save, in words, inside the builder's status line. Each save answers
@@ -65,7 +73,7 @@ pub struct DeckAnswered {
 #[component(js)]
 pub fn SaveNote<'a>(answer: &'a Answer) -> impl Patch {
     html! {
-        <span id={SaveNoteId} on:connect={js::answered(target, answer.outcome(), answer.version(), answer.draft())}>
+        <span id={SaveNoteId} on:connect={js::answered(target, answer.outcome(), answer.version(), answer.draft(), answer.unsure())}>
             match answer {
                 Answer::None => {}
                 Answer::Saved { .. } => { "Saved." }

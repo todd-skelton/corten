@@ -50,6 +50,8 @@ pub struct Builder {
     cards: Arc<[Card]>,
     index: Arc<HashMap<String, usize>>,
     pub deck: Feed<Slot>,
+    /// How long an applied save's key is remembered (`KEPT_FOR`).
+    kept_for: Duration,
     /// The saves applied in the last day, so one sent again (its answer lost on the way) answers
     /// as it did. Every save holds this lock, so the version it checks is the one it writes after.
     /// A real store keeps the keys next to the deck, in its transaction.
@@ -61,6 +63,8 @@ pub struct Builder {
 struct Saves {
     by_key: HashMap<SubmitKey, Applied>,
     order: VecDeque<(Instant, SubmitKey)>,
+    /// The newest version a forgotten key made: a key unknown now may have made one up to it.
+    forgotten_through: u64,
 }
 
 /// A save that was applied: which of the page's sends it was, and the version it made.
@@ -71,8 +75,8 @@ struct Applied {
 
 /// How long an applied save's key is remembered: a page sends a lost save again within moments,
 /// and a key forgotten sooner could not say the save was made. A day is what payment APIs keep
-/// an idempotency key for. A page that sends one later finds its version old: the player is
-/// offered both decks.
+/// an idempotency key for. A page that sends one later is told its save may be in the deck
+/// already (`Outcome::Stale`'s `unsure`), so its changes are not added again.
 const KEPT_FOR: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// What became of a save, with the deck's version after it.
@@ -83,7 +87,9 @@ pub enum Outcome {
     /// The rules refused it; the deck is as it was.
     Refused(u64, Refusal),
     /// It was built on an older version: another tab saved first, or the server restarted since.
-    Stale(u64),
+    /// `unsure`: a save made after that version has had its key forgotten, so if this key was
+    /// sent before (its answer lost), that save may have been this one.
+    Stale { version: u64, unsure: bool },
 }
 
 /// A deck as `card id -> copies`, no zeros.
@@ -97,11 +103,12 @@ impl Builder {
 
     /// `size` cards, and the starter deck at version 0 of a new generation.
     pub fn with(size: usize) -> Self {
-        Self::from(size, None)
+        Self::from(size, None, KEPT_FOR)
     }
 
-    /// `size` cards and the starter deck, in the generation named, or a new one.
-    fn from(size: usize, generation: Option<&str>) -> Self {
+    /// `size` cards and the starter deck, in the generation named, or a new one, with keys kept
+    /// for `kept_for`.
+    fn from(size: usize, generation: Option<&str>, kept_for: Duration) -> Self {
         let cards: Arc<[Card]> = cards::collection(size).into();
         let index = cards.iter().enumerate().map(|(i, c)| (c.id.clone(), i)).collect();
         let starter = cards::STARTER.map(|(id, count)| Slot { id: id.into(), count });
@@ -109,7 +116,7 @@ impl Builder {
             Some(generation) => Feed::follow(generation, 0, starter),
             None => Feed::new(starter),
         };
-        Builder { cards, index: Arc::new(index), deck, saves: Arc::default() }
+        Builder { cards, index: Arc::new(index), deck, kept_for, saves: Arc::default() }
     }
 
     pub fn card(&self, id: &str) -> Option<&Card> {
@@ -142,17 +149,23 @@ impl Builder {
     pub fn save(&self, generation: &str, version: u64, deck: Deck, key: &SubmitKey, draft: u64) -> Outcome {
         let mut saves = self.lock();
         let at = Instant::now();
-        while saves.order.front().is_some_and(|(applied, _)| at.duration_since(*applied) > KEPT_FOR) {
-            if let Some((_, old)) = saves.order.pop_front() {
-                saves.by_key.remove(&old);
+        while saves.order.front().is_some_and(|(applied, _)| at.duration_since(*applied) >= self.kept_for) {
+            if let Some((_, old)) = saves.order.pop_front()
+                && let Some(forgotten) = saves.by_key.remove(&old)
+            {
+                saves.forgotten_through = saves.forgotten_through.max(forgotten.version);
             }
         }
         if let Some(applied) = saves.by_key.get(key) {
             return Outcome::Saved { version: applied.version, draft: applied.draft };
         }
         let now = self.deck.seq();
-        if generation != self.generation() || version != now {
-            return Outcome::Stale(now);
+        if generation != self.generation() {
+            // Every key and save of that generation went with the restart.
+            return Outcome::Stale { version: now, unsure: false };
+        }
+        if version != now {
+            return Outcome::Stale { version: now, unsure: saves.forgotten_through > version };
         }
         if let Err(refusal) = cards::check(&deck, |id| self.card(id)) {
             return Outcome::Refused(now, refusal);
@@ -308,7 +321,7 @@ async fn save(req: Req, State(builder): State<Builder>, Form(input): Form<DeckIn
         Outcome::Refused(version, refusal) => {
             (Answer::Refused { version: *version, message: refusal.to_string() }, StatusCode::UNPROCESSABLE_ENTITY)
         }
-        Outcome::Stale(version) => (Answer::Stale { version: *version }, StatusCode::CONFLICT),
+        Outcome::Stale { version, unsure } => (Answer::Stale { version: *version, unsure: *unsure }, StatusCode::CONFLICT),
     };
     if req.mode == Mode::Action {
         return req.patch_with_status(status, SaveNote { answer: &answer });
@@ -374,28 +387,28 @@ mod tests {
 
     #[tokio::test]
     async fn a_save_writes_the_deck_once_per_key_and_answers_with_its_version() {
-        let builder = Builder::from(60, Some(GEN));
+        let builder = Builder::from(60, Some(GEN), KEPT_FOR);
         let router = app(builder.clone()).router();
         let mut deck = starter();
         deck.push(("salt-oracle", 1));
         let (status, _, note) = send(&router, post(&format!("{}&draft=1", body(GEN, 0, &deck, KEYS[0])), true)).await;
         assert_eq!(status, StatusCode::OK);
         assert!(note.contains(r#"<span id="save-note""#) && note.contains("Saved."), "{note}");
-        assert!(note.contains(r#"save_note.answered($t,&quot;saved&quot;,1,1)"#), "{note}");
+        assert!(note.contains(r#"save_note.answered($t,&quot;saved&quot;,1,1,false)"#), "{note}");
         assert_eq!(builder.saved().1.get("salt-oracle"), Some(&1));
         // Sent again (its answer lost): the same answer, no second write.
         let (status, _, note) = send(&router, post(&format!("{}&draft=1", body(GEN, 0, &deck, KEYS[0])), true)).await;
-        assert!(status == StatusCode::OK && note.contains("&quot;saved&quot;,1,1)"), "{note}");
+        assert!(status == StatusCode::OK && note.contains("&quot;saved&quot;,1,1,false)"), "{note}");
         assert_eq!(builder.deck.seq(), 1);
         // The same key with a changed deck (made while the answer was lost): nothing is written,
         // and the answer names the send that was saved, so the page sends the change next.
         deck.pop();
         let (status, _, note) = send(&router, post(&format!("{}&draft=2", body(GEN, 0, &deck, KEYS[0])), true)).await;
-        assert!(status == StatusCode::OK && note.contains("&quot;saved&quot;,1,1)"), "{note}");
+        assert!(status == StatusCode::OK && note.contains("&quot;saved&quot;,1,1,false)"), "{note}");
         assert_eq!((builder.deck.seq(), builder.saved().1.get("salt-oracle")), (1, Some(&1)));
         // A new key, built on the old version, is stale.
         let (status, _, note) = send(&router, post(&body(GEN, 0, &deck, KEYS[1]), true)).await;
-        assert!(status == StatusCode::CONFLICT && note.contains("&quot;stale&quot;,1,0)"), "{note}");
+        assert!(status == StatusCode::CONFLICT && note.contains("&quot;stale&quot;,1,0,false)"), "{note}");
     }
 
     #[test]
@@ -410,28 +423,48 @@ mod tests {
             deck
         };
         // A page saved twice before the restart: version 2.
-        let before = Builder::from(60, Some("a"));
+        let before = Builder::from(60, Some("a"), KEPT_FOR);
         before.save("a", 0, deck("salt-oracle"), &key(0), 1);
         assert_eq!(before.save("a", 1, deck("pearl-diver"), &key(1), 2), Outcome::Saved { version: 2, draft: 2 });
         // After it the deck starts again in another generation, and writes as far as version 2:
         // the same number is not the same deck.
-        let after = Builder::from(60, Some("b"));
+        let after = Builder::from(60, Some("b"), KEPT_FOR);
         after.save("b", 0, deck("lantern-warden"), &key(2), 1);
         after.save("b", 1, deck("undertow-serpent"), &key(3), 2);
-        assert_eq!(after.save("a", 2, deck("kiln-colossus"), &key(4), 3), Outcome::Stale(2));
+        assert_eq!(after.save("a", 2, deck("kiln-colossus"), &key(4), 3), Outcome::Stale { version: 2, unsure: false });
         assert_eq!(after.save("b", 2, deck("kiln-colossus"), &key(4), 3), Outcome::Saved { version: 3, draft: 3 });
+    }
+
+    #[test]
+    fn a_save_sent_again_after_its_key_is_forgotten_is_stale_and_unsure() {
+        let key = |i: usize| {
+            use serde::de::{IntoDeserializer, value::Error};
+            SubmitKey::deserialize(IntoDeserializer::<Error>::into_deserializer(KEYS[i])).unwrap()
+        };
+        let mut deck: Deck = cards::STARTER.iter().map(|&(id, n)| (id.to_string(), n)).collect();
+        deck.insert("pearl-diver".into(), 1);
+        // Keys forgotten at once: the first save's answer was lost, and it is sent again later.
+        let builder = Builder::from(60, Some(GEN), Duration::ZERO);
+        assert_eq!(builder.save(GEN, 0, deck.clone(), &key(0), 1), Outcome::Saved { version: 1, draft: 1 });
+        assert_eq!(builder.save(GEN, 0, deck.clone(), &key(0), 2), Outcome::Stale { version: 1, unsure: true });
+        // Built on the version after that save, nothing forgotten could be it.
+        let builder = Builder::from(60, Some(GEN), KEPT_FOR);
+        builder.save(GEN, 0, deck.clone(), &key(0), 1);
+        deck.insert("pearl-diver".into(), 2);
+        builder.save(GEN, 1, deck.clone(), &key(1), 2);
+        assert_eq!(builder.save(GEN, 1, deck, &key(2), 3), Outcome::Stale { version: 2, unsure: false });
     }
 
     #[tokio::test]
     async fn a_deck_the_rules_refuse_is_not_saved_and_says_why() {
-        let builder = Builder::from(60, Some(GEN));
+        let builder = Builder::from(60, Some(GEN), KEPT_FOR);
         let router = app(builder.clone()).router();
         let mut deck = starter();
         deck[4] = ("ashen-drake", 3);
         let (status, _, note) = send(&router, post(&body(GEN, 0, &deck, KEYS[0]), true)).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(note.contains("Not saved: You own 2 copies of Ashen Drake."), "{note}");
-        assert!(note.contains("&quot;refused&quot;,0,0)"), "{note}");
+        assert!(note.contains("&quot;refused&quot;,0,0,false)"), "{note}");
         assert_eq!(builder.deck.seq(), 0);
         let (status, _, note) =
             send(&router, post("generation=g&version=0&submit=3f2504e0-4f89-41d3-9a0c-0305e82c3301&card=gravel-sprite&count=two", true)).await;
@@ -440,7 +473,7 @@ mod tests {
 
     #[tokio::test]
     async fn without_javascript_add_and_save_are_forms_and_a_refusal_is_the_page() {
-        let builder = Builder::from(60, Some(GEN));
+        let builder = Builder::from(60, Some(GEN), KEPT_FOR);
         let router = app(builder.clone()).router();
         // An Add button: the deck as it is, and one more card.
         let add = format!("{}&add=pearl-diver&q=pearl&sort=cost", body(GEN, 0, &starter(), KEYS[0]));
@@ -469,7 +502,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_save_built_on_an_old_version_is_refused_as_stale_and_the_page_shows_the_deck_now() {
-        let builder = Builder::from(60, Some(GEN));
+        let builder = Builder::from(60, Some(GEN), KEPT_FOR);
         let router = app(builder.clone()).router();
         let mut deck = starter();
         deck.push(("pearl-diver", 2));
@@ -483,7 +516,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_page_lists_the_collection_and_the_deck_and_filters_without_javascript() {
-        let builder = Builder::from(60, Some(GEN));
+        let builder = Builder::from(60, Some(GEN), KEPT_FOR);
         let router = app(builder).router();
         let get = |uri: &str| Request::get(uri).header("accept", "text/html").body(Body::empty()).unwrap();
         let (status, _, page) = send(&router, get("/")).await;
