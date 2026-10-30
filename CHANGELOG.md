@@ -1094,14 +1094,15 @@ Corten is pre-1.0, so any minor version may change the API.
     What the page gets is unchanged
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
-145. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
+146. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
     answer (a carrier, a payment provider, another app), answered by `req.invalid` and
     `req.invalid_with` with 502 in every mode: the form drawn again with the message, the page
     without JavaScript, the Problem Details document for a data client, which got the HTML page
     from a handler that set the status by hand. The retry is the same submission: the runtime now keeps a form's
     `SubmitKey` over the key a patch draws (a 5xx patch used to swap in a fresh one, so a retry of a
     write that did apply upstream applied twice), and `SubmitKey::again` draws the posted key into
-    the form a browser without JavaScript gets. An agent tool gets the message as `ToolError::Upstream` ("try again later"),
+    the form a browser without JavaScript gets. The minified runtime grows by 176 bytes (26,536 to
+    26,712), 43 gzipped (9,642 to 9,685), 42 with brotli (8,709 to 8,751). An agent tool gets the message as `ToolError::Upstream` ("try again later"),
     not as a refusal of a stale state. Still a closed set: no other 5xx, and no `StatusCode`. An
     app's exhaustive `match` on `Refusal` or `ToolError` gains an arm
     ([#480 A post refused because a service it calls failed has no Refusal (502/503), so it cannot use req.invalid_with and a JSON client gets the HTML page](https://github.com/todd-skelton/corten/issues/480)).
