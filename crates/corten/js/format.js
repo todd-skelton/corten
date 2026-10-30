@@ -110,8 +110,8 @@ function number(spec, at, int, frac) {
 
 /**
  * A plural message: the form for `count`'s category, picked as the server picks it (a whole
- * number by the table; anything else, as a fraction, by `other`), with `count` written as
- * `t.number` writes it when it is a number.
+ * number, of any size, by the table; anything else, as a fraction, by `other`), with `count`
+ * written as `t.number` writes it when it is a number.
  * @param {Spec} spec @param {string} table @param {(string[] | null)[]} forms
  * @returns {(args: Record<string, string | number>) => string}
  */
@@ -119,8 +119,10 @@ function plural(spec, table, forms) {
   const write = formatter({ z: spec.z, s: spec.s, t: spec.t });
   return (args) => {
     const n = Number(args.count);
-    const a = Math.abs(n);
-    const at = Number.isSafeInteger(a) ? Number(table[a < 200 ? a : a % 1_000_000 === 0 ? 200 : 100 + (a % 100)]) : 5;
+    const whole = typeof args.count === "number" ? Number.isInteger(n) : /^-?\d+$/.test(args.count);
+    // Exactly, past 2^53 too: a large count's category depends on its last digits.
+    const a = whole ? BigInt(args.count) * (String(args.count).startsWith("-") ? -1n : 1n) : 0n;
+    const at = whole ? Number(table[a < 200n ? Number(a) : a % 1_000_000n === 0n ? 200 : 100 + Number(a % 100n)]) : 5;
     const parts = forms[at] ?? /** @type {string[]} */ (forms[5]);
     let text = parts[0];
     for (let i = 1; i < parts.length; i += 2) {

@@ -64,7 +64,16 @@ for (const [key, spec] of specs) {
     check(`${tag} plural ${n}`, pick({ count: n }), rules.select(n));
     check(`${tag} plural ${-n}`, pick({ count: -n }), rules.select(n));
   }
+  // Past 2^53 too, as a number (an exact whole number) or as its digits. Intl does not pick a
+  // count that long by its digits (am's 10^18 is "one" to it), so the category it should have is
+  // the one Intl gives the number with the same last nine digits, all CLDR's integer rules read.
+  const same = (/** @type {bigint} */ n) => rules.select(Number(1_000_000_000n + (n < 0n ? -n : n) % 1_000_000_000n));
+  for (const n of [1e18, 2 ** 60, 1e21 + 2 ** 20]) check(`${tag} plural ${n}`, pick({ count: n }), same(BigInt(n)));
+  for (const n of ["9007199254740993", "1000000000000000000000", "18446744073709551615", "-3000000000000000000"]) {
+    check(`${tag} plural "${n}"`, pick({ count: n }), same(BigInt(n)));
+  }
   check(`${tag} plural 1.5`, pick({ count: 1.5 }), "other");
+  check(`${tag} plural "1.5"`, pick({ count: "1.5" }), "other");
 }
 const en = formatter({ ...specs.get("en number"), c: specs.get("en plural").c, m: [null, ["", "count", " card"], null, null, null, ["", "count", " cards"]] });
 check("a plural count is written as t.number writes it", en({ count: 1234 }), "1,234 cards");

@@ -941,6 +941,10 @@ mod tests {
         assert_eq!(en.item_listings(), "Listings");
         assert_eq!(fr.item_listings(), "Annonces");
         assert_eq!(en.item_listing_count(3).to_string(), "3 listings");
+        // Past 2^53, where a browser's number is no longer exact, the category is still the count's.
+        assert!(fr.item_listing_count(1_000_000_000_000_000_000u64).to_string().ends_with(" d’annonces"));
+        assert!(fr.item_listing_count(1_000_000_000_000_000_001u64).to_string().ends_with(" annonces"));
+        assert!(fr.item_listing_count(-1i64).to_string().ends_with("1 annonce"), "a negative count by its size");
         assert_eq!(fr.item_image("<Pika>", 2).to_string(), "Image 2 de <Pika>", "arguments may be in another order");
         assert_eq!(en.item_image("<Pika>", 2).to_html(), "&lt;Pika&gt; image 2", "escaped in a page");
         assert_eq!(en.brace().to_html(), "{literal} &amp; more", "the message's own text is escaped too");
