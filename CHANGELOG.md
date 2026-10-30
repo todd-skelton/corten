@@ -944,7 +944,9 @@ Corten is pre-1.0, so any minor version may change the API.
     as `&dyn Href`, so each page passes its own typed route instead of a `String`; a unit variant
     and text where a `&dyn Href` goes do not compile. A `Local` or `Uri` written this way is
     escaped for the attribute. The views guide says how a shared list takes its links and a
-    per-row part
+    per-row part. A redirect costs what it did: a redirect to a `Local` measured 19,241-19,260
+    instructions before and 19,084-19,228 after, one to a route 18,110-18,277 and 18,258-18,316
+    (callgrind, 3 runs each)
     ([#361 A value that is one of several routes (an enum of screens) implements Href but cannot be written as href={..}](https://github.com/todd-skelton/corten/issues/361), [#391 A component several pages render cannot take a route as a prop (Href is not dyn-compatible), so a shared list's form action and column links are Strings](https://github.com/todd-skelton/corten/issues/391)).
 
 ### Removed

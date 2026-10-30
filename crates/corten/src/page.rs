@@ -785,7 +785,10 @@ impl Req {
     /// it: the rule the runtime applies to `<a data-nav>` (`data-nav="section"`) after each
     /// navigation.
     pub fn is_current(&self, href: &(impl crate::route::Href + ?Sized), section: bool) -> bool {
-        is_current(self.uri.path(), &crate::route::link(href), section)
+        match href.as_text() {
+            Some(text) => is_current(self.uri.path(), text, section),
+            None => is_current(self.uri.path(), &crate::route::link(href), section),
+        }
     }
 
     /// A nav link to `to`, from one mention of the route: `<a {..req.nav(&url::About)}>"About"</a>`
@@ -1175,7 +1178,7 @@ impl Req {
     /// `axum::http::Uri` to leave the app. Works with and without
     /// JavaScript.
     pub fn redirect<For>(&self, to: &(impl crate::route::Href + ?Sized)) -> crate::Result<HtmlResponse<For>> {
-        let value = HeaderValue::try_from(crate::route::link(to)).map_err(Error::new)?;
+        let value = crate::route::header_value(to).map_err(Error::new)?;
         Ok(HtmlResponse::new(redirect(self.mode, value)))
     }
 
@@ -1225,7 +1228,7 @@ impl Req {
     /// [`Req::redirect`]. Parameters the old URL had are the route's to carry
     /// (`#[route(prefix = ..)]` for ones named by data), so only the ones it knows move with it.
     pub fn moved<For>(&self, to: &(impl crate::route::Href + ?Sized)) -> crate::Result<HtmlResponse<For>> {
-        let value = HeaderValue::try_from(crate::route::link(to)).map_err(Error::new)?;
+        let value = crate::route::header_value(to).map_err(Error::new)?;
         if self.mode == Mode::Action || (self.mode == Mode::Navigation && (has_fragment(&value) || elsewhere(&value))) {
             return Ok(HtmlResponse::new(redirect(self.mode, value)));
         }

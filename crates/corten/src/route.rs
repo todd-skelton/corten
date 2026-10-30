@@ -858,7 +858,27 @@ pub trait Href {
     where
         Self: Sized,
     {
-        f(&link(self))
+        match self.as_text() {
+            Some(text) => f(text),
+            None => f(&link(self)),
+        }
+    }
+
+    /// The URL, when the link holds it as text already (a [`Local`]), so a redirect reads it
+    /// without writing it again.
+    #[doc(hidden)]
+    fn as_text(&self) -> Option<&str> {
+        None
+    }
+}
+
+/// The URL of any [`Href`] as a header value: `Location` for a redirect.
+pub(crate) fn header_value(to: &(impl Href + ?Sized)) -> Result<axum::http::HeaderValue, axum::http::header::InvalidHeaderValue> {
+    // From text, not from the `String`: one with room to spare would cost `Bytes` an allocation of
+    // its own.
+    match to.as_text() {
+        Some(text) => axum::http::HeaderValue::from_str(text),
+        None => axum::http::HeaderValue::from_str(&link(to)),
     }
 }
 
@@ -888,11 +908,19 @@ macro_rules! dyn_href {
             fn write_link(&self, out: &mut String, html: bool) {
                 (**self).write_link(out, html)
             }
+
+            fn as_text(&self) -> Option<&str> {
+                (**self).as_text()
+            }
         }
 
         impl Href for Box<$ty> {
             fn write_link(&self, out: &mut String, html: bool) {
                 (**self).write_link(out, html)
+            }
+
+            fn as_text(&self) -> Option<&str> {
+                (**self).as_text()
             }
         }
     )*};
@@ -960,6 +988,10 @@ impl std::fmt::Display for Local {
 impl Href for Local {
     fn write_link(&self, out: &mut String, html: bool) {
         write_text(&self.0, out, html)
+    }
+
+    fn as_text(&self) -> Option<&str> {
+        Some(&self.0)
     }
 }
 

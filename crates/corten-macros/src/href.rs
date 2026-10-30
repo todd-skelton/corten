@@ -19,6 +19,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     }
     let Some(body) = &item.body else { return err(item.name.span(), "Href: expected the enum's variants") };
     let mut arms = TokenStream::new();
+    let mut texts = TokenStream::new();
     for tokens in split(body.stream(), ',') {
         let mut j = 0;
         while is_punct(tokens.get(j), '#') {
@@ -39,14 +40,21 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             "Self::__A0(__corten_to) => ::corten::route::Href::write_link(__corten_to, __OUT, __corten_html),",
             &[TokenTree::Ident(ident.clone()).into()],
         ));
+        texts.extend(q(
+            "Self::__A0(__corten_to) => ::corten::route::Href::as_text(__corten_to),",
+            &[TokenTree::Ident(ident.clone()).into()],
+        ));
     }
     let mut out = item.impl_block(
         "::corten::route::Href",
         q(
             "fn write_link(&self, __OUT: &mut ::std::string::String, __corten_html: bool) {
                 match self { __A0 }
+            }
+            fn as_text(&self) -> ::core::option::Option<&str> {
+                match self { __A1 }
             }",
-            &[arms],
+            &[arms, texts],
         ),
     );
     out.extend(item.impl_block(
