@@ -984,6 +984,13 @@ function replaceKeeping(root, fresh, sent, took) {
   /** File inputs of `fresh` and the files to give them once they are in the page. @type {[any, FileList | null][]} */
   const files = [];
   for (const f of [root, ...Array.from(root.querySelectorAll("input, textarea, select"))]) {
+    // A submit key stays the form's own: renewed in place once an answer took the write, and kept
+    // as sent after a 5xx (which may hide a write that applied), whatever key the answer drew.
+    if (f instanceof HTMLInputElement && f.hasAttribute("data-submit")) {
+      const to = counterpart(root, fresh, f, true);
+      if (to instanceof HTMLInputElement && to.hasAttribute("data-submit")) to.value = f.value;
+      continue;
+    }
     const now = stateOf(f);
     // Only a field found by id or name gets the user's text: by place, rows that moved could
     // put it into another row's field.
