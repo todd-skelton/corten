@@ -1063,11 +1063,17 @@ fn lazily_refused_routes(
                 pages.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 req.test_page("Sheet", html! { <p>"page with the refusal"</p> })
             };
-            let form = |form: crate::FormPatch| async {
-                reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                form.draw(html! { <form id={SignUpId}>{errors.form_message()}"read now"</form> })
-            };
-            req.invalid_with(&errors, form, page).await
+            // Written in the call, as an app does: the closure's type comes from `invalid_with`.
+            let shown = &errors;
+            req.invalid_with(
+                &errors,
+                |form| async {
+                    reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    form.draw(html! { <form id={SignUpId}>{shown.form_message()}"read now"</form> })
+                },
+                page,
+            )
+            .await
         }),
     )
 }
