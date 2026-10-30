@@ -147,6 +147,14 @@ pub use corten_macros::Route;
 /// enum Tab { Open, #[serde(skip_deserializing)] Draft }
 /// ```
 ///
+/// Nor do two variants written as one word, since a link to one would read back as the other:
+///
+/// ```compile_fail
+/// #[derive(corten::UrlValue, serde::Deserialize)]
+/// #[serde(rename_all = "lowercase")]
+/// enum Plan { Ab, AB }
+/// ```
+///
 /// Nor does an attribute that changes the words in a way it does not follow:
 ///
 /// ```compile_fail
@@ -927,6 +935,36 @@ impl<T: Pairs + ?Sized> Pairs for &T {
 /// # fn main() {}
 /// ```
 ///
+/// Where one enum of every page's route would join code that should stay apart (a shared
+/// component whose pages live in separate feature modules), its prop is a function that returns a
+/// boxed link, and `href={..}` takes the box as it is:
+///
+/// ```
+/// use corten::{prelude::*, Href};
+///
+/// #[derive(Route)] #[route("/pull-sheet")] struct PullSheet<'a> { sort: Option<&'a str> }
+///
+/// #[component]
+/// fn SortLinks<'a>(link: &'a dyn Fn(&'static str) -> Box<dyn Href + 'a>) -> impl Render {
+///     html! { <a href={link("price")}>"Price"</a> <a href={&link("name")}>"Name"</a> }
+/// }
+///
+/// let link = |sort| Box::new(PullSheet { sort: Some(sort) }) as Box<dyn Href>;
+/// assert_eq!(
+///     SortLinks { link: &link }.to_html(),
+///     r#"<a href="/pull-sheet?sort=price">Price</a><a href="/pull-sheet?sort=name">Name</a>"#
+/// );
+/// ```
+///
+/// A value that is neither text nor a link is an error about the attribute:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// struct Sort;
+/// let _ = html! { <a href={Sort}>"Price"</a> };
+/// ```
+///
 /// Text is not a link, so a `&str` is not a `&dyn Href`:
 ///
 /// ```compile_fail,E0277
@@ -1035,6 +1073,14 @@ macro_rules! dyn_href {
 
             fn prefetch(&self) -> bool {
                 (**self).prefetch()
+            }
+        }
+
+        /// A boxed link (one a shared component's function prop returns) is written as the
+        /// link it holds: `href={(paging.link)(by)}`.
+        impl crate::view::AttrValue for Box<$ty> {
+            fn write_attr(&self, name: &str, out: &mut String) {
+                (**self).write_attr(name, out)
             }
         }
     )*};
@@ -1514,8 +1560,9 @@ impl fmt::Write for Encode<'_> {
 /// a path parameter from its segment, percent-decoded; a query parameter by the name serde reads
 /// (`None`, or empty for a list, when the query leaves it out; a field with `#[serde(default)]`
 /// its default); a `#[route(query)]` field's set each of its fields the same way; a
-/// `#[route(prefix = "dim.")]` field from each parameter with the prefix, taken off. A request whose parameters do not
-/// fit is a `400 Bad Request`.
+/// `#[route(prefix = "dim.")]` field from each parameter with the prefix, taken off. A word an
+/// enum does not have (an old bookmark) reads as missing, and a prefixed entry holding one is
+/// left out; a request whose parameters otherwise do not fit is a `400 Bad Request`.
 ///
 /// So the link and the handler cannot disagree about a parameter's name or type, and a handler
 /// of a route with a parameter in its path must take the route's `Params`: in a
@@ -2286,7 +2333,7 @@ pub mod __private {
 
         fn prefixed(pairs: &[Pair<'_>], prefix: &str) -> Result<Self::T, FormError> {
             crate::form::de::prefixed(pairs, prefix)
-                .map(|(k, v)| Ok((crate::form::de::one(k)?, crate::form::de::one(v)?)))
+                .filter_map(|(k, v)| crate::form::de::entry(prefix, k, v).transpose())
                 .collect()
         }
     }
@@ -2296,7 +2343,7 @@ pub mod __private {
 
         fn prefixed(pairs: &[Pair<'_>], prefix: &str) -> Result<Self::T, FormError> {
             crate::form::de::prefixed(pairs, prefix)
-                .map(|(k, v)| Ok((crate::form::de::one(k)?, crate::form::de::one(v)?)))
+                .filter_map(|(k, v)| crate::form::de::entry(prefix, k, v).transpose())
                 .collect()
         }
     }

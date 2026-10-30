@@ -237,7 +237,10 @@ value that is one of several routes (an app's screens, the links a shared list m
 column) is an enum whose variants each hold one, `#[derive(Href)] enum Screen<'a> {
 Inventory(url::Inventory), PullSheet(url::PullSheet<'a>) }`, written as `href={screen}`, and the
 page passes a function that builds it, `link: &'a dyn Fn(SortBy) -> SheetLink<'a>`. A unit
-variant does not compile (it has no URL), and neither does text where a `&dyn Href` goes. A
+variant does not compile (it has no URL), and neither does text where a `&dyn Href` goes. When
+one enum of every page's route would tie together modules that should stay apart (the pages that
+draw a shared list live in separate features), the function returns a boxed link instead,
+`link: &'a dyn Fn(SortBy) -> Box<dyn Href + 'a>`, and `href={link(by)}` takes the box as it is. A
 part of each row the page decides (a detail one screen shows) is a function the same way,
 `detail: &'a dyn Fn(&Item) -> Box<dyn Render + 'a>`, drawn as `{detail(item)}`.
 
@@ -313,8 +316,9 @@ the wrong size, a grouped number that starts with `0` (`0,500`), another locale'
 separator, more fraction digits than the currency has or an amount over `u64`. Every amount
 every locale writes reads back, so a form never reads money
 as a float or with a parser of its own. `MonthStyle` writes the month and year without the day, in
-the locale's order and words (`Mar 2026`, `März 2026`); it has no time, so `t.date_time` does
-not take one. A date is in UTC unless `.zone(Offset::hours(-5))` or a zone
+the locale's order and words (`Mar 2026`, `März 2026`), and `DayStyle` the month and day without
+the year (`Mar 2`, `2 mars`), for a chart's axis or a week's row whose year the page says once;
+neither has a time, so `t.date_time` takes neither. A date is in UTC unless `.zone(Offset::hours(-5))` or a zone
 of your own (`corten::i18n::Zone`, for one with daylight saving time) says otherwise, so a page
 reads the same wherever it is rendered; `parse_timestamp` reads the RFC 3339 text APIs send.
 For dates where the visitor is ("your listings come back on Nov 2"), the app sets

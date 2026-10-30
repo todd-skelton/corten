@@ -1032,7 +1032,68 @@ Corten is pre-1.0, so any minor version may change the API.
     render against 1,636.5; the examples' `count == 1` choices are gone and card-market's French no longer
     writes "1 annonces"
     ([#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393)).
-141. A route costly to draw says `#[route("/reports/suggested", get = suggested, prefetch = false)]` (`Route::PREFETCH`), and every link to it, `href={..}` with the route or a `&dyn Href` holding it, is written with `data-no-prefetch`, so hovering it starts no work and only a click does; the route says it once instead of each link. The runtime now aborts a prefetch it drops (the 8-newest limit, a stale entry, a form post, a visit left before the prefetched answer is used), so the server sees the client go instead of drawing the page to the end, and the views guide describes prefetch, `data-no-prefetch` and `data-reload`. The minified runtime grows by 75 bytes (25,884 to 25,959), 16 gzipped (9,402 to 9,418), 2 with brotli (8,496 to 8,498). The item page's render runs 0.11% more instructions (median of 3, callgrind, release build: 35,623,327,994 against 35,584,847,328 on its base), the check each link makes of its route's `PREFETCH`.
+141. `corten dev`, `fmt` and `check` notice when the app's `Cargo.lock` pins another corten than the
+    one they were built from (a git revision or a release) and say so before running, with the
+    `cargo install` command for the matching one; they ran with the old behavior silently, and
+    `check` failed on `cargo fmt --check` with no reason. The command records the commit it is built
+    from (`corten --version` prints it), read from `.git` or a published package's
+    `.cargo_vcs_info.json`, standard library only. A path dependency is not compared
+    ([#458 The corten CLI does not notice it is older than the corten the app pins, so fmt and check silently use old behavior](https://github.com/todd-skelton/corten/issues/458)).
+142. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
+    form, its fields posted as `ship_to.street` (`f.ship_to.street`), so a field group is defined
+    once and a form can hold two of one type. `#[fields(rows)] #[serde(default)] domains:
+    BTreeMap<Domain, DomainLimits>` is one group per row, each field named by the row's key,
+    `f.domains.at(&Domain::SellerPortal).max_concurrent`, posted as
+    `domains[seller-portal].max_concurrent`: the key, not the row's place, joins a row's values, so
+    a row left out shifts nothing and an unchecked checkbox is `false` in its own row, and an error
+    on one row's field marks that input only, with its own message id. `at` takes only the map's key
+    type (a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, by its word); a key's other
+    characters are %-encoded. A group of groups, rows in a group or a row, rows without a default, a
+    group that is an `Option`, and a row key an enum reads by more than its word (`alias`, `other`)
+    do not compile, and neither does a `UrlValue` enum with two variants written as one word. `Form`
+    and `corten::form::from_bytes` read both with Corten's own form reader. `#[fields(map)]
+    #[serde(default)] counts: BTreeMap<Sku, u32>` is one plain value per key, `f.counts.at(&sku)`,
+    posted as `counts[sku]`, with its own error. Plain forms pay for it: reading a form of three
+    plain fields costs 3,332 instructions where it took 3,110, and refusing one whose number does
+    not parse 5,401 where it took 5,176 (callgrind, release build, 3 runs each); a row's error is
+    found by its key, so many rows' errors do not cost each other
+    ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366), [#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
+143. `Req::invalid_with(&errors, form, page)`: a refusal whose form needs a read of its own reads it
+    only for the patch, through a `FormPatch` that draws a patch and nothing else (a page there does
+    not compile), and the page side only for a browser without JavaScript; a data client gets the
+    Problem Details document with neither, as from `invalid` (feature `json`). An app no longer branches on
+    `req.mode` for such a refusal and loses the JSON answer
+    ([#468 req.invalid takes the refused form's patch already drawn, so a patch that needs a read is read for the no-JavaScript page too](https://github.com/todd-skelton/corten/issues/468)).
+144. `DayStyle` for `t.date` and `t.js().date`: the month and day without the year, `Short` (`Mar
+    2`) and `Long` (`March 2`), written as Intl writes `{ month, day }` in each locale's order and
+    words (`2 mars`, `2. März`), for a chart's axis, a week's row or a timeline whose year the page
+    says once; like `MonthStyle`, `t.date_time` does not take it. The locale data gains two patterns
+    per locale (from Node's Intl, checked against it, and in the cases the browser's `format.js` is
+    checked with); no other format changes
+    ([#473 t.date has no month-and-day style without the year (Intl { month: 'short', day: 'numeric' }), so chart labels hand-build month names](https://github.com/todd-skelton/corten/issues/473)).
+145. A handler parameter typed by a declaration `corten::types` generated
+    (`@param {import("../types/app").SortBy} by`, or a `@typedef` of it) takes a value of the Rust
+    type of that name in the component's module, so `js::sortBy(target, SortBy::Price)` compiles
+    and `42` or `"prodcut"` do not: one handler serves every name of a fixed set, and a renamed
+    variant fails to build. A call to a handler whose parameter is a string literal union
+    (`@param {"name" | "price"} by`) no longer compiles, since it took any value; the error and a
+    warning on the call say to make it a Rust enum with a generated declaration, and so does a
+    list or a generic of one (`Mode[]`, `Record<Mode, number>`, `[Mode, number]`, `{ m: Mode }`):
+    any string literal in the parameter's type counts, outside `import("..")`, `Message<..>`, a key
+    (an object's, an indexed type's, the keys and members `Pick`, `Omit` and `Exclude` take) and a
+    callback's parameter names; a set in a template literal's `${..}` counts. The script still compiles, so an export only other
+    scripts import types its parameters as it needs. A `@typedef` of
+    any type but an object or a generic one (`@template`) (`Tab | null`, `Tab[]`, `string`) is
+    checked as the type it names where a handler takes it, through any number of typedefs, and a
+    generated declaration a handler's parameter holds in a shape the call is not checked against is
+    refused rather than taking any value, in any shape of a typedef of plain values that holds one;
+    a typedef the script keeps for itself is not checked. Typedefs that refer to each other (a
+    recursive `Json`, a `Tree` and `Forest`) are seen through as one, and each typedef is
+    written out once, so a recursive one, a long chain or a type with thousands of declarations
+    costs the macro no more than another.
+    What the page gets is unchanged
+    ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
+146. A route costly to draw says `#[route("/reports/suggested", get = suggested, prefetch = false)]` (`Route::PREFETCH`), and every link to it, `href={..}` with the route or a `&dyn Href` holding it, is written with `data-no-prefetch`, so hovering it starts no work and only a click does; the route says it once instead of each link. The runtime now aborts a prefetch it drops (the 8-newest limit, a stale entry, a form post, a visit left before the prefetched answer is used), so the server sees the client go instead of drawing the page to the end, and the views guide describes prefetch, `data-no-prefetch` and `data-reload`. The minified runtime grows by 83 bytes (26,536 to 26,619), 29 gzipped (9,642 to 9,671), 33 with brotli (8,709 to 8,742). The item page's render runs 0.11% more instructions (median of 3, callgrind, release build: 35,623,327,994 against 35,584,847,328 on its base), the check each link makes of its route's `PREFETCH`.
     ([#421 Hover prefetch starts a costly GET page's work; the data-no-prefetch opt-out is undocumented, per link, and a discarded prefetch never aborts](https://github.com/todd-skelton/corten/issues/421)).
 
 ### Removed
@@ -1638,6 +1699,56 @@ Corten is pre-1.0, so any minor version may change the API.
     `Route`, and `ReadAgainFrom<'a, R>` is now `ReadAgainFrom<R>`), so a component that is both part
     of the page and the patch builds the read in its body instead of failing with E0515 or E0597
     ([#440 ReadAgain::from borrows its route, so a component that is both part of the page and the patch cannot build the read in its body (E0515, E0597)](https://github.com/todd-skelton/corten/issues/440)).
+88. A `data-patch` form's newer submit no longer aborts a pending write (any method but GET): the
+    server may have applied it, and its answer, the page's next state, was dropped. A submit made
+    while a write is pending waits, and once the runtime has drawn the write's answer and it took
+    the write (2xx) or refused only its input (422), it is sent from the form as it is then (the one
+    the answer put in its place, found by id), so a version or count the answer wrote goes with it,
+    under the form's new key, without its `on:submit` handlers or the browser's constraint checks
+    running a second time. Several presses while the write is out send one submit of where the form
+    ended; a refusal of the form's state (409, 410), a 5xx, a write that gets no answer, one the
+    runtime does not draw (`corten:error`), a redirect, a reload, a navigation, or a form that left
+    the page drops it. A GET submit still replaces an older one. The minified runtime grows by 656
+    bytes (25,884 to 26,540), 247 gzipped (9,402 to 9,649) and 219 with brotli (8,496 to 8,715)
+    ([#381 A data-patch form's submits replace each other, so a screen where every step counts (a count's + and -) writes its own fetch queue](https://github.com/todd-skelton/corten/issues/381)).
+89. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
+    name alone (`FieldName`, with `as_str`), and a group's or a row's field is a
+    `FieldName<Group>`, `FieldName<Row<'k>>` or `FieldName<RowGroup<'k>>`, written, not stored:
+    compare it with text with `==` (`f.ship_to.street == "ship_to.street"`) and write it with
+    `Display` or in markup. `Errors::iter` yields a `Named` for each name.
+    `#[derive(Fields)]` also makes `{Name}GroupFields`, `{Name}RowFields<'k>` and
+    `{Name}RowGroupFields<'k>` and implements `corten::form::Fields`.
+    `#[serde(flatten)]` stays refused, and its message now points to `#[fields(group)]`: a
+    flattened group cannot be told from another of its type, and serde reads a flattened field's
+    value only as text
+    ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366)).
+90. A key under a field's name sent without the field itself (`go.x` from an image button, `ids[0]`
+    from a PHP-style list) is read as that field's group or rows wherever a form is read (`Form`, a
+    `GET` form's query, `Upload::fields`, `form::from_bytes`): a field that is not an `Option` is
+    refused (422) with a message that says it was sent only that way, where it was ignored and a
+    `#[serde(default)] go: bool` read `false` though the button was pressed, or a defaulted `Vec`
+    read empty though values were sent. An `Option` reads as `None`, and a key under a name the
+    struct does not have is ignored as before
+    ([#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
+91. Breaking: corten-ui's `MenuButton` takes its items as children, each the app's own element with
+    `role="menuitem"` (a link, with `download` or `target` as it needs; a `<form method="post">`
+    with the fields it sends around a `<button role="menuitem">`; a `<button command="show-modal">`
+    that opens a confirm dialog), and `MenuItem` is gone: it was only a typed link or a field-less
+    post, so a row menu with a download, a post with a field or a confirm dialog was built by hand
+    without the menu's keys and focus. The script finds the items in the menu as it needs them (an
+    item a patch adds counts) and closes the menu on one click listener. `<MenuButton id="m"
+    label="Menu" items={&items} />` becomes `<MenuButton id="m" label="Menu">` with an element per
+    item
+    ([#413 MenuButton items are only a link or a field-less post, so a row menu with a download, a new-tab link, a post with a field or a confirm dialog is hand-built](https://github.com/todd-skelton/corten/issues/413)).
+92. Breaking: a call to a handler whose parameter is a set of names written as string literals
+    (`@param {"name" | "price"} by`, also with `null`, optional, through a `@typedef`, or as a
+    group's field) no longer compiles, and neither does one to a handler whose parameter holds a
+    generated declaration inside another type (`import("../types/app").Tab[]`,
+    `.. | null`, a typedef of plain values holding one): each took any value at the call. A
+    typedef of a plain type (`@typedef {string} Id`, `@typedef {HTMLElement} Root`) a handler
+    takes is now checked as that type, where it took any value. Make the set a Rust enum with a
+    generated declaration and type the value with it, alone
+    ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -2088,6 +2199,35 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_views_are__Row`, `corten__two_events_are__RowToggled`, and
     `corten__two_events_named__row_toggled` for the event's name in the page)
     ([#371 Two features' #[event] types or views with the same name still fail only when the server starts](https://github.com/todd-skelton/corten/issues/371)).
+78. A `for`, `if` or `match` inside a `for` in `html!` compiles, in a patch and in any view: it
+    failed with "use of moved value" on the whole `html!`, since the marker that says whether each
+    part is a patch was moved on the loop's first pass. A patch can now redraw rows known from data
+    in one loop, with a branch per row. A view refused as a patch now names the kind of part that
+    is not one (`ComponentOrExpressionNotAPatch`: a component declared `-> impl Render`;
+    `IdNotADeriveIdType`; `TextOrElementWithoutId`), though not its place in the view. The markers are zero-sized and the macro's output is otherwise the same, so rendering
+    is unchanged
+    ([#383 An if or match inside a for in html! fails with E0382 (use of moved value), and a patch's E0277 does not name the part that is not a patch](https://github.com/todd-skelton/corten/issues/383)).
+79. During a pin bump (`Cargo.toml` moved to another corten revision, `Cargo.lock` not resolved
+    yet), `corten dev`, `fmt` and `check` told the user to install the corten the app was leaving:
+    the note now compares the command with the revision `Cargo.toml` asks for when it is not the one
+    the lock was written for, and says nothing for a tag or branch whose commit the lock does not
+    know yet
+    ([#475 During a pin bump, the CLI version note reads the stale Cargo.lock and tells you to install the older corten](https://github.com/todd-skelton/corten/issues/475)).
+80. A `Box<dyn Href>` (a link a shared component's function prop returns, when one enum of every
+    page's route would join separate feature modules) is written as `href={boxed}`, as the `dyn
+    Href` it holds; it was an `Href` but not an attribute value. A value that is neither text nor a
+    link nor an attribute value is now an error that says so ("this value cannot be written in an
+    attribute", naming what an attribute takes) instead of one about a private `__attr` method. The
+    item page's `render_cost` (release, callgrind, 3 runs) is 35,567,415,208 instructions against
+    35,548,560,642 on main (+0.05%; the page writes no boxed link, so this is layout)
+    ([#457 Box<dyn Href> is an Href but not an attribute value, so href={boxed} fails with an error naming a private method](https://github.com/todd-skelton/corten/issues/457)).
+81. A query word an enum parameter does not have (`?state=due_now`, an old bookmark or an address
+    edited by hand) reads as missing, `None` or the field's `#[serde(default)]`, so `Params` shows
+    the page with its filter, sort or tab at its default where it answered 400 with serde's text, and
+    a `#[route(prefix = ..)]` entry holding one is left out of the map. A
+    parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
+    and a form's body are still refused. Links write what they did
+    ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
 
 ### Documentation
 
@@ -2101,17 +2241,17 @@ Corten is pre-1.0, so any minor version may change the API.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
 6. The full-stack benchmark tables in the README and `bench/fullstack`, server and browser, are
-   from round r6 (2026-10-27, one c-8 droplet, Xeon Platinum 8280, faster than r5's 8168, the tree
-   at `cf8ac0f`); `bench/live` is still r3 (Xeon Platinum 8280). Corten serves 23,416 item pages
-   and 27,625 JSON responses a second from memory at 64 users (r5: 21,735 and 25,200), and 3,615
-   item-API pages against ASP.NET Core's 1,171 (r5: 3,240 and 998). A page costs 95,038 user
-   instructions and the JSON 69,444 (r5: 103,877 and 69,291). The unchanged apps rose by a median
-   of 14-27% on the faster CPU, more than Corten's 8-12%, and Corten's item-API JSON held (3,753;
-   r5 3,787). Nuxt and Django passed the in-memory page test; Next.js and Laravel failed as
-   before. The item page loads 9.6 KB of JavaScript (gzip; r5 7.3 KB).
-   A new table gives what a request costs: pages per CPU-second (Corten 25,124, ASP.NET Core
-   4,285), CPU for 300 pages a second (4.1% against 17%) and pages a second per MiB (1,110 against
-   50).
+   from round r8 (2026-10-30, one c-8 droplet, Xeon Platinum 8168, the tree at `2976f15`); its
+   instruction counts are r7's (2026-10-28, Xeon Platinum 8280, `a9b1163`), since r8's droplet
+   locked up at the counting step; `bench/live` is still r3 (Xeon Platinum 8280). r7's results are kept without a
+   browser pass. Corten serves 15,747 item pages and 24,652 JSON responses a second from memory at
+   64 users (r7: 18,758 and 24,976), and 3,616 item-API pages against ASP.NET Core's 1,065 (r7:
+   3,540 and 1,157). Its page from memory fell 16.1% while the other apps moved by a median of
+   -2.0%, after a 19.9% fall from r6 to r7. A page costs 95,949 user instructions and the JSON
+   69,572 in r7. A page from memory costs 63 µs of CPU (15,890 per CPU-second; ASP.NET Core 4,184),
+   300 pages a second take 4.7% of a core (ASP.NET Core 25%), and each MiB serves 960 pages a
+   second (ASP.NET Core 48). Next.js and Laravel failed as before. The item page loads 10.2 KB of
+   JavaScript (gzip; r7 9.3 KB).
 7. `Form` in the prelude is `corten::Form` (Added 20), and a route's parameters its `Params`. Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
@@ -2292,6 +2432,18 @@ Corten is pre-1.0, so any minor version may change the API.
 37. The requests guide says why the submit key is a form field and not the `Idempotency-Key`
     header: a browser without JavaScript cannot set one, and the header is still an IETF draft
     ([#395 An action takes its idempotency key only as a SubmitKey form field, not the Idempotency-Key header data clients send](https://github.com/todd-skelton/corten/issues/395)).
+38. The live-data guide follows a job another process runs (a worker writing to a shared database):
+    one `App::task` reading into a `watch` channel for `live_watch` when many pages follow it, or a
+    `corten::live` loop that sends only when the version moved, ends after the settled state and
+    gives up after a few failed reads. No `live_poll` helper is added: the interval, what to read
+    less often and when the job is done are the app's, and a helper would take a closure for each
+    ([#388 A live part that follows a job in another process writes its own poll loop, version cursor and end](https://github.com/todd-skelton/corten/issues/388)).
+39. The scripts guide says a value a handler computes that the server also draws is a second copy,
+    and how to keep the two in agreement: draw it on the server only when a round trip is fast
+    enough, or keep the arithmetic in a `script!` module that imports nothing and run one table of
+    cases through both in a test, which `corten check` runs. Corten does not compile Rust to the
+    script or add a runner of its own: a test already does it
+    ([#444 A value a script computes as the user types is also drawn by the server, so its arithmetic is written twice (Rust and JS) with nothing checking they agree](https://github.com/todd-skelton/corten/issues/444)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

@@ -676,6 +676,21 @@ impl Shared {
 static DEFAULT: LazyLock<Arc<Shared>> =
     LazyLock::new(|| Arc::new(Shared::new(error_page_fn(default_error_page, ()), None, String::new())));
 
+/// What draws the form's patch in [`Req::invalid_with`]: a patch and nothing else.
+pub struct FormPatch<'r>(&'r Req);
+
+impl FormPatch<'_> {
+    /// The form, re-rendered with the errors, as the refusal's patch.
+    pub fn draw(self, view: impl crate::view::Patch) -> Result<DrawnPatch> {
+        let mut body = String::new();
+        self.0.render_into(view, &mut body)?;
+        Ok(DrawnPatch(body))
+    }
+}
+
+/// A patch [`FormPatch::draw`] drew, which [`Req::invalid_with`] sends with the refusal's status.
+pub struct DrawnPatch(String);
+
 /// The request as a handler answers it: which [`Mode`] the client asked in, and the methods
 /// that build each kind of response. Every handler that returns HTML takes one.
 pub struct Req {
@@ -1113,8 +1128,9 @@ impl Req {
     /// ([`Mode::Action`]) `view` as a patch; otherwise `page()`, the whole page or a redirect, so
     /// the form works without JavaScript too. `page` only runs then, so an action never loads
     /// data for a page it does not send. A data client ([`Mode::Data`]) gets `page()` as well. A
-    /// submit refused for its input is [`Req::invalid`]; a patch that needs data, a status or
-    /// headers of its own checks `req.mode == Mode::Action` itself.
+    /// submit refused for its input is [`Req::invalid`] (or [`Req::invalid_with`] when the form needs
+    /// a read); a patch that needs data, a status or headers of its own checks
+    /// `req.mode == Mode::Action` itself.
     ///
     /// ```
     /// use corten::prelude::*;
@@ -1187,6 +1203,91 @@ impl Req {
         let status = errors.refusal().status();
         match self.mode {
             Mode::Action => self.patch_with_status(status, form),
+            #[cfg(feature = "json")]
+            Mode::Data => Ok(HtmlResponse::new(errors.response())),
+            _ => {
+                let mut res = page().await?;
+                if res.status().is_success() {
+                    *res.status_mut() = status;
+                }
+                Ok(res)
+            }
+        }
+    }
+
+    /// [`Req::invalid`] for a refusal whose form needs a read of its own (the record as it is
+    /// now): both sides are drawn only for the mode that sends them, so a browser without
+    /// JavaScript reads nothing for a patch it never gets, and the patch reads nothing for the
+    /// page. `form` gets a [`FormPatch`], which draws the patch and nothing else, so a page or a
+    /// redirect on that side does not compile; a data client gets the Problem Details document,
+    /// as from `invalid` (feature `json`; without it, the page), and neither side runs. A form drawn from what the handler already has is
+    /// `invalid`.
+    ///
+    /// ```
+    /// use corten::{prelude::*, Refusal};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/batch", get = show, post = price)]
+    ///     pub struct Batch;
+    /// }
+    ///
+    /// #[derive(Id)]
+    /// struct PanelId;
+    ///
+    /// #[component]
+    /// fn Panel<'a>(status: &'a str) -> impl Patch {
+    ///     html! { <p id={PanelId}>{status}</p> }
+    /// }
+    ///
+    /// async fn status_now() -> String {
+    ///     "Publishing".to_string()
+    /// }
+    ///
+    /// # async fn show(req: Req) -> HtmlResult { req.redirect(&url::Batch) }
+    /// async fn price(req: Req) -> HtmlResult {
+    ///     let mut errors = Errors::new();
+    ///     errors.refuse(Refusal::Conflict, "The batch moved on; here it is now.");
+    ///     req.invalid_with(
+    ///         &errors,
+    ///         |form| async move {
+    ///             let status = status_now().await;
+    ///             form.draw(Panel { status: &status })
+    ///         },
+    ///         || async { req.page(html! { <html><head><title>"Batch"</title><Corten /></head><body><main>"Batch"</main></body></html> }) },
+    ///     )
+    ///     .await
+    /// }
+    /// # let _ = App::new(url::router()).router();
+    /// ```
+    ///
+    /// The form side draws a patch, so it cannot answer a page:
+    ///
+    /// ```compile_fail
+    /// use corten::prelude::*;
+    ///
+    /// async fn price(req: Req, errors: Errors) -> HtmlResult {
+    ///     req.invalid_with(&errors, |_form| async { req.redirect(&corten::Local::parse("/").unwrap()) }, || async { req.redirect(&corten::Local::parse("/").unwrap()) }).await
+    /// }
+    /// ```
+    pub async fn invalid_with<'r, For, F, FormFut, P, PageFut>(
+        &'r self,
+        errors: &crate::Errors,
+        form: F,
+        page: P,
+    ) -> crate::Result<HtmlResponse<For>>
+    where
+        F: FnOnce(FormPatch<'r>) -> FormFut,
+        FormFut: Future<Output = crate::Result<DrawnPatch>>,
+        P: FnOnce() -> PageFut,
+        PageFut: Future<Output = crate::Result<HtmlResponse<For>>>,
+    {
+        let status = errors.refusal().status();
+        match self.mode {
+            Mode::Action => {
+                let DrawnPatch(body) = form(FormPatch(self)).await?;
+                Ok(HtmlResponse::new(html_response(status, body, Some(PATCH_HEADER))))
+            }
             #[cfg(feature = "json")]
             Mode::Data => Ok(HtmlResponse::new(errors.response())),
             _ => {

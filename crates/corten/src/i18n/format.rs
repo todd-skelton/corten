@@ -368,9 +368,20 @@ pub enum MonthStyle {
     Long,
 }
 
-/// What [`t.date`](super) and `t.js().date` take: a [`DateStyle`], or a [`MonthStyle`] for the
-/// month and year alone. `t.date_time` takes a `DateStyle` only, so a month and year with a
-/// time does not compile.
+/// The month and day without the year, for [`t.date`](super) (`en`): a chart's axis, a week's row
+/// ("Week of Mar 2"), a timeline whose year the page says once. Written as Intl writes
+/// `{ month, day }`, in the locale's order and with its month names (`2 mars` in `fr`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DayStyle {
+    /// `Mar 2`
+    Short,
+    /// `March 2`
+    Long,
+}
+
+/// What [`t.date`](super) and `t.js().date` take: a [`DateStyle`], a [`MonthStyle`] for the
+/// month and year alone, or a [`DayStyle`] for the month and day alone. `t.date_time` takes a
+/// `DateStyle` only, so a month and year (or a month and day) with a time does not compile.
 pub trait DateOnly: Copy + sealed::Sealed {
     #[doc(hidden)]
     fn index(self) -> u8;
@@ -380,6 +391,7 @@ mod sealed {
     pub trait Sealed {}
     impl Sealed for super::DateStyle {}
     impl Sealed for super::MonthStyle {}
+    impl Sealed for super::DayStyle {}
 }
 
 impl DateOnly for DateStyle {
@@ -394,6 +406,14 @@ impl DateOnly for MonthStyle {
     #[inline]
     fn index(self) -> u8 {
         14 + self as u8
+    }
+}
+
+/// After the months.
+impl DateOnly for DayStyle {
+    #[inline]
+    fn index(self) -> u8 {
+        16 + self as u8
     }
 }
 
@@ -1585,8 +1605,8 @@ pub mod __private {
         pub currencies: &'static [(&'static str, &'static str, &'static str)],
         pub names: &'static [&'static str],
         /// Four dates, each with each time, two times (`DateStyle`, `TimeStyle` order), then the
-        /// month and year (`MonthStyle`).
-        pub dates: [&'static [Field]; 16],
+        /// month and year (`MonthStyle`), then the month and day (`DayStyle`).
+        pub dates: [&'static [Field]; 18],
         pub utc: &'static str,
         /// An offset (hours at `\u{1}`, minutes at `\u{3}`): whole hours east, west, then with
         /// minutes, east and west.

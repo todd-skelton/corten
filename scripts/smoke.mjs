@@ -204,6 +204,7 @@ async function run(browser) {
     delayWatch = 0;
     if (failWatch) {
       failWatch = false;
+      if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
       offline.add(route.request());
       return route.abort("internetdisconnected");
     }
@@ -474,6 +475,27 @@ async function run(browser) {
     "a failed submit leaves the page and the form as they were",
     (await page.textContent("#watch-message")) === messageBefore && (await page.getAttribute("#watch-form", "aria-busy")) === null,
   );
+  // A newer submit that waited for a write the network failed is not sent: it would fail the
+  // same way, and the user sends it again.
+  let afterFailure = 0;
+  /** @param {import("@playwright/test").Request} r */
+  const onRetry = (r) => r.method() === "POST" && r.url().endsWith("/watch") && (afterFailure += 1);
+  const failedAgain = page.evaluate(() => new Promise((resolve) => document.addEventListener("corten:error", resolve, { once: true })));
+  page.on("request", onRetry);
+  delayWatch = 600;
+  failWatch = true;
+  await page.click("#watch-form button");
+  // Another stock the form still offers, so the newer submit differs from the one it waits for.
+  const other = await page.$eval("select[name=id]", (s) =>
+    [.../** @type {HTMLSelectElement} */ (s).options].map((o) => o.value).find((v) => v && v !== /** @type {HTMLSelectElement} */ (s).value),
+  );
+  check("the form offers another stock to send", other !== undefined);
+  if (other) await page.selectOption("select[name=id]", other);
+  await page.click("#watch-form button");
+  await failedAgain;
+  await page.waitForTimeout(500);
+  page.off("request", onRetry);
+  check("a submit that waited for a write the network failed is not sent", afterFailure === 1, `posts: ${afterFailure}`);
 
   // A submit key (SubmitKey::field) is sent again until the submission has an answer, then renewed
   // as another UUID v4.
@@ -599,20 +621,140 @@ async function run(browser) {
   );
   await page.evaluate(() => document.getElementById("shadowed")?.remove());
 
-  // The latest submit wins: a slow earlier reply never overwrites a later one.
+  // The latest submit wins, but a pending write is not abandoned (the server may have applied
+  // it): the newer submit waits for its answer and goes out after it, from the form as the answer
+  // left it.
   delayWatch = 1200;
+  /** @type {string[]} */
+  const writes = [];
+  /** @param {import("@playwright/test").Request} r */
+  const onWrite = (r) => r.method() === "POST" && r.url().endsWith("/watch") && writes.push(`sent ${new URLSearchParams(r.postData() ?? "").get("id")}`);
+  /** @param {import("@playwright/test").Response} r */
+  const onAnswer = (r) => r.request().method() === "POST" && r.url().endsWith("/watch") && writes.push(`answered ${new URLSearchParams(r.request().postData() ?? "").get("id")}`);
+  page.on("request", onWrite);
+  page.on("response", onAnswer);
   await page.selectOption("select[name=id]", "PNTR");
+  await page.click("#watch-form button");
+  // The same press again sends nothing, and two newer ones are one submit of where the form ended.
+  await page.click("#watch-form button");
+  await page.selectOption("select[name=id]", "NRTH");
   await page.click("#watch-form button");
   await page.selectOption("select[name=id]", "VTGO");
   await page.click("#watch-form button");
-  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Vertigo Robotics"));
-  await page.waitForTimeout(1600);
+  const busyWhileWriting = await page.getAttribute("#watch-form", "aria-busy");
+  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Vertigo Robotics"), null, { timeout: 6000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  page.off("request", onWrite);
+  page.off("response", onAnswer);
   check(
-    "a newer submit replaces a pending one",
-    ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Vertigo Robotics") && abandoned.length === 1,
-    `${await page.textContent("#watch-message")}; abandoned: ${abandoned.join()}`,
+    "a newer submit waits for a pending write, which is answered, and then goes out",
+    ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Vertigo Robotics") &&
+      busyWhileWriting === "true" &&
+      abandoned.length === 0 &&
+      writes.join() === "sent PNTR,answered PNTR,sent VTGO,answered VTGO",
+    `${await page.textContent("#watch-message")}; busy: ${busyWhileWriting}; ${writes.join()}; abandoned: ${abandoned.join()}`,
   );
   check("the form is not left busy", (await page.getAttribute("#watch-form", "aria-busy")) === null);
+
+  // The queue's other answers, against a form of the smoke's own whose answers it writes: each
+  // case presses once, changes the field and presses again while the first is out.
+  /** @type {{ status: number, headers?: Record<string, string>, body: string }} */
+  let queueAnswer = { status: 200, body: "" };
+  /** @type {string[]} */
+  let queueSent = [];
+  await page.route("**/queue*", async (route) => {
+    const request = route.request();
+    const fields = request.method() === "GET" ? new URL(request.url()).searchParams : new URLSearchParams(request.postData() ?? "");
+    queueSent.push(`${request.method()} ${fields.get("n")}${fields.has("submit") ? ` ${fields.get("submit")}` : ""}`);
+    const answer = queueAnswer;
+    // The first of two reads answers last, so a read that was not aborted would draw over the newer.
+    const late = request.method() === "GET" && fields.get("n") === "1";
+    await new Promise((resolve) => setTimeout(resolve, late ? 1200 : 400));
+    const body = answer.body.replace("{n}", fields.get("n") ?? "");
+    await route.fulfill({ status: answer.status, headers: { "content-type": "text/html; charset=utf-8", ...answer.headers }, body }).catch(() => {});
+  });
+  /** Puts the form (in a box a patch can redraw), presses, sets n to 2, presses, and waits. @param {string} form */
+  const queueCase = async (form) => {
+    queueSent = [];
+    await page.evaluate((form) => {
+      document.getElementById("queue-box")?.remove();
+      document.querySelector("main")?.insertAdjacentHTML("beforeend", `<div id="queue-box">${form}<p id="queue-out"></p></div>`);
+    }, form);
+    const error = page.evaluate(
+      () => new Promise((resolve) => {
+        document.addEventListener("corten:error", (e) => resolve(/** @type {CustomEvent} */ (e).detail.status), { once: true });
+        setTimeout(() => resolve(null), 2500);
+      }),
+    );
+    await page.click("#queue-box button");
+    await page.fill("#queue-box [name=n]", "2");
+    // Still out when the second press lands, so the check is of the queue and not of two sends.
+    const busy = await page.getAttribute("#queue-box form", "aria-busy");
+    await page.click("#queue-box button");
+    const status = await error;
+    await page.waitForTimeout(700);
+    return { sent: queueSent.join(), status, busy };
+  };
+  const queueLogged = errors.length;
+  const patchHeaders = { "corten-patch": "1" };
+  const queueForm = (/** @type {string} */ method, /** @type {string} */ extra = "") =>
+    `<form id="queue" method="${method}" action="/queue" data-patch><input name="n" value="1">${extra}<button>Go</button></form>`;
+
+  // A newer GET aborts the older one, whose answer is worth nothing now: the first answers last,
+  // and the page keeps the newer's.
+  queueAnswer = { status: 200, headers: patchHeaders, body: '<p id="queue-out">read {n}</p>' };
+  const read = await queueCase(queueForm("get"));
+  await page.waitForTimeout(800);
+  check("a newer GET submit aborts the older one", read.sent === "GET 1,GET 2" && (await page.textContent("#queue-out")) === "read 2", `${read.sent}; ${await page.textContent("#queue-out")}`);
+
+  // An answer the runtime does not draw (a proxy's 503) drops the submit that waited.
+  queueAnswer = { status: 503, body: "Service Unavailable" };
+  const undrawn = await queueCase(queueForm("post"));
+  check("a submit that waited for an answer the runtime does not draw is not sent", undrawn.sent === "POST 1" && undrawn.status === 503, `${undrawn.sent}; ${undrawn.status}`);
+
+  // A 5xx patch is drawn, but the write may or may not have applied: the waiting submit drops.
+  queueAnswer = { status: 500, headers: patchHeaders, body: '<p id="queue-out">failed</p>' };
+  const failedPatch = await queueCase(queueForm("post"));
+  check(
+    "a submit that waited for a 5xx is not sent, and the 5xx's patch is drawn",
+    failedPatch.sent === "POST 1" && (await page.textContent("#queue-out")) === "failed",
+    `${failedPatch.sent}; ${await page.textContent("#queue-out")}`,
+  );
+
+  // A refusal of the state the write was made against (Errors::refuse, 409) is drawn and drops
+  // the waiting submit: the user reads it before anything else goes.
+  queueAnswer = { status: 409, headers: patchHeaders, body: '<p id="queue-out">stale</p>' };
+  const stale = await queueCase(queueForm("post"));
+  check(
+    "a submit that waited is not sent after a 409 refusal, which is drawn",
+    stale.sent === "POST 1" && (await page.textContent("#queue-out")) === "stale",
+    `${stale.sent}; ${await page.textContent("#queue-out")}`,
+  );
+
+  // An answer that removes the form drops it.
+  queueAnswer = { status: 200, headers: patchHeaders, body: '<template id="queue" data-remove></template>' };
+  const removed = await queueCase(queueForm("post"));
+  check("a submit that waited is not sent when the answer removes its form", removed.sent === "POST 1" && (await page.$("#queue")) === null, removed.sent);
+
+  // A form without an id that the answer took off the page is not found again: its values are
+  // the ones from before the answer.
+  queueAnswer = { status: 200, headers: patchHeaders, body: '<div id="queue-box"><form method="post" action="/queue" data-patch><input name="n" value="1"><button>Go</button></form></div>' };
+  const noId = await queueCase('<form method="post" action="/queue" data-patch><input name="n" value="1"><button>Go</button></form>');
+  check("a submit that waited is not sent when its form without an id left the page", noId.sent === "POST 1", noId.sent);
+
+  // The submit that waited goes under the form's new key: the write's answer renewed it.
+  queueAnswer = { status: 200, headers: patchHeaders, body: '<p id="queue-out">saved</p>' };
+  const keyed = await queueCase(queueForm("post", `<input type="hidden" name="submit" data-submit value="${zero}">`));
+  const [firstKey, secondKey] = keyed.sent.split(",").map((s) => s.split(" ")[2]);
+  check(
+    "a submit that waited goes out after the write's answer, under the key the answer renewed",
+    keyed.busy === "true" && keyed.sent.startsWith("POST 1 ") && keyed.sent.includes(",POST 2 ") && firstKey === zero && /^[0-9a-f-]{36}$/.test(secondKey ?? "") && secondKey !== zero,
+    keyed.sent,
+  );
+  await page.unroute("**/queue*");
+  await page.evaluate(() => document.getElementById("queue-box")?.remove());
+  // The browser logs the 503, 500 and 409 the smoke answered; nothing else is expected.
+  errors.splice(queueLogged, errors.length, ...errors.slice(queueLogged).filter((e) => !/Failed to load resource/.test(e)));
 
   const current = () => page.$$eval("a[data-nav][aria-current=page]", (links) => links.map((l) => l.getAttribute("href")).join());
   check("the shell marks the current link", (await current()) === "/");
@@ -630,13 +772,21 @@ async function run(browser) {
   const noteBorder = () => page.$eval(".disclaimer__note", (note) => getComputedStyle(note).borderInlineStartWidth);
   const styleLinks = () => page.$$eval("link[data-corten-style]", (links) => links.length);
   check("a page outside the section does not link its stylesheet", (await styleLinks()) === 0);
-  // A navigation abandons a pending submit, whose reply was for the page being left.
+  // A navigation abandons a pending submit, whose reply was for the page being left, and the
+  // newer submit that waited for it.
   delayWatch = 1200;
+  let posted = 0;
+  /** @param {import("@playwright/test").Request} r */
+  const onPost = (r) => r.method() === "POST" && r.url().endsWith("/watch") && (posted += 1);
+  page.on("request", onPost);
+  await page.click("#watch-form button");
+  await page.selectOption("select[name=id]", "NRTH");
   await page.click("#watch-form button");
   await page.click('header a[href="/news"]');
   await page.waitForFunction(() => document.title === "News | Watchlist");
   await page.waitForTimeout(1600);
-  check("navigating away abandons a pending submit", abandoned.length === 2, abandoned.join());
+  page.off("request", onPost);
+  check("navigating away abandons a pending submit and the one that waited", abandoned.length === 1 && posted === 1, `${abandoned.join()}; posts: ${posted}`);
   check("the feed stream closes when its component leaves the page (its signal aborts)", (await openFeeds()) === 0);
   check("the <corten-live> stream closes when it leaves the page", (await openStreams("/live/trades")) === 0);
   check("client navigation moves aria-current in the shell", (await current()) === "/news");

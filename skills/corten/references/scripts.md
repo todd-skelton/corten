@@ -49,7 +49,12 @@ export function showAll(rows, rest, button) {
    parameter typed `HTMLX[]` gets every element with that ref.
 2. Arguments a handler can take: refs, `event`, `target` (the element with the `on:`),
    `signal` (aborts when that element leaves the page), `scope` (the component's root), and any
-   Rust value (`&str`, numbers, `bool`, a typed route, `Serialize` with feature `json`).
+   Rust value (`&str`, numbers, `bool`, a typed route, `ToJson` with feature `json`). A name from a
+   fixed set (a sort column, a step) is a Rust enum deriving `ToJson` and `JsonSchema`, added with
+   `Types::add`, and the parameter is typed by its generated declaration,
+   `@param {import("../types/app").SortBy} by`: the call then takes only that enum. Never type a
+   handler's parameter as a string literal union: a call to it does not compile (an export only
+   other scripts import may use one).
 3. A wrong ref type, wrong event type, wrong value type or a handler the script does not export
    is a compile error at the call. `tsc --checkJs` checks the function bodies.
 4. `on:connect={..}` runs when the element joins the page: first load, navigation, a patch.
@@ -65,6 +70,10 @@ export function showAll(rows, rest, button) {
 8. A control that does nothing without the script renders `hidden`; an `on:connect` handler
    shows it.
 9. List the component in `App::components`.
+10. A value the script computes that the server also draws is a second copy: draw it on the server
+    only when a round trip is fast enough; otherwise keep the arithmetic in a `script!` module
+    that imports nothing and test both sides against one table of cases (scripts guide, A value
+    both sides compute).
 
 ## Lists and large components
 
@@ -147,6 +156,13 @@ Another source (a change stream, a queue) is `corten::live(stream)`: give each i
 `Fragment::new(html).cursor(v)`, and use the `LiveSince` argument (the page's `since`, or
 `Last-Event-ID` after a reconnect) to send nothing until the next change when it is current. A
 slow part sent once is a stream of one item. See the live-data guide.
+
+A job another process runs has only a read to repeat. Many pages following one job: an
+`App::task` reads it on an interval into a `watch` channel, and each stream is `live_watch`. One
+page's job: `corten::live` over an `unfold` loop that reads, sends only when the version moved, ends
+after the settled state and, after a few failed reads, draws that it could not read before it
+ends (the live-data guide has it). `App::task` starts with the app: jobs that start later share
+one task that sends to a `watch` channel per job.
 
 The element shows its connection as `status` (`connecting`, `live`, `reconnecting`, `closed`,
 `ended`) and `stale-since` (when a live stream dropped): style a stale part with
