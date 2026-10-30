@@ -1501,7 +1501,8 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#326 A feed's row type does not reach subscribe(), so a script's row type is whatever its JSDoc says](https://github.com/todd-skelton/corten/issues/326)).
 81. Breaking: `Href` is implemented with `write_link(&self, out, html)` instead of `with_href`, so
     it can be a `dyn Href`; `with_href` is still there to call. An app's own `impl Href` becomes
-    `#[derive(Href)]` on its enum, or `write_link`
+    `#[derive(Href)]` on its enum, or `write_link`. `corten_ui::Link` is gone: `MenuItem` and
+    `Tab` take their link as `&dyn Href`, the one link trait
     ([#391 A component several pages render cannot take a route as a prop (Href is not dyn-compatible), so a shared list's form action and column links are Strings](https://github.com/todd-skelton/corten/issues/391)).
 
 ### Fixed
