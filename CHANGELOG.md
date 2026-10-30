@@ -1106,7 +1106,7 @@ Corten is pre-1.0, so any minor version may change the API.
     route's address again and reads it back); nothing else renders differently
     ([#439 A GET form that changes some of a typed route's query fields must write every other field as a hidden input by hand, and a missed or doubled one compiles](https://github.com/todd-skelton/corten/issues/439)).
 
-147. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
+148. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
     answer (a carrier, a payment provider, another app), answered by `req.invalid` and
     `req.invalid_with` with 502 in every mode: the form drawn again with the message, the page
     without JavaScript, the Problem Details document for a data client, which got the HTML page
