@@ -13,6 +13,7 @@
 //! | [`PrintButton`] | opens the browser's print dialog; the page's print styles say what prints | no button; the browser's Print command prints the page |
 //! | [`RelativeTime`] | a time relative to now ("in 10 hours") that stays current, on one timer for the page | the time as the server wrote it |
 //! | [`CheckboxGroup`] | checkboxes of one name of which one must be checked; the browser says so before sending | the form is sent, and the handler refuses it |
+//! | [`ChoiceGroup`] | one choice (a radio group) whose value shows and hides [`ShownFor`] parts anywhere on the page; options can be links, and the address follows | links to the page with each choice, where the server draws it |
 //! | [`RequiredWhen`] | fields required only for some values of another field, disabled for the rest | the fields are optional, and the handler checks the rule |
 //! | [`dialog::modal`] | a `<dialog>` the server draws `open` (a refused form) is modal: focus in it, the page behind inert | the dialog is open, not modal |
 //! | [`dialog::modalClosedBy`] | the same for a dialog the address opens (`?selected=it_1`), and a close request (Escape) goes to its close link's address | the dialog is open, and the link closes it |
@@ -150,6 +151,7 @@
 use corten::{script::script, Component};
 
 mod checkbox_group;
+mod choice_group;
 mod combo_box;
 mod copy_button;
 mod menu_button;
@@ -161,6 +163,7 @@ mod tab_group;
 mod toaster;
 
 pub use checkbox_group::CheckboxGroup;
+pub use choice_group::{ChoiceGroup, ChoiceOption, ShownFor};
 pub use combo_box::{Choice, ComboBox, Picker};
 pub use copy_button::{Copied, CopyButton};
 pub use menu_button::MenuButton;
@@ -172,6 +175,8 @@ pub use tab_group::{Tab, TabGroup};
 pub use toaster::{Toast, ToastId, Toaster};
 
 script!(pub mod dialog = "dialog.js");
+// ChoiceGroup and ShownFor: one module, so a group reaches its parts without the page.
+script!(mod choice = "choice.js");
 
 /// Every component in this crate with a script, and the [`dialog`] handlers, for
 /// `App::components`.
@@ -186,6 +191,7 @@ pub const COMPONENTS: &[Component] = &[
     RelativeTime,
     CheckboxGroup,
     RequiredWhen,
+    choice::COMPONENT,
     dialog::COMPONENT,
 ];
 

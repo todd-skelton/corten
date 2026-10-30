@@ -1064,6 +1064,15 @@ Corten is pre-1.0, so any minor version may change the API.
     Problem Details document with neither, as from `invalid` (feature `json`). An app no longer branches on
     `req.mode` for such a refusal and loses the JSON answer
     ([#468 req.invalid takes the refused form's patch already drawn, so a patch that needs a read is read for the no-JavaScript page too](https://github.com/todd-skelton/corten/issues/468)).
+144. corten-ui's `ChoiceGroup` and `ShownFor`: one choice (a radio group, named by its
+    `#[derive(Id)]` id) whose value shows and hides parts anywhere on the page, the figures and,
+    below a chart, the list worded from them. The server checks `selected` and draws every part
+    for another value `hidden`; without JavaScript each option is a typed link to the page with that
+    choice; with it, the arrow keys and Space choose in place, the address follows, and every part
+    of the group, also one a patch adds later, follows the choice. A part's group is an id type,
+    not text, and its values are the type of the choice it is given, so a group written as text or a
+    word of another enum does not compile; no stylesheet repeats the server's values
+    ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

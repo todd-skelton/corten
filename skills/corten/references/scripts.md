@@ -231,7 +231,9 @@ export function select(link, body) {
 ## Widgets
 
 Use `corten-ui` (number field, combobox, tabs, menu button, toaster, copy button, checkbox group, required-when) before writing
-one. For anything else, use the platform first: `<dialog>`, `popover`, `<details>`, and CSS
+one. One choice that shows and hides parts in several places of the page (a period both a figure and a
+list below a chart follow) is `ChoiceGroup` with a `ShownFor` around each part, never CSS that repeats
+the choice's values or a script that finds the parts. For anything else, use the platform first: `<dialog>`, `popover`, `<details>`, and CSS
 anchor positioning. A `<dialog>` the server can draw `open` (a form it refuses) gets
 `on:connect={corten_ui::dialog::modal(target)}`, so it is modal, not just open; one the address
 opens and a link closes (`?selected=..`) gets `dialog::modalClosedBy(target, close, signal)` with
