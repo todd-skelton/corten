@@ -10,13 +10,23 @@ import { keep } from "corten";
  */
 const opening = () => keep(() => ({ start: 0, focused: false }));
 
+/** An item of the menu, of any of the three kinds. */
+const ITEM = "[role=menuitem],[role=menuitemcheckbox],[role=menuitemradio]";
+
 /**
  * The menu's items, the app's own elements: read when they are needed, so one a patch adds or
  * takes away counts too.
  * @param {HTMLDivElement} menu
  * @returns {HTMLElement[]}
  */
-const itemsOf = (menu) => /** @type {HTMLElement[]} */ ([...menu.querySelectorAll("[role=menuitem]")]);
+const itemsOf = (menu) => /** @type {HTMLElement[]} */ ([...menu.querySelectorAll(ITEM)]);
+
+/**
+ * The items the arrow keys and letters reach: a disabled `<button>` cannot take focus, so it is
+ * passed over (one that stays focusable while disabled says `aria-disabled="true"` instead).
+ * @param {HTMLDivElement} menu
+ */
+const reachable = (menu) => itemsOf(menu).filter((item) => !item.matches(":disabled"));
 
 /** Without this script Tab reaches each item; with it, the arrow keys do. @param {HTMLDivElement} menu */
 function outOfTabOrder(menu) {
@@ -56,7 +66,7 @@ export function toggled(event, trigger, menu) {
   const s = opening();
   if (open) {
     outOfTabOrder(menu);
-    itemsOf(menu).at(s.start)?.focus();
+    reachable(menu).at(s.start)?.focus();
     s.start = 0;
     return;
   }
@@ -64,11 +74,24 @@ export function toggled(event, trigger, menu) {
   const now = document.activeElement;
   if (s.focused && (!now || now === document.body || menu.contains(now))) trigger.focus();
   s.focused = false;
+  // An item opened a dialog: closing it gives focus back to the item, now hidden in the closed
+  // menu, so some browsers leave it on the page's body. The button takes it then.
+  const dialog = now?.closest("dialog[open]");
+  if (dialog && !dialog.contains(trigger)) {
+    dialog.addEventListener(
+      "close",
+      () => {
+        const at = document.activeElement;
+        if (!at || at === document.body || menu.contains(at)) trigger.focus();
+      },
+      { once: true },
+    );
+  }
 }
 
 /** @param {KeyboardEvent} event @param {HTMLDivElement} menu */
 export function step(event, menu) {
-  const items = itemsOf(menu);
+  const items = reachable(menu);
   const at = items.indexOf(/** @type {any} */ (document.activeElement));
   /** @type {number} */
   let to;
@@ -89,7 +112,7 @@ export function step(event, menu) {
  * @param {MouseEvent} event @param {HTMLDivElement} menu
  */
 export function used(event, menu) {
-  const item = event.target instanceof Element && event.target.closest("[role=menuitem]");
+  const item = event.target instanceof Element && event.target.closest(ITEM);
   if (!item || !menu.contains(item)) return;
   queueMicrotask(() => menu.matches(":popover-open") && menu.hidePopover());
 }

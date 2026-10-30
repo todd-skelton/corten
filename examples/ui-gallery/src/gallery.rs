@@ -222,6 +222,7 @@ pub fn Gallery<'a>(
                         <MenuButton id="actions" label="More actions">
                             <a role="menuitem" href={url::Help}>"Help"</a>
                             <form method="post" action={url::Archive} data-patch><button role="menuitem">"Archive"</button></form>
+                            <button type="button" role="menuitem" disabled>"Delete"</button>
                             <button type="button" role="menuitem" command="show-modal" commandfor={RenameId}>"Rename…"</button>
                             <form method="post" action={url::Watch} data-patch><button role="menuitem">"Watch"</button></form>
                         </MenuButton>

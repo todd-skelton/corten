@@ -47,7 +47,11 @@ html! {
 ```
 
 The script reads the items from the menu when it needs them, so a patch that adds or removes one
-changes the menu, and closes the menu when one is used.
+changes the menu, and closes the menu when one is used. An item is an element with
+`role="menuitem"` (or `menuitemcheckbox`, `menuitemradio`); one without the role is not reached
+by the arrow keys, so give every child one. A `disabled` button is passed over; one that should
+stay reachable and say why it does nothing is `aria-disabled="true"` instead. Closing a dialog an
+item opened returns focus to the menu's button.
 
 A design system wraps each one and styles its parts by role and state, which are what assistive
 technology announces, so the styles cannot drift from it: `.field [role="option"][aria-selected="true"]`,

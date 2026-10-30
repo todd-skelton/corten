@@ -18,8 +18,10 @@ use corten::prelude::*;
 ///
 /// Parts: a `div` around `button[aria-haspopup=menu]` (`[aria-expanded=true]` when open);
 /// `[role=menu]`, the popover, whose anchor is the button (place it with `position-area`);
-/// `[role=menuitem]`, the app's items. An item's text is what typing a letter matches, so an icon
-/// item has visually hidden text.
+/// `[role=menuitem]` (or `menuitemcheckbox`, `menuitemradio`), the app's items. An item's text is
+/// what typing a letter matches, so an icon item has visually hidden text. A `disabled` button is
+/// passed over by the keys; `aria-disabled="true"` keeps one reachable. Closing a dialog an item
+/// opened returns focus to the button.
 ///
 /// ```
 /// use corten::prelude::*;
