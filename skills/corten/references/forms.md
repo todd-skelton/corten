@@ -161,12 +161,7 @@ first outcome. The runtime keeps the key until the submit has an answer below 50
 
 The handler answers a failed check with `req.invalid`. It replies 422 with the form as a patch for
 the runtime, a Problem Details document (`application/problem+json`, `{"title","status","detail","fields","form"}`) for JSON clients, or the whole page for a browser without
-JavaScript. The page closure runs only in that last case, so put the expensive loads inside it.
-When the form itself needs a read (the record as it is now), use
-`req.invalid_with(&errors, |form| async { let r = read().await?; form.draw(View { r: &r }) }, page)`,
-never a branch on `req.mode`: each side runs only for its mode, and JSON clients still get Problem
-Details.
-
+JavaScript. The page closure runs only in that last case, so put the expensive loads inside it:
 
 ```rust
 let price = match check(t, &form) {
@@ -178,6 +173,11 @@ let price = match check(t, &form) {
     }
 };
 ```
+
+When the form itself needs a read (the record as it is now), use
+`req.invalid_with(&errors, |form| async { let r = read().await?; form.draw(View { r: &r }) }, page)`,
+never a branch on `req.mode`: each side runs only for its mode, and JSON clients (feature `json`)
+still get Problem Details.
 
 Keep the HTML attributes (`required`, `type="email"`, `inputmode`) too: the browser checks them
 first, and the server check is the one that counts. A field required only for some values of

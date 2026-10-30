@@ -67,7 +67,7 @@ if let Err(errors) = check(&input) {
 
 A refusal whose form needs a read of its own (the batch as it is now, for "someone moved it
 on") is `req.invalid_with`: the form side runs only for the patch, the page side only for the
-page, and a data client gets the Problem Details document with neither read. The form side gets
+page, and a data client gets the Problem Details document (feature `json`) with neither read. The form side gets
 a `FormPatch`, which draws a patch and nothing else, so it cannot answer a page by mistake:
 
 ```rust,ignore

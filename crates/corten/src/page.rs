@@ -655,9 +655,9 @@ static DEFAULT: LazyLock<Arc<Shared>> =
     LazyLock::new(|| Arc::new(Shared::new(error_page_fn(default_error_page, ()), None, String::new())));
 
 /// What draws the form's patch in [`Req::invalid_with`]: a patch and nothing else.
-pub struct FormPatch(Req);
+pub struct FormPatch<'r>(&'r Req);
 
-impl FormPatch {
+impl FormPatch<'_> {
     /// The form, re-rendered with the errors, as the refusal's patch.
     pub fn draw(self, view: impl crate::view::Patch) -> Result<DrawnPatch> {
         let mut body = String::new();
@@ -668,6 +668,7 @@ impl FormPatch {
 
 /// A patch [`FormPatch::draw`] drew, which [`Req::invalid_with`] sends with the refusal's status.
 pub struct DrawnPatch(String);
+
 /// The request as a handler answers it: which [`Mode`] the client asked in, and the methods
 /// that build each kind of response. Every handler that returns HTML takes one.
 pub struct Req {
@@ -1197,7 +1198,7 @@ impl Req {
     /// JavaScript reads nothing for a patch it never gets, and the patch reads nothing for the
     /// page. `form` gets a [`FormPatch`], which draws the patch and nothing else, so a page or a
     /// redirect on that side does not compile; a data client gets the Problem Details document,
-    /// as from `invalid`, and neither side runs. A form drawn from what the handler already has is
+    /// as from `invalid` (feature `json`; without it, the page), and neither side runs. A form drawn from what the handler already has is
     /// `invalid`.
     ///
     /// ```
@@ -1247,14 +1248,14 @@ impl Req {
     ///     req.invalid_with(&errors, |_form| async { req.redirect(&corten::Local::parse("/").unwrap()) }, || async { req.redirect(&corten::Local::parse("/").unwrap()) }).await
     /// }
     /// ```
-    pub async fn invalid_with<For, F, FormFut, P, PageFut>(
-        &self,
+    pub async fn invalid_with<'r, For, F, FormFut, P, PageFut>(
+        &'r self,
         errors: &crate::Errors,
         form: F,
         page: P,
     ) -> crate::Result<HtmlResponse<For>>
     where
-        F: FnOnce(FormPatch) -> FormFut,
+        F: FnOnce(FormPatch<'r>) -> FormFut,
         FormFut: Future<Output = crate::Result<DrawnPatch>>,
         P: FnOnce() -> PageFut,
         PageFut: Future<Output = crate::Result<HtmlResponse<For>>>,
@@ -1262,7 +1263,7 @@ impl Req {
         let status = errors.refusal().status();
         match self.mode {
             Mode::Action => {
-                let DrawnPatch(body) = form(FormPatch(self.duplicate())).await?;
+                let DrawnPatch(body) = form(FormPatch(self)).await?;
                 Ok(HtmlResponse::new(html_response(status, body, Some(PATCH_HEADER))))
             }
             #[cfg(feature = "json")]
@@ -1274,18 +1275,6 @@ impl Req {
                 }
                 Ok(res)
             }
-        }
-    }
-    /// The same request again, for [`FormPatch`], which draws after the handler's read: only on a
-    /// refusal's path.
-    fn duplicate(&self) -> Req {
-        Req {
-            mode: self.mode,
-            nonce: self.nonce.clone(),
-            uri: self.uri.clone(),
-            accept_language: self.accept_language.clone(),
-            shared: self.shared.clone(),
-            signal: self.signal.clone(),
         }
     }
 
