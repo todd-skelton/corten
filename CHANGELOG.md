@@ -960,6 +960,17 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#422 A navigation marks only main as busy, not the link or GET form that started it, so a page cannot show which action is on its way without a script](https://github.com/todd-skelton/corten/issues/422)).
     The minified runtime grows by 374 bytes (25,510 to 25,884), 124 gzipped (9,278 to 9,402) and
     115 with brotli (8,381 to 8,496).
+133. `t.signed_money(amount, currency)` and `t.js().signed_money(currency)`: an amount with its
+    sign, as Intl's `signDisplay: "exceptZero"` writes it (`+$3.20`, `-$1.23`, `$0.00`, `+3,20 $US`),
+    for a difference between two amounts, the same on the server and in scripts. It uses the
+    locale data already shipped: a gain is the loss's template with the plus sign in place of the
+    minus, which `scripts/locale-data.mjs` checks against Intl for every locale and currency
+    (`docs/guide/views.md`, `docs/guide/scripts.md`). `examples/watchlist` shows today's move in money
+    beside the percent, written by the server and kept current by its script. `t.money` itself is unchanged: about 934
+    instructions per amount before and after under callgrind (three runs each of 1,200 less 200
+    formats; 931.5 to 934.7 before, 933.8 to 933.9 after). `format.js` grows by 48 bytes
+    minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)
+    ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1522,7 +1533,16 @@ Corten is pre-1.0, so any minor version may change the API.
     `corten check` runs it in place of its own `cargo fmt --check`. Given paths, or outside a
     package, `corten fmt` still lays out only the markup
     ([#379 corten fmt does not run cargo fmt, so a check that fails on rustfmt is not fixed by it](https://github.com/todd-skelton/corten/issues/379)).
-82. **Breaking for JSON clients.** Every JSON failure (under `App::api`, a `JsonResult<T>` route, a
+82. corten-ui's `Choice` writes its value as its `Display`, as a route writes a field, in place of
+    its `AsRef<str>`, so a row picked by its numeric id is a `Choice<i32>` and the form's field is
+    `line: i32` (as for a route's field, `Display` must write what the field's `Deserialize` reads) ([#376 corten-ui choices must be AsRef<str>, so a row picked by its numeric id cannot use the typed picker](https://github.com/todd-skelton/corten/issues/376)).
+    A choice also has `terms`, other words that find it without being shown (a card number, a
+    SKU, a grade), and `ComboBox` lists the matches ranked: a label or term typed whole, then one
+    that starts with the text, then one that holds it, each kind in the options' order. A choice
+    is built with `Choice::new(value, label)` and its terms set with
+    `Choice { terms: &["NM"], ..Choice::new(..) }`. examples/ui-gallery finds a condition by its
+    grade (`mp`) ([#420 corten-ui ComboBox matches only a substring of the label, so a picker cannot search other terms (a card number) or rank the matches](https://github.com/todd-skelton/corten/issues/420)).
+83. **Breaking for JSON clients.** Every JSON failure (under `App::api`, a `JsonResult<T>` route, a
     data client) is an RFC 9457 Problem Details document sent as `application/problem+json`, in
     place of Corten's own `{"error":{"status","message"}}` as `application/json`:
     `{"title":"Not Found","status":404,"detail":"No item 7."}`. `title` is the status's reason,

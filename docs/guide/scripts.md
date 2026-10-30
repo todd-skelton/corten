@@ -372,7 +372,8 @@ export function total(rows, out, money, day) {
 
 `t.js().number()` is a `NumberFormat` (`format(1234)`, or a decimal as its text, `format("21.5")`),
 `t.js().money(USD)` a `MoneyFormat` (`format(minor)`: an integer of minor units, as
-`t.money(Minor(..), USD)` takes; a float is rounded to one), and `t.js().date(DateStyle)`,
+`t.money(Minor(..), USD)` takes; a float is rounded to one; `t.js().signed_money(USD)` is one
+that writes as `t.signed_money` does), and `t.js().date(DateStyle)`,
 `.time(TimeStyle)` and `.date_time(..)` a `DateFormat` (`format(at)`: a `Date`, milliseconds or
 ISO text), in UTC unless `.zone(Offset::hours(-5))`, and `t.js().percent(2)` a `PercentFormat`
 (`format(ratio)`, `format(0.029)` or `format("0.029")`, as `t.percent(ratio, 2)` writes it;
