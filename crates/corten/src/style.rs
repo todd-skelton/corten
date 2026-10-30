@@ -35,7 +35,12 @@
 //!   Element defaults, resets and fonts belong in the app's `static/style.css`.
 //! - Variants are Rust: `match tone { Tone::Danger => Danger, Tone::Neutral => Neutral }` picks
 //!   a class, so a variant without a rule does not compile.
-//! - A helper in the same module can share a stylesheet: `#[component(css = OfferList)]`.
+//! - A helper component shares another's stylesheet: `#[component(css = OfferList)]` in the same
+//!   module, `#[component(css = super::offers::OfferList)]` from another (a screen's panels in
+//!   files of their own). Any module of the same crate that can see the owner shares its sheet,
+//!   naming it by its path (not through a `use` of it); its classes are in scope in the helper as
+//!   in the owner, and its uses count for the owner. Classes are in scope only in a component: a
+//!   plain `fn` that picks a class is a helper component, or a `match` in the markup.
 //! - The component gets a constant with its own name, `OfferList: corten::Component`; list it
 //!   once in [`crate::App::components`]. Corten joins every listed stylesheet, in order, into one
 //!   file at a content-versioned URL, `components.css`, linked from `<head>` after the shell's
@@ -63,6 +68,72 @@
 //! let style = BadgeList.style.unwrap();
 //! assert!(style.css.starts_with(".badge-list__list{"));
 //! assert_eq!(style.classes, ["list", "badge", "hot"]);
+//! ```
+//!
+//! A screen whose views are in several modules shares one stylesheet by naming its owner by path:
+//!
+//! ```
+//! mod lists {
+//!     use corten::prelude::*;
+//!
+//!     #[component(css)]
+//!     pub fn BadgeList<'a>(badges: &'a [&'a str]) -> impl Render {
+//!         html! { <ul class={List}> for b in badges { <li class={Badge}>{b}</li> } </ul> }
+//!     }
+//! }
+//!
+//! mod panels {
+//!     use corten::prelude::*;
+//!
+//!     #[component(css = super::lists::BadgeList)]
+//!     pub fn HotBadge<'a>(label: &'a str) -> impl Render {
+//!         html! { <b class={[Badge, Hot]}>{label}</b> }
+//!     }
+//! }
+//!
+//! fn main() {
+//!     use corten::view::Render;
+//!     assert_eq!(lists::BadgeList { badges: &["Foil"] }.to_html(), r#"<ul class="badge-list__list"><li class="badge-list__badge">Foil</li></ul>"#);
+//!     assert_eq!(panels::HotBadge { label: "Foil" }.to_html(), r#"<b class="badge-list__badge badge-list__hot">Foil</b>"#);
+//! }
+//! ```
+//!
+//! A component named as the owner must have a stylesheet of its own:
+//!
+//! ```compile_fail
+//! mod plain {
+//!     use corten::prelude::*;
+//!     #[component]
+//!     pub fn Plain() -> impl Render {
+//!         html! { <p></p> }
+//!     }
+//! }
+//!
+//! use corten::prelude::*;
+//! #[component(css = plain::Plain)]
+//! fn Helper() -> impl Render {
+//!     html! { <p></p> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! nor can a module that cannot see the owner share its sheet:
+//!
+//! ```compile_fail,E0603
+//! mod screen {
+//!     use corten::prelude::*;
+//!     #[component(css)]
+//!     fn BadgeList() -> impl Render {
+//!         html! { <ul class={(List, Badge, Hot)}></ul> }
+//!     }
+//! }
+//!
+//! use corten::prelude::*;
+//! #[component(css = screen::BadgeList)]
+//! fn Helper() -> impl Render {
+//!     html! { <p class={Badge}></p> }
+//! }
+//! # fn main() {}
 //! ```
 //!
 //! A class the stylesheet does not have does not compile:

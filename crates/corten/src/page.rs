@@ -98,7 +98,7 @@ impl<R: crate::Route> crate::view::Attrs for Nav<'_, R> {
         // escaped is compared as its unescaped URL.
         let written = &out[start..];
         let current = if written.split(['?', '#']).next().unwrap_or(written).contains('&') {
-            crate::route::Href::with_href(self.to, |href| is_current(self.path, href, self.section))
+            is_current(self.path, &crate::route::link(self.to), self.section)
         } else {
             is_current(self.path, written, self.section)
         };
@@ -136,7 +136,8 @@ impl NavTarget for crate::Local {
     /// link, the request it makes and the runtime's `pathname` are the same text in every engine
     /// (Firefox and WebKit keep `|`, Chromium encodes it).
     fn write_url(&self, out: &mut String) {
-        crate::route::Href::with_href(self, |href| {
+        let href = self.as_str();
+        {
             let end = href.find(['?', '#']).unwrap_or(href.len());
             for c in href[..end].chars() {
                 match c {
@@ -150,7 +151,7 @@ impl NavTarget for crate::Local {
                 }
             }
             out.push_str(&href[end..]);
-        });
+        }
     }
 }
 
@@ -784,7 +785,10 @@ impl Req {
     /// it: the rule the runtime applies to `<a data-nav>` (`data-nav="section"`) after each
     /// navigation.
     pub fn is_current(&self, href: &(impl crate::route::Href + ?Sized), section: bool) -> bool {
-        href.with_href(|href| is_current(self.uri.path(), href, section))
+        match href.as_text() {
+            Some(text) => is_current(self.uri.path(), text, section),
+            None => is_current(self.uri.path(), &crate::route::link(href), section),
+        }
     }
 
     /// A nav link to `to`, from one mention of the route: `<a {..req.nav(&url::About)}>"About"</a>`
@@ -1174,7 +1178,7 @@ impl Req {
     /// `axum::http::Uri` to leave the app. Works with and without
     /// JavaScript.
     pub fn redirect<For>(&self, to: &(impl crate::route::Href + ?Sized)) -> crate::Result<HtmlResponse<For>> {
-        let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
+        let value = crate::route::header_value(to).map_err(Error::new)?;
         Ok(HtmlResponse::new(redirect(self.mode, value)))
     }
 
@@ -1224,7 +1228,7 @@ impl Req {
     /// [`Req::redirect`]. Parameters the old URL had are the route's to carry
     /// (`#[route(prefix = ..)]` for ones named by data), so only the ones it knows move with it.
     pub fn moved<For>(&self, to: &(impl crate::route::Href + ?Sized)) -> crate::Result<HtmlResponse<For>> {
-        let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
+        let value = crate::route::header_value(to).map_err(Error::new)?;
         if self.mode == Mode::Action || (self.mode == Mode::Navigation && (has_fragment(&value) || elsewhere(&value))) {
             return Ok(HtmlResponse::new(redirect(self.mode, value)));
         }
