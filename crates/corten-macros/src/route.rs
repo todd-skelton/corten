@@ -56,7 +56,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             if name.to_string() == "route"
                 && args.len() > 1
                 && matches!(args.first(), Some(TokenTree::Literal(_)))
-                && !is_ident(args.get(2), "prefetch")
+                // `"/..", prefetch = false` alone is a path's, read below.
+                && !(args.len() == 5 && is_ident(args.get(2), "prefetch"))
             {
                 return err(
                     args[1].span(),
@@ -691,8 +692,16 @@ fn route_prefetch(attrs: &[Group]) -> Result<(Vec<Group>, bool), Error> {
             {
                 match value.to_string().as_str() {
                     "false" => prefetch = false,
-                    "true" => {}
-                    _ => return err(value.span(), "prefetch = false: the runtime does not fetch the page ahead of a click"),
+                    "true" => {
+                        return err(
+                            value.span(),
+                            "a route is prefetched unless it says prefetch = false: leave prefetch = true out",
+                        )
+                    }
+                    _ => return err(
+                        value.span(),
+                        "prefetch takes only false: prefetch = false, and the runtime does not fetch the page ahead of a click",
+                    ),
                 }
             }
             _ => {

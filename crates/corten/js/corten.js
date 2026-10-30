@@ -1295,7 +1295,8 @@ async function visit(url, signal, redirected, again, place, source) {
   const hit = again ? undefined : prefetched.get(key);
   prefetched.delete(key);
   const fresh = hit && performance.now() - hit.at < PREFETCH_FRESH_MS;
-  if (!fresh) discard(hit);
+  // A redirected visit has its answer already, so a prefetch of the same page goes unused.
+  if (!fresh || redirected) discard(hit);
   // A visit left before its prefetched answer is used stops that request too.
   else signal.addEventListener("abort", () => discard(hit), { once: true });
   // Marked busy as this visit's (past a form control named setAttribute): a newer visit's mark

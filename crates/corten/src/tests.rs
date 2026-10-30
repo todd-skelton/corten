@@ -973,6 +973,16 @@ fn a_nav_marks_the_deepest_entry_that_holds_the_page() {
     let links = written(nav_links("/a%22b%7Cc", [(NavTo::page(&odd), ())]));
     assert!(links[0].starts_with(r#" href="/a%22b%7Cc?q=&quot;|&quot;" data-nav data-nav-group=""#), "{links:?}");
     assert!(links[0].ends_with(r#" aria-current="page""#), "{links:?}");
+
+    // A route that says `prefetch = false` keeps saying so in a nav, as in `href={..}`.
+    #[derive(crate::Route)]
+    #[route("/reports/suggested", prefetch = false)]
+    struct Suggested;
+    let links = written(nav_links("/", [(NavTo::page(&Suggested), ()), (NavTo::page(&Home), ())]));
+    assert!(links[0].ends_with(" data-no-prefetch") && !links[1].contains("data-no-prefetch"), "{links:?}");
+    let mut one = String::new();
+    crate::page::Nav { path: "/reports/suggested", to: &Suggested, section: false }.render_attrs(&mut one);
+    assert_eq!(one, r#" href="/reports/suggested" data-nav aria-current="page" data-no-prefetch"#);
 }
 
 #[test]

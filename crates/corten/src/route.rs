@@ -473,7 +473,8 @@ pub trait Route {
 
     /// Whether the runtime may fetch the page ahead of a click (on a hover): `false` for a route
     /// declared `#[route("/..", prefetch = false)]`, a page costly to draw, so a link to it
-    /// (`href={..}`) is written with `data-no-prefetch` and only a click starts its work.
+    /// (`href={..}`, a nav's `{..req.nav(..)}` and `req.nav_of`) is written with `data-no-prefetch`
+    /// and only a click starts its work.
     ///
     /// ```
     /// use corten::{prelude::*, Href};
@@ -521,6 +522,14 @@ pub trait Route {
     /// ```compile_fail
     /// #[derive(corten::Route)]
     /// #[route("/reports", prefetch = no)]
+    /// struct Reports;
+    /// ```
+    ///
+    /// and the default is not written out, so there is one way to say it:
+    ///
+    /// ```compile_fail
+    /// #[derive(corten::Route)]
+    /// #[route("/reports", prefetch = true)]
     /// struct Reports;
     /// ```
     const PREFETCH: bool = true;
