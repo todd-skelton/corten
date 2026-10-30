@@ -145,8 +145,8 @@ impl<P: Prefix> Api<P> {
     /// `WWW-Authenticate`) and a handler's `Error`. `message` is what the client may be told: a
     /// 4xx's message, a 5xx's reason (and its message under `corten dev`). A failure with a JSON
     /// body of the handler's own, and a [`crate::Relay`]'s, pass through as they are, and so
-    /// does the 422 of the input's field errors (`?` on `Errors` in a `JsonResult` handler,
-    /// `req.invalid`), which stays a Problem Details document with its `fields` and `form`
+    /// does the 422 of the input's field errors (or the 409 or 410 of a refusal, `Errors::refuse`;
+    /// `?` on `Errors` in a `JsonResult` handler, `req.invalid`), which stays a Problem Details document with its `fields` and `form`
     /// members: a status and a message have no place for them.
     ///
     /// ```

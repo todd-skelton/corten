@@ -539,7 +539,8 @@ never changes there. `Public::immutable(answer)` sends it as Corten's versioned 
 cookies do not make it private and no `Vary: cookie` is added. A cookie it sets or a caller
 something read still does. Its handler is held to the same rule as any `Public` handler. It takes
 `Media` or `corten::Result<Media>` only: a page, a redirect or JSON changes with the deploy, so
-`Public::immutable(req.page(..))` does not compile. A URL that does not name its content
+`Public::immutable(req.page(..))` does not compile, and neither does a `PageOr<Media>`, which
+may be a redirect. `Public::new` takes one, with the page inside made for everyone. A URL that does not name its content
 (`/me/picture`) takes `Public::new` with a lifetime.
 
 A header of the app's goes on a public answer with `Public::header`, named by a type: a file

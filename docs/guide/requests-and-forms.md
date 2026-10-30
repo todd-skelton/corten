@@ -209,6 +209,16 @@ saying no: "The policy was retired meanwhile.") is the form's own message:
 `role="alert"` paragraph that is announced when the patch arrives. JSON clients get it first in
 `message` and as `form`; an agent tool gets it first in its error.
 
+A submit refused for the state it was made against rather than its input (a stale revision, a
+step already taken or out of order, a record deleted meanwhile) is
+`errors.refuse(Refusal::Conflict, text)` (`Refusal::Gone` for a deleted one). It is the form's
+message, and `req.invalid` answers it with 409 (410) in every mode instead of 422: the form
+drawn again with what the user typed, the page without JavaScript, the Problem Details document
+for a data client. A post that can be refused is a `data-patch` form: a plain post's refusal
+draws the whole page and leaves the address at the action's URL, whose GET may not exist. The
+one exception is a download, which must be a plain post ([below](#files)): its refusal redirects
+to the page that says why.
+
 A write that must not apply twice (an order, a payment, a message sent) carries a `SubmitKey`.
 A 502 or a dropped connection can hide a write that committed, and the user, the browser or the
 runtime then sends it again. Add a `SubmitKey` field to the form struct and draw it with
@@ -392,6 +402,26 @@ async fn export(caller: Caller<Viewer>) -> corten::Result<Media> {
 }
 ```
 
+A download the handler may refuse (posted from a page, at the revision the page showed, when the
+run has moved on) answers `PageOr<Media>` (or `PageOr<Relay>` for another service's file): the
+file, or the page saying why, or a redirect to it, each `.into()` it. The user stays on the page
+with the reason instead of an error page, and the page is private like any other. The form is a
+plain `method="post"` form, not `data-patch`: the runtime draws a patch or a page, and a file
+answered to a `data-patch` submit is not saved (it dispatches `corten:error`). Inside `Public`,
+name the variant (`.map(PageOr::Page)`), since `.into()` cannot infer the type there. This is the
+one refusal that redirects: a plain post's page drawn at the action's URL would leave the user
+there, so a stale download answers a redirect to its page with the reason, where a `data-patch`
+form's refusal is a 409 drawn in place.
+
+```rust,ignore
+async fn download(req: Req, at: Params<url::Download<'_>>, Form(form): Form<At>) -> corten::Result<PageOr<Media>> {
+    match claim(&at.id, form.revision).await {
+        Ok(csv) => Ok(Media::new("text/csv", csv).attachment("run.csv").into()),
+        Err(Stale) => Ok(req.redirect(&url::Run { id: &at.id, said: Some(Said::Stale) })?.into()),
+    }
+}
+```
+
 A browser cannot be given its files back by markup. A patch keeps the files chosen in the input
 it replaces until a successful answer, so the user can send them again. Without JavaScript the
 page asks for them again. A body that is not multipart is a 415, and one that breaks the format
@@ -513,8 +543,10 @@ Without JavaScript the browser reloads the page (`<meta http-equiv="refresh">` i
 
 A `data-patch` form's answer can be in the same state: the write is in, but the read that
 draws the part it replaces is behind. Rather than wait for the read, or redirect to a page only
-to show "saving", the patch says where to read it again: `ReadAgain { after }.from(&route)`, a
-patch instruction like `Remove` and `Append`. After the delay the runtime fetches the route as a
+to show "saving", the patch says where to read it again: `ReadAgain { after }.from(route)`, a
+patch instruction like `Remove` and `Append`. It takes the route by value (a borrowed one works where the route outlives the patch, as in a
+handler), so a component that is both part of the page and the patch builds it in its body and
+returns it. After the delay the runtime fetches the route as a
 GET `data-patch` form would (`corten: action`) and applies the patch it answers, which asks again
 while it is still behind. The route's URL carries what the read waits for (the write's receipt),
 since the page's address does not; its handler answers the part with `req.patch_or`, and so the

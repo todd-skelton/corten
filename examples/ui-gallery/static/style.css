@@ -1,6 +1,5 @@
-/* Element defaults and the design system's colors. Parts the components hide with the hidden
-   attribute stay hidden even when a design system gives their role a display. */
-[hidden] { display: none !important; }
+/* Element defaults and the design system's colors. (components.css starts with the rule that
+   keeps a part the components hide with the hidden attribute hidden, whatever its display.) */
 *, *::before, *::after { box-sizing: border-box; }
 :root {
   color-scheme: light dark;
