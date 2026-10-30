@@ -1095,18 +1095,7 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 146. A route costly to draw says `#[route("/reports/suggested", get = suggested, prefetch = false)]` (`Route::PREFETCH`), and every link to it, `href={..}` with the route or a `&dyn Href` holding it, is written with `data-no-prefetch`, so hovering it starts no work and only a click does; the route says it once instead of each link. The runtime now aborts a prefetch it drops (the 8-newest limit, a stale entry, a form post, a visit left before the prefetched answer is used), so the server sees the client go instead of drawing the page to the end, and the views guide describes prefetch, `data-no-prefetch` and `data-reload`. The minified runtime grows by 83 bytes (26,536 to 26,619), 29 gzipped (9,642 to 9,671), 33 with brotli (8,709 to 8,742). The item page's render runs 0.11% more instructions (median of 3, callgrind, release build: 35,623,327,994 against 35,584,847,328 on its base), the check each link makes of its route's `PREFETCH`.
     ([#421 Hover prefetch starts a costly GET page's work; the data-no-prefetch opt-out is undocumented, per link, and a discarded prefetch never aborts](https://github.com/todd-skelton/corten/issues/421)).
-147. `corten::form::keep_query(&at, html! { controls })`: a GET form's controls, then the
-    rest of a typed route's query as hidden inputs, for a form that changes some of its fields (a
-    GET form sends only its own controls and drops its action's query). Every key of the route's
-    query that no control names (a field, a `#[route(query)]` set's key, a `#[route(prefix)]`
-    entry) is kept, written as the route's links write it, so there is no list of names: a key is
-    neither dropped nor sent twice, and a field the route gains is kept by every such form, where a
-    hand-written list silently dropped it. It costs a form about 3.5 µs where hidden inputs
-    written by hand cost about 0.5 µs (release build, 200,000 renders, 3 rounds: it writes the
-    route's address again and reads it back); nothing else renders differently
-    ([#439 A GET form that changes some of a typed route's query fields must write every other field as a hidden input by hand, and a missed or doubled one compiles](https://github.com/todd-skelton/corten/issues/439)).
-
-148. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
+147. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
     answer (a carrier, a payment provider, another app), answered by `req.invalid` and
     `req.invalid_with` with 502 in every mode: the form drawn again with the message, the page
     without JavaScript, the Problem Details document for a data client, which got the HTML page
@@ -1118,6 +1107,17 @@ Corten is pre-1.0, so any minor version may change the API.
     not as a refusal of a stale state. Still a closed set: no other 5xx, and no `StatusCode`. An
     app's exhaustive `match` on `Refusal` or `ToolError` gains an arm
     ([#480 A post refused because a service it calls failed has no Refusal (502/503), so it cannot use req.invalid_with and a JSON client gets the HTML page](https://github.com/todd-skelton/corten/issues/480)).
+148. `corten::form::keep_query(&at, html! { controls })`: a GET form's controls, then the
+    rest of a typed route's query as hidden inputs, for a form that changes some of its fields (a
+    GET form sends only its own controls and drops its action's query). Every key of the route's
+    query that no control names (a field, a `#[route(query)]` set's key, a `#[route(prefix)]`
+    entry) is kept, written as the route's links write it, so there is no list of names: a key is
+    neither dropped nor sent twice, and a field the route gains is kept by every such form, where a
+    hand-written list silently dropped it. It costs a form about 3.5 µs where hidden inputs
+    written by hand cost about 0.5 µs (release build, 200,000 renders, 3 rounds: it writes the
+    route's address again and reads it back); nothing else renders differently
+    ([#439 A GET form that changes some of a typed route's query fields must write every other field as a hidden input by hand, and a missed or doubled one compiles](https://github.com/todd-skelton/corten/issues/439)).
+
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
