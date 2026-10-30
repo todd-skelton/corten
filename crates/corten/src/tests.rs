@@ -608,8 +608,8 @@ async fn errors_render_in_the_shell_for_each_mode_without_leaking_the_message() 
     assert_eq!(headers["corten-page"], "1");
     assert!(body.starts_with("<title>Something went wrong</title>"));
     let (_, headers, body) = call_with(app(failing(), None), "GET", "/", None, Some("application/json")).await;
-    assert_eq!(headers["content-type"], "application/json");
-    assert_eq!(body, r#"{"error":{"status":500,"message":"Internal Server Error"}}"#, "the message stays in the log");
+    assert_eq!(headers["content-type"], "application/problem+json");
+    assert_eq!(body, r#"{"title":"Internal Server Error","status":500}"#, "the message stays in the log");
     let (status, _, body) = call_with(app(failing(), None), "GET", "/missing", None, None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(body.contains("<title>Not found</title>"));
@@ -629,8 +629,11 @@ async fn an_extractor_rejection_gets_the_error_page_in_a_browser_and_its_text_in
     let (_, _, body) = call_with(App::new(Routes::from(routes())).dev(true).router(), "GET", "/n/abc", None, html).await;
     assert!(body.contains("<pre>Invalid URL"), "the default error page shows it: {body}");
     let (status, headers, body) = call_with(app(routes(), None), "GET", "/n/abc", None, Some("application/json")).await;
-    assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::BAD_REQUEST, "application/json"));
-    assert!(body.starts_with(r#"{"error":{"status":400,"message":"Invalid URL"#), "a data client gets the text as JSON: {body}");
+    assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::BAD_REQUEST, "application/problem+json"));
+    assert!(
+        body.starts_with(r#"{"title":"Bad Request","status":400,"detail":"Invalid URL"#),
+        "a data client gets the text as JSON: {body}"
+    );
     let (_, _, body) = call_with(app(routes(), None), "GET", "/n/abc", None, None).await;
     assert!(body.starts_with("Invalid URL"), "so does a client that does not ask for HTML: {body}");
     let (_, _, body) = call_with(app(routes(), None), "GET", "/n/7", None, None).await;
@@ -713,10 +716,7 @@ async fn a_handler_that_panics_gets_the_error_page_and_the_server_keeps_serving(
     let (_, headers, body) = call_with(router.clone(), "GET", "/panic", Some("nav"), None).await;
     assert_eq!(headers["corten-page"], "1", "a navigation swaps the error page in: {body}");
     let (status, _, body) = call_with(router.clone(), "GET", "/panic", None, Some("application/json")).await;
-    assert_eq!(
-        (status, &body[..]),
-        (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":{"status":500,"message":"Internal Server Error"}}"#)
-    );
+    assert_eq!((status, &body[..]), (StatusCode::INTERNAL_SERVER_ERROR, r#"{"title":"Internal Server Error","status":500}"#));
     let (status, _, _) = call(router, "GET", None).await;
     assert_eq!(status, StatusCode::OK, "the next request is served");
     let (_, _, body) = call_with(
@@ -1028,7 +1028,7 @@ async fn invalid_input_answers_422_in_each_mode() {
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             body,
-            r#"{"error":{"status":422,"message":"email: Enter an email address.","fields":{"email":"Enter an email address."}}}"#
+            r#"{"title":"Unprocessable Entity","status":422,"detail":"email: Enter an email address.","fields":{"email":"Enter an email address."}}"#
         );
     }
 }
@@ -1676,13 +1676,13 @@ async fn an_area_or_an_api_has_middleware_of_its_own() {
         (status, &headers["retry-after"]),
         (StatusCode::TOO_MANY_REQUESTS, &"8".parse::<axum::http::HeaderValue>().unwrap())
     );
-    assert_eq!(body2, r#"{"error":{"status":429,"message":"Too Many Requests"}}"#, "JSON under an API");
+    assert_eq!(body2, r#"{"title":"Too Many Requests","status":429}"#, "JSON under an API");
     let (status, _, _) = flood("/admin/nope", "text/html").await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "an unknown URL under the area meets its middleware");
     let (status, _, body3) = flood("/admin/hooks/ping", "text/html").await;
     assert_eq!(
         (status, &body3[..]),
-        (StatusCode::TOO_MANY_REQUESTS, r#"{"error":{"status":429,"message":"Too Many Requests"}}"#),
+        (StatusCode::TOO_MANY_REQUESTS, r#"{"title":"Too Many Requests","status":429}"#),
         "and an API under it, in JSON"
     );
     let (status, _, _) = flood("/slow", "text/html").await;
@@ -1729,29 +1729,25 @@ async fn api_routes_answer_every_failure_as_json_whatever_the_client_accepts() {
     for accept in ACCEPTS {
         let get = |uri: &'static str| call_with(router.clone(), "GET", uri, None, accept);
         let (status, headers, body) = get("/api/nope").await;
-        assert_eq!(
-            (status, &body[..]),
-            (StatusCode::NOT_FOUND, r#"{"error":{"status":404,"message":"Not Found"}}"#),
-            "{accept:?}"
-        );
-        assert_eq!(headers["content-type"], "application/json");
+        assert_eq!((status, &body[..]), (StatusCode::NOT_FOUND, r#"{"title":"Not Found","status":404}"#), "{accept:?}");
+        assert_eq!(headers["content-type"], "application/problem+json");
         assert!(!headers.contains_key("corten-page") && !headers.contains_key("corten-shell"), "no shell: {headers:?}");
         let (_, _, body) = get("/api/missing").await;
-        assert_eq!(body, r#"{"error":{"status":404,"message":"no item 7"}}"#, "a 4xx error's message is for the client");
+        assert_eq!(body, r#"{"title":"Not Found","status":404,"detail":"no item 7"}"#, "a 4xx error's message is for the client");
         let (status, _, body) = get("/api/down").await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(body, r#"{"error":{"status":500,"message":"Internal Server Error"}}"#, "a 5xx message stays in the log");
+        assert_eq!(body, r#"{"title":"Internal Server Error","status":500}"#, "a 5xx message stays in the log");
         let (status, _, body) = get("/api/items/abc").await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(body.starts_with(r#"{"error":{"status":400,"message":"Invalid URL"#), "an extractor's rejection: {body}");
+        assert!(
+            body.starts_with(r#"{"title":"Bad Request","status":400,"detail":"Invalid URL"#),
+            "an extractor's rejection: {body}"
+        );
         let (status, headers, body) = call_with(router.clone(), "DELETE", "/api/post", None, accept).await;
         assert_eq!((status, &headers["allow"]), (StatusCode::METHOD_NOT_ALLOWED, &"POST".parse().unwrap()));
-        assert_eq!(body, r#"{"error":{"status":405,"message":"Method Not Allowed"}}"#);
+        assert_eq!(body, r#"{"title":"Method Not Allowed","status":405}"#);
         let (status, _, body) = get("/api/slow").await;
-        assert_eq!(
-            (status, &body[..]),
-            (StatusCode::SERVICE_UNAVAILABLE, r#"{"error":{"status":503,"message":"Service Unavailable"}}"#)
-        );
+        assert_eq!((status, &body[..]), (StatusCode::SERVICE_UNAVAILABLE, r#"{"title":"Service Unavailable","status":503}"#));
         let (status, _, body) = get("/api/teapot").await;
         assert_eq!((status, &body[..]), (StatusCode::IM_A_TEAPOT, r#"{"mine":1}"#), "the handler's own JSON passes through");
         let (status, _, body) = get("/api/items/7").await;
@@ -1919,7 +1915,7 @@ async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pa
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
     assert!(!res.headers().contains_key("access-control-allow-origin"));
     let body = res.into_body().collect().await.unwrap().to_bytes();
-    assert_eq!(body, r#"{"error":{"status":403,"message":"Cross-site request refused."}}"#);
+    assert_eq!(body, r#"{"title":"Forbidden","status":403,"detail":"Cross-site request refused."}"#);
     let res = router.clone().oneshot(cross("/", "https://partner.example")).await.unwrap();
     assert_eq!(res.status(), StatusCode::FORBIDDEN, "the pages still refuse the partner's writes");
     let mut with_cookie = cross("/api/post", "https://partner.example");
@@ -1944,7 +1940,7 @@ async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pa
     assert_eq!(res.headers()["access-control-allow-headers"], "authorization, content-type");
     let res = router.oneshot(preflight("https://evil.example")).await.unwrap();
     assert!(!res.headers().contains_key("access-control-allow-origin"), "another origin's preflight fails");
-    assert_eq!(res.headers()["content-type"], "application/json");
+    assert_eq!(res.headers()["content-type"], "application/problem+json");
 }
 
 #[tokio::test]
@@ -1952,8 +1948,8 @@ async fn an_api_at_the_root_makes_the_whole_app_json() {
     let router =
         App::new(Routes::new()).api::<Root>(|api| api.route::<Items>(crate::Methods::reads(get(|| async { "items" })))).router();
     let (status, headers, body) = call_with(router.clone(), "GET", "/nope", None, Some("text/html")).await;
-    assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::NOT_FOUND, "application/json"));
-    assert_eq!(body, r#"{"error":{"status":404,"message":"Not Found"}}"#);
+    assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::NOT_FOUND, "application/problem+json"));
+    assert_eq!(body, r#"{"title":"Not Found","status":404}"#);
     let (status, _, body) = call_with(router, "GET", "/health/ready", None, None).await;
     assert_eq!((status, &body[..]), (StatusCode::OK, "ok"), "Corten's own routes keep their behavior");
 }
@@ -2201,8 +2197,8 @@ async fn an_api_module_serves_its_routes_and_answers_its_failures_as_json() {
         [("/v1/items/seven", StatusCode::BAD_REQUEST), ("/v1", StatusCode::NOT_FOUND), ("/v1/nope", StatusCode::NOT_FOUND)]
     {
         let (got, headers, body) = call_with(router.clone(), "GET", uri, None, Some("text/html")).await;
-        assert_eq!((got, headers["content-type"].to_str().unwrap()), (status, "application/json"), "{uri}");
-        assert!(body.starts_with(r#"{"error":{"status":"#), "{uri}: {body}");
+        assert_eq!((got, headers["content-type"].to_str().unwrap()), (status, "application/problem+json"), "{uri}");
+        assert!(body.starts_with('{') && body.contains(&format!(r#""status":{}"#, status.as_u16())), "{uri}: {body}");
     }
     assert_eq!(api_module::ModItem { id: 7 }.to_string(), "/v1/items/7", "the structs still build links");
 }
@@ -2223,7 +2219,7 @@ async fn validation_errors_are_the_json_error_with_fields() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(
         body,
-        r#"{"error":{"status":422,"message":"email: Enter an email address.","fields":{"email":"Enter an email address."}}}"#
+        r#"{"title":"Unprocessable Entity","status":422,"detail":"email: Enter an email address.","fields":{"email":"Enter an email address."}}"#
     );
 }
 
@@ -2368,17 +2364,17 @@ async fn a_json_handler_question_marks_field_errors_into_a_422_with_the_fields()
     let (status, _, body) = call_with(router.clone(), "POST", "/checked/2", None, None).await;
     assert_eq!((status, &body[..]), (StatusCode::OK, "2000"));
     let (status, headers, body) = call_with(router.clone(), "POST", "/checked/0", None, Some("text/html")).await;
-    assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::UNPROCESSABLE_ENTITY, "application/json"));
+    assert_eq!(
+        (status, headers["content-type"].to_str().unwrap()),
+        (StatusCode::UNPROCESSABLE_ENTITY, "application/problem+json")
+    );
     assert_eq!(
         body,
-        r#"{"error":{"status":422,"message":"email: Enter a number above zero.","fields":{"email":"Enter a number above zero."}}}"#
+        r#"{"title":"Unprocessable Entity","status":422,"detail":"email: Enter a number above zero.","fields":{"email":"Enter a number above zero."}}"#
     );
     // Any other error is still a 500, whose message a client does not see.
     let (status, _, body) = call_with(router, "POST", "/checked/4294968", None, None).await;
-    assert_eq!(
-        (status, &body[..]),
-        (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":{"status":500,"message":"Internal Server Error"}}"#)
-    );
+    assert_eq!((status, &body[..]), (StatusCode::INTERNAL_SERVER_ERROR, r#"{"title":"Internal Server Error","status":500}"#));
     // An API with its own error shape writes the 500 in it; the fields keep Corten's shape.
     let shaped = App::new(Routes::new())
         .api(|api| {
@@ -2392,7 +2388,7 @@ async fn a_json_handler_question_marks_field_errors_into_a_422_with_the_fields()
     assert_eq!(body, r#"{"type":"error","error":{"code":500,"message":"Internal Server Error"}}"#);
     let (status, _, body) = call_with(shaped, "POST", "/checked/0", None, None).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(body.ends_with(r#""fields":{"email":"Enter a number above zero."}}}"#), "{body}");
+    assert!(body.ends_with(r#""fields":{"email":"Enter a number above zero."}}"#), "{body}");
 }
 
 #[cfg(feature = "json")]
@@ -2409,7 +2405,10 @@ async fn a_json_body_that_does_not_parse_is_a_json_400() {
     let res = router.oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
-    assert!(body.starts_with(r#"{"error":{"status":400,"message":"Failed to parse the request body as JSON"#), "{body}");
+    assert!(
+        body.starts_with(r#"{"title":"Bad Request","status":400,"detail":"Failed to parse the request body as JSON"#),
+        "{body}"
+    );
 }
 
 /// Pages marked for shared caches, one that sets a cookie, one that must never be stored, and one
@@ -2878,12 +2877,8 @@ async fn a_missing_caller_sends_a_browser_to_sign_in_in_its_mode() {
     let (status, res, _) = guarded(&router, "POST", "/account", None, &[("corten", "action")]).await;
     assert_eq!((status, &res["corten-location"]), (StatusCode::NO_CONTENT, &"/sign-in".parse().unwrap()));
     let (status, res, body) = guarded(&router, "GET", "/account", None, &[("accept", "application/json")]).await;
-    assert_eq!(
-        (status, &body[..]),
-        (StatusCode::UNAUTHORIZED, r#"{"error":{"status":401,"message":"Unauthorized"}}"#),
-        "a data client"
-    );
-    assert_eq!(res["content-type"], "application/json");
+    assert_eq!((status, &body[..]), (StatusCode::UNAUTHORIZED, r#"{"title":"Unauthorized","status":401}"#), "a data client");
+    assert_eq!(res["content-type"], "application/problem+json");
     assert_eq!(WROTE.with(|n| n.get()), 0, "no handler ran, and no form was read");
     for uri in ["/", "/sign-in"] {
         let (status, _, _) = guarded(&router, "GET", uri, None, &[]).await;
@@ -2902,7 +2897,7 @@ async fn a_refused_caller_gets_the_error_page_in_its_mode() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert!(res.contains_key("corten-page"), "a form patch gets the error page to swap in");
     let (status, _, body) = guarded(&router, "GET", "/admin", Some("eve"), &[("accept", "application/json")]).await;
-    assert_eq!((status, &body[..]), (StatusCode::FORBIDDEN, r#"{"error":{"status":403,"message":"Forbidden"}}"#));
+    assert_eq!((status, &body[..]), (StatusCode::FORBIDDEN, r#"{"title":"Forbidden","status":403}"#));
     let (status, _, body) = guarded(&router, "GET", "/admin", Some("down"), &[("accept", "text/html")]).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "who they are cannot be known now");
     assert!(!body.contains("session store"), "the message stays in the log: {body}");
@@ -3044,15 +3039,11 @@ async fn a_json_route_answers_every_failure_as_json_whatever_the_client_accepts(
             None => &[],
         };
         let (status, res, body) = guarded(&router, "GET", "/api/price/7", None, headers).await;
-        assert_eq!(
-            (status, &body[..]),
-            (StatusCode::UNAUTHORIZED, r#"{"error":{"status":401,"message":"Unauthorized"}}"#),
-            "{accept:?}"
-        );
-        assert_eq!(res["content-type"], "application/json");
+        assert_eq!((status, &body[..]), (StatusCode::UNAUTHORIZED, r#"{"title":"Unauthorized","status":401}"#), "{accept:?}");
+        assert_eq!(res["content-type"], "application/problem+json");
         let (status, _, body) = guarded(&router, "GET", "/api/price/abc", None, headers).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{accept:?}");
-        assert!(body.starts_with(r#"{"error":{"status":400,"#), "a path that does not parse: {body}");
+        assert!(body.starts_with(r#"{"title":"Bad Request","status":400,"#), "a path that does not parse: {body}");
     }
     let (status, res, body) = guarded(&router, "GET", "/api/price/7", None, &[("x-api-key", "k1")]).await;
     assert_eq!((status, &body[..]), (StatusCode::OK, r#"{"id":7,"partner":"acme"}"#));

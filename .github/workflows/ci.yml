@@ -103,6 +103,13 @@ jobs:
           timeout 120 sh -c 'until curl -so /dev/null http://localhost:18484/; do sleep 1; done'
           $PLAYWRIGHT node examples/seller-desk/smoke.mjs http://localhost:18484
           docker rm -f corten-seller-desk
+      - name: deck-builder
+        run: |
+          docker build -f examples/deck-builder/Dockerfile -t corten-deck-builder .
+          docker run -d --name corten-deck-builder -p 18487:8080 corten-deck-builder
+          timeout 120 sh -c 'until curl -so /dev/null http://localhost:18487/; do sleep 1; done'
+          $PLAYWRIGHT node examples/deck-builder/smoke.mjs http://localhost:18487
+          docker rm -f corten-deck-builder
       - name: auction-room
         run: |
           docker build -f examples/auction-room/Dockerfile -t corten-auction-room .
