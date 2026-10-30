@@ -7,19 +7,22 @@
 //! | `GET /lots/{id}` | a lot: its price, its bids and the bid form; read again every few seconds without JavaScript while it is open |
 //! | `GET /lots/{id}/live` | the lot as it stands, streamed |
 //! | `GET /lots/{id}/bids` | every bid on the lot, a CSV download |
-//! | `GET, POST /sign-in`, `POST /sign-out` | sessions, kept in the store |
+//! | `GET, POST /sign-in` | a session, kept in the store; at most `SIGN_IN_FAILURES` refused sign-ins a minute per address |
+//! | `POST /sign-out` | ends the session |
 //! | `POST /me/bids/{lot}` | a bid: written once per submit key, refused below the price, at most `BIDS_PER_MINUTE` a minute per bidder |
 //! | `GET /me/notices` | the signed-in bidder's own news (outbid, won), streamed to them alone |
 //! | `GET /house`, `POST /house/lots/{id}/end` | the house's desk, where it ends a lot early |
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::Write as _,
+    hash::Hash,
+    net::IpAddr,
     sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use corten::{
-    Error, LiveResponse, LiveSince, Media, Signal,
+    ClientIp, Error, LiveResponse, LiveSince, Media, Signal,
     axum::{
         extract::{FromRequestParts, Request},
         http::{Method, StatusCode, request::Parts},
@@ -36,7 +39,7 @@ use serde::Deserialize;
 
 use crate::{
     room::{News, Room},
-    store::{self, Lot, Placed, Refusal, Standing, Store},
+    store::{self, Lot, MAX_CENTS, Placed, Refusal, Standing, Store},
     text::{Msg, USD},
     views::{self, BidForm, Board, LotStanding, NoticeLine, SignInForm, You},
 };
@@ -118,9 +121,11 @@ impl Auction {
 /// closes lots as their time runs out.
 pub fn app(auction: Auction) -> App {
     let closing = auction.clone();
-    let limit = BidLimit::new(auction.clone(), BIDS_PER_MINUTE);
     App::new(url::router(auction.clone()))
-        .area(|area| me::area(area, auction.clone()).middleware(limit))
+        .area(|area| door::area(area, auction.clone()).middleware(SignInLimit(Limit::new(SIGN_IN_FAILURES))))
+        .area(|area| {
+            me::area(area, auction.clone()).middleware(BidLimit { auction: auction.clone(), limit: Limit::new(BIDS_PER_MINUTE) })
+        })
         .area(|area| house::area(area, auction.clone()))
         .assets(views::Static)
         .components(views::COMPONENTS)
@@ -130,7 +135,7 @@ pub fn app(auction: Auction) -> App {
         .task("closing", move |signal| close_lots(closing, signal))
 }
 
-/// Anyone may look: the lots, a lot, its bids, and signing in.
+/// Anyone may look: the lots, a lot, its bids.
 #[corten::routes(state = Auction)]
 pub mod url {
     #[route("/", get = home)]
@@ -154,16 +159,20 @@ pub mod url {
         pub id: &'a str,
     }
 
-    #[route("/sign-in", get = sign_in_page, post = sign_in)]
-    pub struct SignIn;
-
     #[route("/sign-out", post = sign_out)]
     pub struct SignOut;
 }
 
-/// A bidder's own: every route here, now and later, takes the bidder, and the bid limit covers
-/// them all.
-#[corten::routes(area = Me, caller = Bidder, state = Auction)]
+/// Signing in, with the limit on refused sign-ins.
+#[corten::routes(area = SignIn, state = Auction)]
+pub mod door {
+    #[route("/sign-in", get = sign_in_page, post = sign_in)]
+    pub struct SignIn;
+}
+
+/// A buyer's own: every route here, now and later, takes the buyer (the house is refused), and
+/// the bid limit covers them all.
+#[corten::routes(area = Me, caller = Buyer, state = Auction)]
 pub mod me {
     #[route("/me")]
     pub struct Me;
@@ -211,11 +220,11 @@ impl std::hash::Hash for Bidder {
 /// `Refused::unavailable`, a 503: no one is sent to sign in again because the store is down.
 async fn session(parts: &Parts, auction: &Auction) -> Result<Bidder, Refused> {
     let Some(token) = cookie::get(&parts.headers, "session") else {
-        return Err(Refused::sign_in(&url::SignIn));
+        return Err(Refused::sign_in(&door::SignIn));
     };
     match auction.store.session(token).await {
         Ok(Some((name, house))) => Ok(Bidder { name, house, session: token.to_string() }),
-        Ok(None) => Err(Refused::sign_in(&url::SignIn)),
+        Ok(None) => Err(Refused::sign_in(&door::SignIn)),
         Err(error) => Err(Refused::unavailable(error)),
     }
 }
@@ -242,42 +251,103 @@ impl Identify<Auction> for Auctioneer {
     }
 }
 
+/// Someone signed in who may bid: anyone but the house, which runs the auction (it would be
+/// bidding on its own lots). The house is refused (403), as anyone is from the house's desk.
+#[derive(Clone, Hash)]
+pub struct Buyer {
+    pub name: String,
+}
+
+impl Identify<Auction> for Buyer {
+    async fn identify(parts: &Parts, auction: &Auction) -> Result<Self, Refused> {
+        match session(parts, auction).await? {
+            Bidder { house: true, .. } => Err(Refused::forbidden()),
+            Bidder { name, .. } => Ok(Buyer { name }),
+        }
+    }
+}
+
 /// How many bids one bidder may send a minute.
 pub const BIDS_PER_MINUTE: u32 = 20;
 
-/// Counts each bidder's bids this minute, by who is signed in, not by address (bidders in one
-/// office share one). A bid past the limit is refused with `Refused::too_many`: a 429 with
-/// `Retry-After`, the error page for a browser. Reads pass straight through. It is the bidder
-/// area's, so no other route meets it, and it reads the same `Caller<Bidder>` the handler does:
-/// the store is asked once per request. The count starts again each minute, so a burst across
-/// the turn can reach twice the limit; anyone can sign in as any name here, so anyone can use up
-/// another's count (a real app signs people in with a password or a provider).
-#[derive(Clone)]
-pub struct BidLimit {
-    auction: Auction,
+/// Counts what each client does in a minute from its first: `count` says whether `who` may go
+/// ahead, or how long until it may. At most `CLIENTS` are kept; past that the minutes that ended
+/// are dropped, and while it is still full a new client waits (card-market's write limit does the
+/// same).
+pub struct Limit<K> {
     limit: u32,
-    minute: Arc<Mutex<(Instant, HashMap<String, u32>)>>,
+    minutes: Mutex<HashMap<K, (Instant, u32)>>,
 }
 
-impl BidLimit {
-    fn new(auction: Auction, limit: u32) -> Self {
-        BidLimit { auction, limit, minute: Arc::new(Mutex::new((Instant::now(), HashMap::new()))) }
+/// How many clients a limit keeps at once.
+const CLIENTS: usize = 4096;
+
+impl<K: Hash + Eq> Limit<K> {
+    fn new(limit: u32) -> Self {
+        Limit { limit, minutes: Mutex::new(HashMap::new()) }
     }
 
-    /// Counts a bid from `name`: `None` when it may go ahead, else how long until it may.
-    fn count(&self, name: &str, now: Instant) -> Option<Duration> {
-        let mut minute = self.minute.lock().unwrap_or_else(|e| e.into_inner());
-        if now.duration_since(minute.0) >= Duration::from_secs(60) {
-            *minute = (now, HashMap::new());
+    /// Counts one for `who` unless it is at the limit: `None` when it may go ahead, else how long
+    /// until it may.
+    fn count(&self, who: K, now: Instant) -> Option<Duration> {
+        let mut minutes = self.minutes.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(minute) = Self::minute(&mut minutes, who, now) else {
+            return Some(Duration::from_secs(60));
+        };
+        if minute.1 >= self.limit {
+            return Some(Self::left(minute.0, now));
         }
-        let wait = Duration::from_secs(60 - now.duration_since(minute.0).as_secs().min(59));
-        let bids = minute.1.entry(name.to_string()).or_default();
-        if *bids >= self.limit {
-            return Some(wait);
-        }
-        *bids += 1;
+        minute.1 += 1;
         None
     }
+
+    /// How long until `who` may go ahead, when it is at the limit.
+    fn wait(&self, who: &K, now: Instant) -> Option<Duration> {
+        let minutes = self.minutes.lock().unwrap_or_else(|e| e.into_inner());
+        let &(start, count) = minutes.get(who)?;
+        (count >= self.limit && now.duration_since(start) < Duration::from_secs(60)).then(|| Self::left(start, now))
+    }
+
+    /// Counts one for `who`, whatever the count (a refused attempt that already happened).
+    fn add(&self, who: K, now: Instant) {
+        let mut minutes = self.minutes.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(minute) = Self::minute(&mut minutes, who, now) {
+            minute.1 += 1;
+        }
+    }
+
+    /// `who`'s minute, started again once a minute has passed; `None` when `CLIENTS` are kept
+    /// and none of their minutes has ended.
+    fn minute(minutes: &mut HashMap<K, (Instant, u32)>, who: K, now: Instant) -> Option<&mut (Instant, u32)> {
+        if minutes.len() >= CLIENTS && !minutes.contains_key(&who) {
+            minutes.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(60));
+            if minutes.len() >= CLIENTS {
+                return None;
+            }
+        }
+        let minute = minutes.entry(who).or_insert((now, 0));
+        if now.duration_since(minute.0) >= Duration::from_secs(60) {
+            *minute = (now, 0);
+        }
+        Some(minute)
+    }
+
+    /// What is left of a minute that started at `start`, in whole seconds, at least one.
+    fn left(start: Instant, now: Instant) -> Duration {
+        let left = Duration::from_secs(60).saturating_sub(now.duration_since(start));
+        Duration::from_secs(left.as_secs().max(1))
+    }
+}
+
+/// Counts each buyer's bids in a minute from their first, by who is signed in, not by address
+/// (bidders in one office share one). A bid past the limit is refused with `Refused::too_many`:
+/// a 429 with `Retry-After`, the error page for a browser. Reads pass straight through. It is
+/// the buyer area's, so no other route meets it, and it reads the same `Caller<Buyer>` the
+/// handler does: the store is asked once per request. Anyone can sign in as any name here, so
+/// anyone can use up another's count (a real app signs people in with a password or a provider).
+pub struct BidLimit {
+    auction: Auction,
+    limit: Limit<String>,
 }
 
 impl Middleware for BidLimit {
@@ -286,27 +356,55 @@ impl Middleware for BidLimit {
             return next.run(req).await;
         }
         let (mut parts, body) = req.into_parts();
-        // Not signed in: the refusal the handler would give (sign in), without counting.
-        let bidder = match Caller::<Bidder>::from_request_parts(&mut parts, &self.auction).await {
-            Ok(Caller(bidder)) => bidder,
+        // Signed out, or the house: the refusal the handler would give, without counting.
+        let buyer = match Caller::<Buyer>::from_request_parts(&mut parts, &self.auction).await {
+            Ok(Caller(buyer)) => buyer,
             Err(refused) => return refused,
         };
-        if let Some(wait) = self.count(&bidder.name, Instant::now()) {
+        if let Some(wait) = self.limit.count(buyer.name, Instant::now()) {
             return Refused::too_many(wait).into_response();
         }
         next.run(Request::from_parts(parts, body)).await
     }
 }
 
-/// How often a page with an open lot is read again by a browser without JavaScript.
-const READ_AGAIN: Duration = Duration::from_secs(5);
+/// How many refused sign-ins an address may have a minute.
+pub const SIGN_IN_FAILURES: u32 = 5;
+
+/// Counts refused sign-ins (a wrong house key, or no name) by address, so the house key cannot be
+/// guessed at speed: past `SIGN_IN_FAILURES` in a minute, a sign-in is refused with
+/// `Refused::too_many` before the key is compared, so a locked-out client learns nothing about
+/// it. A sign-in that succeeds is not counted; a request whose address cannot be known (a test's)
+/// is not counted. Behind a proxy, `PROXIES` (`Policy::proxy`) makes the address the client's.
+pub struct SignInLimit(Limit<IpAddr>);
+
+impl Middleware for SignInLimit {
+    async fn call(&self, mut req: Request, next: impl Next) -> Response {
+        let ip = (req.method() == Method::POST).then(|| ClientIp::of(&mut req)).flatten().map(|ClientIp(ip)| ip);
+        let Some(ip) = ip else {
+            return next.run(req).await;
+        };
+        if let Some(wait) = self.0.wait(&ip, Instant::now()) {
+            return Refused::too_many(wait).into_response();
+        }
+        let res = next.run(req).await;
+        if res.status() == StatusCode::UNPROCESSABLE_ENTITY {
+            self.0.add(ip, Instant::now());
+        }
+        res
+    }
+}
+
+/// How often a page with an open lot is read again by a browser without JavaScript: often enough
+/// to follow the bidding, seldom enough that a bid being typed is rarely lost to a reload.
+const READ_AGAIN: Duration = Duration::from_secs(15);
 
 async fn home(req: Req, State(auction): State<Auction>, viewer: Option<Caller<Bidder>>) -> HtmlResult {
     let you = viewer.map(|Caller(b)| auction.you(&b.name, b.house));
     let (t, now, version) = (req.t(), SystemTime::now(), *auction.room.board().borrow());
     let lots = auction.room.all();
     // Without JavaScript the list is read again while any lot is open.
-    let again = lots.iter().any(|s| !s.closed(now)).then_some(ReadAgain { after: READ_AGAIN }.without_javascript());
+    let again = lots.iter().any(|s| !s.ended(now)).then_some(ReadAgain { after: READ_AGAIN }.without_javascript());
     req.page(html! {
         <views::Layout req={&req} title="Lots" you={you.as_ref()} head={again}>
             <h1>"Lots"</h1>
@@ -332,20 +430,21 @@ async fn lot(
     Params(at): Params<url::Lot<'_>>,
     viewer: Option<Caller<Bidder>>,
 ) -> HtmlResult {
-    lot_page(&req, &auction, &at.id, viewer.map(|Caller(b)| b).as_ref(), "", &Errors::new())
+    let you = viewer.map(|Caller(b)| auction.you(&b.name, b.house));
+    lot_page(&req, &auction, &at.id, you.as_ref(), "", &Errors::new(), true)
 }
 
 /// A lot's page, with the bid form showing `typed` and `errors` (a refused bid without
-/// JavaScript).
-fn lot_page(req: &Req, auction: &Auction, id: &str, viewer: Option<&Bidder>, typed: &str, errors: &Errors) -> HtmlResult {
-    let live = &auction.room.lot(id).ok_or_else(Error::not_found)?;
+/// JavaScript). `again`: while the lot is open, a browser without JavaScript reads it again;
+/// never on a refused bid's page, which is the answer to a POST (reading it again would be a GET
+/// of the bid's URL).
+fn lot_page(req: &Req, auction: &Auction, id: &str, you: Option<&You>, typed: &str, errors: &Errors, again: bool) -> HtmlResult {
+    let standing = &auction.room.lot(id).ok_or_else(Error::not_found)?;
     let (t, now) = (req.t(), SystemTime::now());
-    let you = viewer.map(|b| auction.you(&b.name, b.house));
-    let open = !live.standing.closed(now);
-    let again = open.then_some(ReadAgain { after: READ_AGAIN }.without_javascript());
+    let again = (again && !standing.ended(now)).then_some(ReadAgain { after: READ_AGAIN }.without_javascript());
     req.page(html! {
-        <views::Layout req={req} title={&live.standing.lot.card} you={you.as_ref()} head={again}>
-            <views::LotPage t={t} live={live} now={now} viewer={viewer} typed={typed} errors={errors} />
+        <views::Layout req={req} title={&standing.lot.card} you={you} head={again}>
+            <views::LotPage t={t} standing={standing} now={now} you={you} typed={typed} errors={errors} />
         </views::Layout>
     })
 }
@@ -363,8 +462,8 @@ async fn lot_live(
     Ok(corten::live_watch(
         lot,
         since,
-        |live| live.version,
-        move |live| LotStanding { t, standing: &live.standing, now: SystemTime::now(), you: name.as_deref() }.to_html(),
+        |standing| standing.version,
+        move |standing| LotStanding { t, standing, now: SystemTime::now(), you: name.as_deref() }.to_html(),
     ))
 }
 
@@ -401,19 +500,15 @@ pub struct BidInput {
 async fn bid(
     req: Req,
     State(auction): State<Auction>,
-    Caller(bidder): Caller<Bidder>,
+    Caller(buyer): Caller<Buyer>,
     Params(at): Params<me::Bid<'_>>,
     Form(input): Form<BidInput>,
 ) -> HtmlResult {
-    // Who may bid on what depends on the record, so the check is here, not in the lookup.
-    if bidder.house {
-        return Err(Error::status(StatusCode::FORBIDDEN));
-    }
     let (t, f, id): (Msg, _, _) = (req.t(), BidInput::FIELDS, at.lot.as_str());
     let mut errors = Errors::new();
     match t.parse_money(&input.amount, USD).filter(|cents| cents.0 > 0) {
         None => errors.add(f.amount, "Enter an amount, like 12.50."),
-        Some(Minor(cents)) => match auction.store.bid(id, &bidder.name, cents, input.submit.as_str(), SystemTime::now()).await? {
+        Some(Minor(cents)) => match auction.store.bid(id, &buyer.name, cents, input.submit.as_str()).await? {
             Ok(placed) => {
                 let standing = auction.refresh(id).await?.ok_or_else(Error::not_found)?;
                 if let Placed::New { outbid: Some(outbid) } = placed {
@@ -422,24 +517,26 @@ async fn bid(
                 let none = Errors::new();
                 let answer = html! {
                     <BidForm lot={id} typed="" errors={&none} />
-                    <LotStanding t={t} standing={&standing} now={SystemTime::now()} you={Some(bidder.name.as_str())} />
+                    <LotStanding t={t} standing={&standing} now={SystemTime::now()} you={Some(buyer.name.as_str())} />
                 };
                 return req.patch_or(answer, || async { req.redirect(&url::Lot { id }) }).await;
             }
             Err(Refusal::NoLot) => return Err(Error::not_found()),
             Err(Refusal::Closed) => errors.add(f.amount, "Bidding on this lot has closed."),
+            Err(Refusal::TooHigh) => errors.add(f.amount, format!("Bid at most {}.", t.money(Minor(MAX_CENTS), USD))),
             Err(Refusal::TooLow { minimum }) => errors.add(f.amount, format!("Bid {} or more.", t.money(Minor(minimum), USD))),
         },
     }
     let form = BidForm { lot: id, typed: &input.amount, errors: &errors };
-    req.invalid(&errors, form, || async { lot_page(&req, &auction, id, Some(&bidder), &input.amount, &errors) }).await
+    let you = auction.you(&buyer.name, false);
+    req.invalid(&errors, form, || async { lot_page(&req, &auction, id, Some(&you), &input.amount, &errors, false) }).await
 }
 
 /// The signed-in bidder's news (outbid, won), on every page they have open.
-async fn notices(req: Req, State(auction): State<Auction>, Caller(bidder): Caller<Bidder>, since: LiveSince) -> LiveResponse {
+async fn notices(req: Req, State(auction): State<Auction>, Caller(buyer): Caller<Buyer>, since: LiveSince) -> LiveResponse {
     let t = req.t();
     corten::live_watch(
-        auction.room.notices(&bidder.name),
+        auction.room.notices(&buyer.name),
         since,
         |notice| notice.seq,
         move |notice| NoticeLine { t, notice }.to_html(),
@@ -536,7 +633,7 @@ async fn end_lot(
     _: Caller<Auctioneer>,
     Params(at): Params<house::End<'_>>,
 ) -> HtmlResult {
-    auction.store.end_lot(&at.id, SystemTime::now()).await?;
+    auction.store.end_lot(&at.id).await?;
     auction.refresh(&at.id).await?.ok_or_else(Error::not_found)?;
     auction.room.ends_moved.notify_one();
     req.redirect(&house::House)
@@ -545,11 +642,10 @@ async fn end_lot(
 /// Closes each lot as its time runs out: its pages draw it closed, and its winner is told. Sleeps
 /// until the next lot ends, or until the house moves an end, and stops when the app shuts down.
 async fn close_lots(auction: Auction, signal: Signal) {
-    let mut closed = HashSet::new();
     loop {
-        let now = SystemTime::now();
-        let next = close_due(&auction, &mut closed, now);
-        let wait = next.and_then(|at| at.duration_since(now).ok()).unwrap_or(Duration::from_secs(3600));
+        // A store that cannot answer now is asked again shortly.
+        let next = close_due(&auction).await.unwrap_or_else(|_| Some(SystemTime::now() + Duration::from_secs(5)));
+        let wait = next.and_then(|at| at.duration_since(SystemTime::now()).ok()).unwrap_or(Duration::from_secs(3600));
         tokio::select! {
             biased;
             _ = signal.aborted() => return,
@@ -559,19 +655,20 @@ async fn close_lots(auction: Auction, signal: Signal) {
     }
 }
 
-/// Closes the lots whose time ran out by `now` and not yet in `closed`, and says when the next
-/// one ends.
-fn close_due(auction: &Auction, closed: &mut HashSet<String>, now: SystemTime) -> Option<SystemTime> {
-    let lots = auction.room.all();
-    for standing in lots.iter().filter(|s| s.closed(now)) {
-        if closed.insert(standing.lot.id.clone()) {
-            auction.room.closed(&standing.lot.id);
-            if let Some(top) = standing.top() {
+/// Closes the lots whose time ran out, in the store, and tells each winner. The store closes a lot
+/// once, in the lock bids are written in, so the winner is the last bid it took, and a restart
+/// does not tell anyone twice. Returns when the next lot ends.
+async fn close_due(auction: &Auction) -> Result<Option<SystemTime>, store::Error> {
+    let now = SystemTime::now();
+    for standing in auction.room.all().iter().filter(|s| !s.closed && s.ended(now)) {
+        if let Some(closed) = auction.store.close_lot(&standing.lot.id).await? {
+            auction.refresh(&standing.lot.id).await?;
+            if let Some(top) = closed.top {
                 auction.room.tell(&top.bidder, &standing.lot, News::Won { cents: top.cents });
             }
         }
     }
-    lots.iter().filter(|s| !s.closed(now)).map(|s| s.lot.ends_at).min()
+    Ok(auction.room.all().iter().filter(|s| !s.ended(now)).map(|s| s.lot.ends_at).min())
 }
 
 #[cfg(test)]
@@ -647,7 +744,7 @@ mod tests {
         assert!(body.contains("You lead."), "{body}");
         // The same submit again (a double click, a retry) is no second bid.
         assert_eq!(bid(&router, &ada, "25.00", KEYS[0]).await.0, StatusCode::OK);
-        assert_eq!(auction.room.lot("ashen-drake").unwrap().standing.count, 1);
+        assert_eq!(auction.room.lot("ashen-drake").unwrap().count, 1);
         let (status, body) = bid(&router, &grace, "25.50", KEYS[1]).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(body.contains("Bid $26.00 or more."), "{body}");
@@ -668,6 +765,11 @@ mod tests {
         let (status, _, page) = send(&router, post("/me/bids/ashen-drake", &body, Some(&ada), false)).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(page.contains("<!DOCTYPE html>") && page.contains("Bid $26.00 or more."), "{page}");
+        // The answer to a POST: reading it again would GET the bid's URL.
+        assert!(!page.contains(r#"http-equiv="refresh""#), "{page}");
+        let body = format!("amount=99999999999999&submit={}", KEYS[2]);
+        let (status, _, page) = send(&router, post("/me/bids/ashen-drake", &body, Some(&ada), false)).await;
+        assert!(status == StatusCode::UNPROCESSABLE_ENTITY && page.contains("Bid at most $1,000,000.00."), "{page}");
         // An open lot's page reads itself again without JavaScript.
         let (_, _, page) = send(&router, get("/lots/ashen-drake", Some(&ada))).await;
         assert!(page.contains(r#"http-equiv="refresh""#), "{page}");
@@ -711,6 +813,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_address_with_many_refused_sign_ins_is_refused_before_the_key_is_compared() {
+        use corten::axum::extract::connect_info::MockConnectInfo;
+        let (_, router) = auction().await;
+        let router = router.layer(MockConnectInfo(std::net::SocketAddr::from(([203, 0, 113, 7], 4000))));
+        for _ in 0..SIGN_IN_FAILURES {
+            let (status, ..) = send(&router, post("/sign-in", "name=Mallory&house_key=guess", None, false)).await;
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        }
+        let (status, headers, _) = send(&router, post("/sign-in", "name=Mallory&house_key=hammer", None, false)).await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert!(headers.contains_key(header::RETRY_AFTER));
+    }
+
+    #[tokio::test]
     async fn a_store_that_cannot_answer_is_a_503_not_a_sign_in() {
         let (auction, router) = auction().await;
         let ada = sign_in(&router, "Ada", "").await;
@@ -729,8 +845,12 @@ mod tests {
         assert_eq!(bid(&router, &ada, "25", KEYS[0]).await.0, StatusCode::OK);
         let (status, ..) = send(&router, post("/house/lots/ashen-drake/end", "", Some(&house), false)).await;
         assert_eq!(status, StatusCode::SEE_OTHER);
-        close_due(&auction, &mut HashSet::new(), SystemTime::now());
+        close_due(&auction).await.unwrap();
         assert_eq!(auction.room.notice("Ada").news, News::Won { cents: 2500 });
+        // Closed once: closing again (a restart's task) tells no one twice.
+        auction.room.tell("Ada", &auction.room.lot("ashen-drake").unwrap().lot, News::None);
+        close_due(&auction).await.unwrap();
+        assert_eq!(auction.room.notice("Ada").news, News::None);
         let (_, _, page) = send(&router, get("/lots/ashen-drake", Some(&ada))).await;
         assert!(page.contains("You won this lot.") && page.contains("Bidding on this lot has closed."), "{page}");
         assert!(!page.contains(r#"http-equiv="refresh""#), "a closed lot does not read itself again");

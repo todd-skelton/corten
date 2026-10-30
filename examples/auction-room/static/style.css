@@ -57,6 +57,6 @@ button:hover { border-color: var(--muted); }
 form[data-patch] > button { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 input[aria-invalid="true"] { border-color: var(--danger); }
-input[aria-invalid="true"] ~ *, [id$="-error"] { color: var(--danger); }
+.field-error, .form-error { margin: 0; color: var(--danger); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 pre { white-space: pre-wrap; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }

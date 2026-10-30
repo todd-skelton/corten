@@ -78,6 +78,9 @@ try {
   check("the leader is not", (await notice(grace)) === "");
   await ada.waitForFunction(() => !document.querySelector("corten-live section")?.textContent?.includes("You lead."));
   check("the old leader's page no longer says they lead", !(await standing(ada)).includes("You lead."));
+  // Grace's own stream carried that change to her page too, and nothing for her notices with it.
+  await grace.waitForFunction(() => document.querySelector("corten-live section")?.textContent?.includes("You lead."));
+  check("the leader is still not told", (await notice(grace)) === "");
 
   // The same submit twice (a double click, a retry) is one bid: post one key twice. (Not the
   // form's own key, or the form's next bid would be this one again.)
@@ -94,11 +97,12 @@ try {
   const noJs = await bidder("Lin", { javaScript: false });
   await noJs.goto(base + LOT);
   check("without JavaScript an open lot's page reads itself again", (await noJs.locator("meta[http-equiv=refresh]").count()) === 1);
-  await bid(noJs, "31");
-  await noJs.waitForURL(base + LOT);
-  check("without JavaScript a bid posts and the page shows it", (await standing(noJs)).includes("You lead."));
-  await bid(noJs, "1");
-  check("without JavaScript a refused bid is the page with its error", (await noJs.textContent("form[action^='/me/bids/']")).includes("Bid $32.00 or more."));
+  // Each bid is a navigation: the POST, then (taken) the redirect back to the lot.
+  const [placed] = await Promise.all([noJs.waitForNavigation(), bid(noJs, "31")]);
+  check("without JavaScript a bid posts and the page shows it", new URL(noJs.url()).pathname === LOT && placed?.status() === 200 && (await standing(noJs)).includes("You lead."), noJs.url());
+  const [tooLow] = await Promise.all([noJs.waitForNavigation(), bid(noJs, "1")]);
+  check("without JavaScript a refused bid is the page with its error", tooLow?.status() === 422 && (await noJs.textContent("form[action^='/me/bids/']")).includes("Bid $32.00 or more."));
+  check("a refused bid's page does not read itself again (it answers a POST)", (await noJs.locator("meta[http-equiv=refresh]").count()) === 0);
 
   // Ada takes the lead back; Lin, without JavaScript, reads the notice on the next page.
   await bid(ada, "33");
@@ -122,7 +126,7 @@ try {
 
   // Only the house reaches its desk.
   const refused = await ada.goto(`${base}/house`);
-  check("a bidder is refused the house's desk", refused?.status() === 403 && (await ada.textContent("h1")) === "For the house only");
+  check("a bidder is refused the house's desk", refused?.status() === 403 && (await ada.textContent("h1")) === "Not for you");
   await ada.goto(base + LOT);
   await live(ada);
 

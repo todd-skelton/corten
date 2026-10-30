@@ -1,6 +1,6 @@
 use corten::prelude::*;
 
-use crate::app::{SignInInput, url};
+use crate::app::{SignInInput, door};
 
 /// The sign-in form's id: a refused sign-in replaces it with its errors.
 #[derive(Id)]
@@ -12,7 +12,7 @@ pub fn SignInForm<'a>(typed: &'a str, errors: &'a Errors) -> impl Patch {
     let f = SignInInput::FIELDS;
     let e = errors.within(SignInFormId);
     html! {
-        <form id={SignInFormId} class={SignIn} method="post" action={url::SignIn} data-patch>
+        <form id={SignInFormId} class={SignIn} method="post" action={door::SignIn} data-patch>
             <h1>"Sign in"</h1>
             <p>"Pick the name the other bidders see. There is no password in this demo."</p>
             <label>

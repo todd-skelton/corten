@@ -1,8 +1,11 @@
 //! What the auction keeps, in SQLite: who is signed in, the lots and their bids.
 //!
 //! A bid is checked and written in one `BEGIN IMMEDIATE` transaction, which takes SQLite's write
-//! lock before it reads: two bids at once are one after the other, and the second is checked
-//! against the first. Its submit key is unique, so the same bid sent twice is written once.
+//! lock before it reads, and reads the time after it has the lock: two bids at once are one after
+//! the other, the second is checked against the first, and a bid that waited for the lock past
+//! the end is refused. Its submit key is unique, so the same bid sent twice is written once. Every
+//! change to a lot (a bid, the house ending it, closing it) adds one to its `version` in the same
+//! transaction, so of two readings of a lot the later one is the one with the higher version.
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sqlx::{
@@ -28,7 +31,11 @@ const SCHEMA: [&str; 4] = [
         condition TEXT NOT NULL,
         opening_cents INTEGER NOT NULL,
         step_cents INTEGER NOT NULL,
-        ends_at INTEGER NOT NULL
+        ends_at INTEGER NOT NULL,
+        -- Counts the lot's changes.
+        version INTEGER NOT NULL DEFAULT 0,
+        -- Set once the lot closed and its winner was told.
+        closed INTEGER NOT NULL DEFAULT 0
     )",
     "CREATE TABLE IF NOT EXISTS bids (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,6 +50,9 @@ const SCHEMA: [&str; 4] = [
 
 /// How many of a lot's bids its page lists, newest first.
 pub const RECENT: i64 = 8;
+
+/// How long a session lasts after signing in.
+const SESSION_DAYS: u64 = 30;
 
 /// The database. Cheap to clone; clones share the connections.
 #[derive(Clone)]
@@ -72,12 +82,15 @@ pub struct Bid {
 }
 
 /// A lot as it stands: its newest bids (the first is the price, since each bid beats the last),
-/// and how many it has had.
+/// how many it has had, and its version (how many times it changed).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Standing {
     pub lot: Lot,
     pub recent: Vec<Bid>,
     pub count: u64,
+    pub version: u64,
+    /// Closed, and its winner told.
+    pub closed: bool,
 }
 
 impl Standing {
@@ -92,8 +105,8 @@ impl Standing {
     }
 
     /// The lot no longer takes bids.
-    pub fn closed(&self, now: SystemTime) -> bool {
-        now >= self.lot.ends_at
+    pub fn ended(&self, now: SystemTime) -> bool {
+        self.closed || now >= self.lot.ends_at
     }
 }
 
@@ -115,6 +128,22 @@ pub enum Refusal {
     TooLow {
         minimum: u64,
     },
+    /// Above `MAX_CENTS`.
+    TooHigh,
+}
+
+/// The most a bid may be, $1,000,000: far above any card here, and far below what an `i64` of
+/// cents holds, so a price plus a step never overflows.
+pub const MAX_CENTS: u64 = 100_000_000;
+
+/// A lot that closed now: its top bid, the winner, if it had one.
+#[derive(Debug, PartialEq)]
+pub struct Closed {
+    pub top: Option<Bid>,
+}
+
+fn bid(row: &SqliteRow) -> Bid {
+    Bid { bidder: row.get("bidder"), cents: row.get::<i64, _>("cents") as u64, at: time(row.get("at")) }
 }
 
 fn ms(at: SystemTime) -> i64 {
@@ -163,8 +192,11 @@ impl Store {
         Ok(Store { pool })
     }
 
-    /// A new session for `name` (the house's when `house`), named by `token`.
+    /// A new session for `name` (the house's when `house`), named by `token`. Sessions past their
+    /// days go first, so the table holds only those that still sign someone in.
     pub async fn start_session(&self, token: &str, name: &str, house: bool) -> Result<(), Error> {
+        let since = ms(SystemTime::now() - Duration::from_secs(SESSION_DAYS * 24 * 60 * 60));
+        sqlx::query("DELETE FROM sessions WHERE started_at <= ?").bind(since).execute(&self.pool).await?;
         sqlx::query("INSERT INTO sessions (token, name, house, started_at) VALUES (?, ?, ?, ?)")
             .bind(token)
             .bind(name)
@@ -175,9 +207,15 @@ impl Store {
         Ok(())
     }
 
-    /// Who the session `token` names, and whether it is the house's, if it is one the store has.
+    /// Who the session `token` names, and whether it is the house's, if it is one the store has
+    /// and it started less than `SESSION_DAYS` ago.
     pub async fn session(&self, token: &str) -> Result<Option<(String, bool)>, Error> {
-        let row = sqlx::query("SELECT name, house FROM sessions WHERE token = ?").bind(token).fetch_optional(&self.pool).await?;
+        let since = ms(SystemTime::now() - Duration::from_secs(SESSION_DAYS * 24 * 60 * 60));
+        let row = sqlx::query("SELECT name, house FROM sessions WHERE token = ? AND started_at > ?")
+            .bind(token)
+            .bind(since)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(row.map(|row| (row.get("name"), row.get("house"))))
     }
 
@@ -212,36 +250,68 @@ impl Store {
         Ok(rows.iter().map(lot).collect())
     }
 
-    /// How lot `id` stands, if there is one.
+    /// How lot `id` stands, if there is one: read in one transaction, so the bids, the count and
+    /// the version are of one moment.
     pub async fn standing(&self, id: &str) -> Result<Option<Standing>, Error> {
-        let mut conn = self.pool.acquire().await?;
-        let Some(row) = sqlx::query("SELECT * FROM lots WHERE id = ?").bind(id).fetch_optional(&mut *conn).await? else {
+        let mut tx = self.pool.begin().await?;
+        let Some(row) = sqlx::query("SELECT * FROM lots WHERE id = ?").bind(id).fetch_optional(&mut *tx).await? else {
             return Ok(None);
         };
         let recent = sqlx::query("SELECT bidder, cents, at FROM bids WHERE lot = ? ORDER BY id DESC LIMIT ?")
             .bind(id)
             .bind(RECENT)
-            .fetch_all(&mut *conn)
+            .fetch_all(&mut *tx)
             .await?
             .iter()
-            .map(|row| Bid { bidder: row.get("bidder"), cents: row.get::<i64, _>("cents") as u64, at: time(row.get("at")) })
+            .map(bid)
             .collect();
-        let count: i64 = sqlx::query("SELECT COUNT(*) FROM bids WHERE lot = ?").bind(id).fetch_one(&mut *conn).await?.get(0);
-        Ok(Some(Standing { lot: lot(&row), recent, count: count as u64 }))
+        let count: i64 = sqlx::query("SELECT COUNT(*) FROM bids WHERE lot = ?").bind(id).fetch_one(&mut *tx).await?.get(0);
+        tx.commit().await?;
+        Ok(Some(Standing {
+            lot: lot(&row),
+            recent,
+            count: count as u64,
+            version: row.get::<i64, _>("version") as u64,
+            closed: row.get("closed"),
+        }))
     }
 
-    /// Ends lot `id` at `now`, when it was to end later: the house closing it early.
-    pub async fn end_lot(&self, id: &str, now: SystemTime) -> Result<(), Error> {
-        sqlx::query("UPDATE lots SET ends_at = ? WHERE id = ? AND ends_at > ?")
-            .bind(ms(now))
+    /// Ends lot `id` now, when it was to end later: the house closing it early. The time is read
+    /// after the write lock, so a bid that waited for the lock is checked against the new end.
+    pub async fn end_lot(&self, id: &str) -> Result<(), Error> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let now = ms(SystemTime::now());
+        sqlx::query("UPDATE lots SET ends_at = ?, version = version + 1 WHERE id = ? AND ends_at > ?")
+            .bind(now)
             .bind(id)
-            .bind(ms(now))
-            .execute(&self.pool)
+            .bind(now)
+            .execute(&mut *tx)
             .await?;
-        Ok(())
+        tx.commit().await
     }
 
-    /// Closes the connections: a test's store that cannot answer.
+    /// Closes lot `id` once its end has passed, and returns its top bid (the winner), the first
+    /// time only. Bids are written in the same lock, so the top bid read here is the last one taken.
+    pub async fn close_lot(&self, id: &str) -> Result<Option<Closed>, Error> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let closed =
+            sqlx::query("UPDATE lots SET closed = 1, version = version + 1 WHERE id = ? AND closed = 0 AND ends_at <= ?")
+                .bind(id)
+                .bind(ms(SystemTime::now()))
+                .execute(&mut *tx)
+                .await?;
+        if closed.rows_affected() == 0 {
+            return Ok(None);
+        }
+        let top = sqlx::query("SELECT bidder, cents, at FROM bids WHERE lot = ? ORDER BY id DESC LIMIT 1")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|row| bid(&row));
+        tx.commit().await?;
+        Ok(Some(Closed { top }))
+    }
+
     #[cfg(test)]
     pub async fn close(&self) {
         self.pool.close().await;
@@ -251,24 +321,16 @@ impl Store {
     pub async fn history(&self, id: &str) -> Result<Vec<Bid>, Error> {
         let rows =
             sqlx::query("SELECT bidder, cents, at FROM bids WHERE lot = ? ORDER BY id").bind(id).fetch_all(&self.pool).await?;
-        Ok(rows
-            .iter()
-            .map(|row| Bid { bidder: row.get("bidder"), cents: row.get::<i64, _>("cents") as u64, at: time(row.get("at")) })
-            .collect())
+        Ok(rows.iter().map(bid).collect())
     }
 
-    /// Bids `cents` on lot `id` for `bidder`, at `now`, once per `submit` key: taken only while
-    /// the lot is open and at or above its price plus the step.
-    pub async fn bid(
-        &self,
-        id: &str,
-        bidder: &str,
-        cents: u64,
-        submit: &str,
-        now: SystemTime,
-    ) -> Result<Result<Placed, Refusal>, Error> {
-        // The write lock first, so nothing changes between the checks and the write.
+    /// Bids `cents` on lot `id` for `bidder`, once per `submit` key: taken only while the lot is
+    /// open and at or above its price plus the step, and at most `MAX_CENTS`.
+    pub async fn bid(&self, id: &str, bidder: &str, cents: u64, submit: &str) -> Result<Result<Placed, Refusal>, Error> {
+        // The write lock first, so nothing changes between the checks and the write, and the time
+        // after it: a bid that waited for the lock past the end is too late.
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let now = SystemTime::now();
         if sqlx::query("SELECT 1 FROM bids WHERE submit = ?").bind(submit).fetch_optional(&mut *tx).await?.is_some() {
             return Ok(Ok(Placed::Again));
         }
@@ -276,7 +338,7 @@ impl Store {
             return Ok(Err(Refusal::NoLot));
         };
         let lot = lot(&row);
-        if now >= lot.ends_at {
+        if row.get::<bool, _>("closed") || now >= lot.ends_at {
             return Ok(Err(Refusal::Closed));
         }
         let top = sqlx::query("SELECT bidder, cents FROM bids WHERE lot = ? ORDER BY id DESC LIMIT 1")
@@ -288,6 +350,9 @@ impl Store {
         if cents < minimum {
             return Ok(Err(Refusal::TooLow { minimum }));
         }
+        if cents > MAX_CENTS {
+            return Ok(Err(Refusal::TooHigh));
+        }
         sqlx::query("INSERT INTO bids (lot, bidder, cents, at, submit) VALUES (?, ?, ?, ?, ?)")
             .bind(id)
             .bind(bidder)
@@ -296,6 +361,7 @@ impl Store {
             .bind(submit)
             .execute(&mut *tx)
             .await?;
+        sqlx::query("UPDATE lots SET version = version + 1 WHERE id = ?").bind(id).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(Ok(Placed::New { outbid: top.map(|(who, _)| who).filter(|who| who != bidder) }))
     }
@@ -330,13 +396,12 @@ mod tests {
     #[tokio::test]
     async fn a_bid_below_the_price_and_the_step_is_refused() {
         let store = store().await;
-        let now = SystemTime::now();
-        assert_eq!(store.bid("drake", "Ada", 999, "k1", now).await.unwrap(), Err(Refusal::TooLow { minimum: 1000 }));
-        assert_eq!(store.bid("drake", "Ada", 1000, "k2", now).await.unwrap(), Ok(Placed::New { outbid: None }));
-        assert_eq!(store.bid("drake", "Grace", 1099, "k3", now).await.unwrap(), Err(Refusal::TooLow { minimum: 1100 }));
-        assert_eq!(store.bid("drake", "Grace", 1100, "k4", now).await.unwrap(), Ok(Placed::New { outbid: Some("Ada".into()) }));
+        assert_eq!(store.bid("drake", "Ada", 999, "k1").await.unwrap(), Err(Refusal::TooLow { minimum: 1000 }));
+        assert_eq!(store.bid("drake", "Ada", 1000, "k2").await.unwrap(), Ok(Placed::New { outbid: None }));
+        assert_eq!(store.bid("drake", "Grace", 1099, "k3").await.unwrap(), Err(Refusal::TooLow { minimum: 1100 }));
+        assert_eq!(store.bid("drake", "Grace", 1100, "k4").await.unwrap(), Ok(Placed::New { outbid: Some("Ada".into()) }));
         // Raising your own bid outbids no one.
-        assert_eq!(store.bid("drake", "Grace", 1500, "k5", now).await.unwrap(), Ok(Placed::New { outbid: None }));
+        assert_eq!(store.bid("drake", "Grace", 1500, "k5").await.unwrap(), Ok(Placed::New { outbid: None }));
         let standing = store.standing("drake").await.unwrap().unwrap();
         assert_eq!((standing.count, standing.top().map(|b| b.cents), standing.minimum()), (3, Some(1500), 1600));
     }
@@ -344,18 +409,38 @@ mod tests {
     #[tokio::test]
     async fn the_same_submit_is_written_once() {
         let store = store().await;
-        let now = SystemTime::now();
-        assert_eq!(store.bid("drake", "Ada", 1000, "same", now).await.unwrap(), Ok(Placed::New { outbid: None }));
-        assert_eq!(store.bid("drake", "Ada", 1000, "same", now).await.unwrap(), Ok(Placed::Again));
+        assert_eq!(store.bid("drake", "Ada", 1000, "same").await.unwrap(), Ok(Placed::New { outbid: None }));
+        assert_eq!(store.bid("drake", "Ada", 1000, "same").await.unwrap(), Ok(Placed::Again));
         assert_eq!(store.standing("drake").await.unwrap().unwrap().count, 1);
     }
 
     #[tokio::test]
     async fn a_closed_lot_or_none_takes_no_bid() {
         let store = store().await;
-        let now = SystemTime::now();
-        assert_eq!(store.bid("done", "Ada", 5000, "k1", now).await.unwrap(), Err(Refusal::Closed));
-        assert_eq!(store.bid("nope", "Ada", 5000, "k2", now).await.unwrap(), Err(Refusal::NoLot));
+        assert_eq!(store.bid("done", "Ada", 5000, "k1").await.unwrap(), Err(Refusal::Closed));
+        assert_eq!(store.bid("nope", "Ada", 5000, "k2").await.unwrap(), Err(Refusal::NoLot));
+    }
+
+    #[tokio::test]
+    async fn a_lot_closes_once_with_the_last_bid_taken_and_then_takes_none() {
+        let store = store().await;
+        assert_eq!(store.bid("drake", "Ada", 1000, "k1").await.unwrap(), Ok(Placed::New { outbid: None }));
+        assert_eq!(store.close_lot("drake").await.unwrap(), None, "not ended yet");
+        let before = store.standing("drake").await.unwrap().unwrap().version;
+        store.end_lot("drake").await.unwrap();
+        let closed = store.close_lot("drake").await.unwrap().unwrap();
+        assert_eq!(closed.top.map(|bid| (bid.bidder, bid.cents)), Some(("Ada".to_string(), 1000)));
+        assert_eq!(store.close_lot("drake").await.unwrap(), None, "closed once");
+        let after = store.standing("drake").await.unwrap().unwrap();
+        assert!(after.closed && after.version == before + 2, "{after:?}");
+        assert_eq!(store.bid("drake", "Grace", 5000, "k2").await.unwrap(), Err(Refusal::Closed));
+    }
+
+    #[tokio::test]
+    async fn a_bid_above_the_most_is_refused() {
+        let store = store().await;
+        assert_eq!(store.bid("drake", "Ada", MAX_CENTS + 1, "k1").await.unwrap(), Err(Refusal::TooHigh));
+        assert_eq!(store.bid("drake", "Ada", u64::MAX, "k2").await.unwrap(), Err(Refusal::TooHigh));
     }
 
     #[tokio::test]
@@ -368,7 +453,7 @@ mod tests {
         // Twenty bidders bid the opening price together: one is taken, the rest are too low.
         let bids = (0..20).map(|n| {
             let store = store.clone();
-            tokio::spawn(async move { store.bid("drake", &format!("b{n}"), 1000, &format!("k{n}"), now).await.unwrap() })
+            tokio::spawn(async move { store.bid("drake", &format!("b{n}"), 1000, &format!("k{n}")).await.unwrap() })
         });
         let mut taken = 0;
         for bid in bids {

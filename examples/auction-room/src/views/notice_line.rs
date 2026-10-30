@@ -11,11 +11,12 @@ use crate::{
 pub struct NoticeId;
 
 /// A bidder's latest news, for them alone: someone outbid them, or they won. Empty (and hidden)
-/// until there is some.
+/// until there is some. The `status` role is on the `<corten-live>` around it, which stays while
+/// this is replaced, so a screen reader reads each new one.
 #[component(css)]
 pub fn NoticeLine<'a>(t: Msg, notice: &'a Notice) -> impl Patch {
     html! {
-        <p id={NoticeId} class={Notice} role="status">
+        <p id={NoticeId} class={Notice}>
             match notice.news {
                 News::None => {}
                 News::Outbid { cents } => {

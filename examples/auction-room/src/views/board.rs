@@ -23,7 +23,7 @@ pub fn Board<'a>(t: Msg, lots: &'a [Arc<Standing>], now: SystemTime) -> impl Pat
     html! {
         <ul id={BoardId} class={Lots}>
             for standing in lots {
-                let open = !standing.closed(now);
+                let open = !standing.ended(now);
                 let price = standing.top().map_or(standing.lot.opening_cents, |bid| bid.cents);
                 <li class={(Item, (!open).then_some(Closed))}>
                     <a class={Name} href={url::Lot { id: &standing.lot.id }}>{&standing.lot.card}</a>

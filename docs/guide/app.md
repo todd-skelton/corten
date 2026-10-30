@@ -877,8 +877,10 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 
 [examples/auction-room](../../examples/auction-room) refuses each way: its `Identify` sends someone
 signed out to sign in, answers `Refused::unavailable` when its SQLite store cannot answer, and
-refuses a signed-in bidder the house's area with `Refused::forbidden`; its bid limit, the bidder
-area's middleware, reads the same `Caller` and refuses with `Refused::too_many`.
+refuses with `Refused::forbidden` a signed-in bidder at the house's desk and the house where buyers
+bid (each area's caller type); its bid limit, the buyers' area's middleware, reads the same
+`Caller` and refuses with `Refused::too_many`, as its sign-in limit does for an address with many
+refused sign-ins.
 
 A page and the form that posts back to it share one URL (`get = show, post = save`), and each
 method names its handler, so who may read and who may write are each handler's arguments:

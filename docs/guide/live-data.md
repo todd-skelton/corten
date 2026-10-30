@@ -59,7 +59,7 @@ so `cursor` refuses it (a panic in debug builds; in release the fragment goes wi
 
 [examples/watchlist](../../examples/watchlist) has this running for everyone.
 [examples/auction-room](../../examples/auction-room) also streams each bidder's own notices (you
-were outbid, you won): the route takes the `Caller`, so each stream is one person's `watch`
+were outbid, you won): the route takes the `Caller`, so each stream is that caller's own `watch`
 channel.
 
 ### Connection

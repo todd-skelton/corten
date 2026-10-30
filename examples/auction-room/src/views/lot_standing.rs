@@ -20,7 +20,7 @@ pub struct StandingId;
 /// bid may be, the time left, whether you lead, and the latest bids.
 #[component(css)]
 pub fn LotStanding<'a>(t: Msg, standing: &'a Standing, now: SystemTime, you: Option<&'a str>) -> impl Patch {
-    let open = !standing.closed(now);
+    let open = !standing.ended(now);
     let top = standing.top();
     let leads = top.is_some_and(|bid| Some(bid.bidder.as_str()) == you);
     html! {

@@ -30,7 +30,7 @@ pub fn HouseDesk<'a>(t: Msg, lots: &'a [Arc<Standing>], now: SystemTime) -> impl
             </thead>
             <tbody>
                 for standing in lots {
-                    let open = !standing.closed(now);
+                    let open = !standing.ended(now);
                     <tr>
                         <td><a href={url::Lot { id: &standing.lot.id }}>{&standing.lot.card}</a></td>
                         <td>{t.money(Minor(standing.top().map_or(standing.lot.opening_cents, |bid| bid.cents)), USD)}</td>
@@ -45,7 +45,7 @@ pub fn HouseDesk<'a>(t: Msg, lots: &'a [Arc<Standing>], now: SystemTime) -> impl
                         <td>
                             if open {
                                 <form method="post" action={house::End { id: &standing.lot.id }}>
-                                    <button aria-label={&format!("End {} now", standing.lot.card)}>"End now"</button>
+                                    <button>"End now"<span class={Hidden}>": "{&standing.lot.card}</span></button>
                                 </form>
                             }
                         </td>

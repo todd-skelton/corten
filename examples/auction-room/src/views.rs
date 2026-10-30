@@ -2,7 +2,7 @@
 use corten::{Component, axum::http::StatusCode, prelude::*};
 
 use crate::{
-    app::{Auction, Bidder, house, me, url},
+    app::{Auction, Bidder, door, house, me, url},
     room::Notice,
     text::Msg,
 };
@@ -39,7 +39,7 @@ pub struct You {
     pub notice: Notice,
 }
 
-/// The document around every page. Someone signed in gets their notices, streamed into the
+/// The document around every page. A buyer signed in gets their notices, streamed in under the
 /// header from `/me/notices`, which stays open as they move between pages.
 #[component]
 pub fn Layout<'a>(req: &Req, title: &str, you: Option<&'a You>, head: impl Render, children: impl Render) -> impl Document {
@@ -71,11 +71,12 @@ pub fn Layout<'a>(req: &Req, title: &str, you: Option<&'a You>, head: impl Rende
                                 <button>"Sign out"</button>
                             </form>
                         }
-                        None => <a href={url::SignIn}>"Sign in"</a>,
+                        None => <a href={door::SignIn}>"Sign in"</a>,
                     }
                 </header>
-                if let Some(you) = you {
-                    <corten-live src={me::Notices} since={you.notice.seq}>
+                // A buyer's own news; the house bids on nothing, so it has none.
+                if let Some(you) = you.filter(|you| !you.house) {
+                    <corten-live src={me::Notices} since={you.notice.seq} role="status">
                         <NoticeLine t={req.t()} notice={&you.notice} />
                     </corten-live>
                 }
@@ -105,10 +106,10 @@ pub async fn error_page(
     let (title, text) = match failure {
         Failure::NotFound => ("Not found", "There is no lot or page at this address."),
         Failure::Refused { status: StatusCode::FORBIDDEN } => {
-            ("For the house only", "This page is the house's. Sign in with the house key to use it.")
+            ("Not for you", "The house's desk is the house's alone, and the house does not bid.")
         }
         Failure::Refused { status: StatusCode::TOO_MANY_REQUESTS } => {
-            ("Too many bids", "You sent many bids in the last minute. Wait a moment, then bid again.")
+            ("Too many tries", "You sent many in the last minute. Wait a moment, then try again.")
         }
         Failure::Unidentified { .. } | Failure::TimedOut | Failure::Offline => {
             ("Unavailable", "The auction cannot answer right now. Try again in a moment.")
