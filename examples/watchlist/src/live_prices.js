@@ -70,6 +70,23 @@ export function pause(button, prices, changes) {
   if (!s.paused && formats) for (const stock of s.latest.values()) paint({ prices, changes }, formats, stock);
 }
 
+/**
+ * `p` pauses or resumes wherever focus is on the page, unless the reader is typing in a field or
+ * the key is part of another shortcut.
+ * @param {KeyboardEvent} event @param {HTMLButtonElement} button
+ * @param {Map<string, HTMLTableCellElement>} prices @param {Map<string, HTMLTableCellElement>} changes
+ */
+export function pauseKey(event, button, prices, changes) {
+  if (event.key !== "p" || event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey || typing(event.target)) return;
+  event.preventDefault();
+  pause(button, prices, changes);
+}
+
+/** Whether a key goes into a field, or a dialog the reader has open. @param {EventTarget | null} target */
+function typing(target) {
+  return target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), dialog[open]') !== null;
+}
+
 /** A stock's price and change, when it is on the list. @param {Cells} cells @param {Formats} formats @param {Stock} stock */
 function paint(cells, formats, stock) {
   const price = cells.prices.get(stock.id);

@@ -174,6 +174,75 @@ pub fn event(name: &str) -> &'static str {
     }
 }
 
+/// Whether a browser event of this name bubbles to the document, so a listener there hears it
+/// wherever it happens (`on:document:keydown`). `focus`, `blur`, `mouseenter`, `toggle` and
+/// the media and loading events stay on their element, and `selectionchange` is not dispatched
+/// up the tree; a name not listed here is refused rather than compiled into a handler that never
+/// runs.
+pub fn reaches_document(name: &str) -> bool {
+    matches!(
+        name,
+        "click"
+            | "dblclick"
+            | "auxclick"
+            | "contextmenu"
+            | "mousedown"
+            | "mouseup"
+            | "mousemove"
+            | "mouseover"
+            | "mouseout"
+            | "pointerdown"
+            | "pointerup"
+            | "pointermove"
+            | "pointerover"
+            | "pointerout"
+            | "pointercancel"
+            | "gotpointercapture"
+            | "lostpointercapture"
+            | "wheel"
+            | "keydown"
+            | "keyup"
+            | "keypress"
+            | "beforeinput"
+            | "input"
+            | "change"
+            | "select"
+            | "submit"
+            | "reset"
+            | "focusin"
+            | "focusout"
+            | "drag"
+            | "dragstart"
+            | "dragend"
+            | "dragenter"
+            | "dragleave"
+            | "dragover"
+            | "drop"
+            | "touchstart"
+            | "touchend"
+            | "touchmove"
+            | "touchcancel"
+            | "copy"
+            | "cut"
+            | "paste"
+            | "compositionstart"
+            | "compositionupdate"
+            | "compositionend"
+            | "animationstart"
+            | "animationend"
+            | "animationiteration"
+            | "animationcancel"
+            | "transitionstart"
+            | "transitionend"
+            | "transitionrun"
+            | "transitioncancel"
+            | "scroll"
+            | "scrollend"
+            | "visibilitychange"
+            | "fullscreenchange"
+    )
+}
+
 /// Every event interface `corten::script::ev` has a marker for.
 pub const EVENTS: &[&str] = &[
     "Event",
