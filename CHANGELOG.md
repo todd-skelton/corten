@@ -907,6 +907,16 @@ Corten is pre-1.0, so any minor version may change the API.
     runtime does not fetch it on hover and again on click
     ([#364 A private download cannot name its file: Content-Disposition is only on Public answers](https://github.com/todd-skelton/corten/issues/364)).
     No existing answer changes; naming a file costs one header on that answer.
+127. `Signal::finish(|signal| async move { .. })`: work a handler must finish (claim, call,
+    release) runs to its end even if the handler is dropped, with a signal of its own that aborts
+    when the request's does or shutdown begins, so a slow step stops early and the release after
+    it still runs; `serve` waits for it at shutdown within `App::shutdown_grace`. The cancellation
+    guide no longer says awaited work needs no thought: a drop cannot run async cleanup
+    ([#372 A handler dropped when its client leaves cannot release what it holds, and the guide says work it awaits needs no signal](https://github.com/todd-skelton/corten/issues/372)).
+    A request that does not call it runs no new code: the app's `Shared` gains one pointer, last,
+    read only by `finish`. A plain GET through the router took 16,673 to 17,022 instructions
+    before and 16,864 to 16,866 after (callgrind, release build, 5 runs each); the before runs
+    vary more than the two differ.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

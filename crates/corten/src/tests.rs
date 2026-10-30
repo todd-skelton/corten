@@ -3851,3 +3851,106 @@ async fn an_area_relaxes_the_opener_policy_of_its_pages_only() {
     assert_eq!(popups_home, "same-origin-allow-popups");
     assert_eq!(opener(&popups, "/pay/card").await.2, popups_shell);
 }
+
+/// Work a handler finishes (`Signal::finish`) runs past the handler being dropped: its slow step
+/// sees why it should stop, and what follows it (a release) runs, whether the client left, the
+/// deadline passed or the server is shutting down, which waits for it.
+#[tokio::test]
+async fn finished_work_releases_what_it_holds_when_the_handler_is_dropped() {
+    use std::{sync::Mutex, time::Duration};
+    use tokio::io::AsyncWriteExt;
+    let released: Arc<Mutex<Vec<(&'static str, crate::Abort)>>> = Arc::default();
+    let routes = {
+        let released = released.clone();
+        Routes::from(Router::new().route(
+            "/{name}",
+            get(move |signal: crate::Signal, axum::extract::Path(name): axum::extract::Path<String>| {
+                let released = released.clone();
+                async move {
+                    let name: &'static str = Box::leak(name.into_boxed_str());
+                    signal
+                        .finish(move |signal| async move {
+                            // The slow call, which only the signal ends.
+                            let reason = signal.aborted().await;
+                            // A release that outlasts the connection: `/slow-release` takes 500 ms.
+                            let release = if name == "gone" { 500 } else { 30 };
+                            tokio::time::sleep(Duration::from_millis(release)).await;
+                            released.lock().unwrap().push((name, reason));
+                            "done"
+                        })
+                        .await
+                }
+            }),
+        ))
+    };
+    // Long enough that only `/late` meets it on a loaded machine.
+    let app = App::new(routes).deadline(Some(Duration::from_secs(1))).shutdown_grace(Duration::from_secs(2));
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, app, async {
+        let _ = stopped.await;
+    }));
+    let wait_for = |name: &'static str| {
+        let released = released.clone();
+        async move {
+            tokio::time::timeout(Duration::from_secs(3), async {
+                loop {
+                    if let Some((_, reason)) = released.lock().unwrap().iter().find(|(n, _)| *n == name) {
+                        return *reason;
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap_or_else(|_| panic!("{name}: the release never ran"))
+        }
+    };
+
+    // The client leaves mid-call.
+    let mut left = tokio::net::TcpStream::connect(addr).await.unwrap();
+    left.write_all(b"GET /left HTTP/1.1\r\nhost: localhost\r\n\r\n").await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    drop(left);
+    assert_eq!(wait_for("left").await, crate::Abort::Disconnected);
+
+    // The deadline passes: the client gets 503 and the work still releases.
+    let answer = raw_get(addr, "/late", "").await;
+    assert!(answer.starts_with("HTTP/1.1 503"), "{answer}");
+    assert_eq!(wait_for("late").await, crate::Abort::Deadline);
+
+    // Shutdown during two calls: one whose client is still there is told (`Shutdown`) and
+    // answers; one whose client left is still releasing, and serve waits for it.
+    let kept = tokio::spawn(raw_get(addr, "/kept", ""));
+    let mut gone = tokio::net::TcpStream::connect(addr).await.unwrap();
+    gone.write_all(b"GET /gone HTTP/1.1\r\nhost: localhost\r\n\r\n").await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    drop(gone);
+    let began = std::time::Instant::now();
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), server).await.expect("serve returned").unwrap().unwrap();
+    assert!(began.elapsed() >= Duration::from_millis(400), "serve did not wait for the release: {:?}", began.elapsed());
+    let done: Vec<_> = released.lock().unwrap().clone();
+    // Its client left as shutdown began: either is the first reason, and either way it released.
+    assert!(done.iter().any(|(name, _)| *name == "gone"), "serve returned before the work it had to finish: {done:?}");
+    assert!(done.contains(&("kept", crate::Abort::Shutdown)), "{done:?}");
+    assert!(kept.await.unwrap().ends_with("done"), "the client that stayed got its answer");
+}
+
+/// A panic in work a handler finishes is the handler's: the request answers 500 and the server
+/// goes on.
+#[tokio::test]
+async fn a_panic_in_finished_work_is_the_handlers() {
+    let router = App::new(Routes::from(Router::new().route(
+        "/",
+        get(|signal: crate::Signal| async move {
+            signal.finish(|_signal| async move { panic!("the release failed") }).await;
+            "never"
+        }),
+    )))
+    .router();
+    let (status, _, _) = call(router.clone(), "GET", None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    let (status, _, _) = call(router, "GET", None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the server goes on after it");
+}

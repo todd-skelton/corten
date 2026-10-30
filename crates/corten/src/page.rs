@@ -609,6 +609,8 @@ pub(crate) struct Shared {
     pub pages: Box<[(&'static str, bool)]>,
     /// Paths no page is at: Corten's own and the APIs'.
     pub not_pages: crate::app::NotPages,
+    /// The app's work that handlers finish ([`crate::Signal::finish`]).
+    pub finishing: Arc<crate::task::Finishing>,
 }
 
 impl Shared {
@@ -625,6 +627,7 @@ impl Shared {
         head_extra.hash(&mut hasher);
         Shared {
             error_page,
+            finishing: Arc::default(),
             assets,
             scripts_dir,
             import_map,
