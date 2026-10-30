@@ -917,6 +917,14 @@ Corten is pre-1.0, so any minor version may change the API.
     read only by `finish`. A plain GET through the router took 16,673 to 17,022 instructions
     before and 16,864 to 16,866 after (callgrind, release build, 5 runs each); the before runs
     vary more than the two differ.
+128. A handler parameter typed by a declaration `corten::types` generated
+    (`@param {import("../types/app").SortBy} by`, or a `@typedef` of it) takes a value of the Rust
+    type of that name in the component's module, so `js::sortBy(target, SortBy::Price)` compiles
+    and `42` or `"prodcut"` do not: one handler serves every name of a fixed set, and a renamed
+    variant fails to build. A string literal union as a handler's parameter
+    (`@param {"name" | "price"} by`) no longer compiles, since it took any value; the error says to
+    make it a Rust enum with a generated declaration. What the page gets is unchanged
+    ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

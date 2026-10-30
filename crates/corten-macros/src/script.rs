@@ -39,6 +39,9 @@ pub enum Param {
     Event(String),
     /// `FeedUrl<Level>`: the URL of a feed of the Rust type `Level` in the component's module.
     Feed(String),
+    /// A type `corten::types` generated, `import("../types/app").SortBy`: a value of the Rust type
+    /// `SortBy` in the component's module.
+    Generated(String),
     /// A type Corten would check but cannot read (`FeedUrl<Level[]>`): why, for the error.
     Unreadable(String),
     /// Any other JSDoc type: a JSON value.
@@ -215,6 +218,7 @@ fn param_path(param: &Param) -> TokenStream {
         // The `#[event]` type, in the module of the component or `script!` that reads the script.
         Param::Event(class) => format!("super::{class}").parse().expect("a type path parses"),
         Param::Feed(rows) => format!("::corten::script::ts::FeedUrl<super::{rows}>").parse().expect("a type path parses"),
+        Param::Generated(name) => format!("::corten::script::ts::Generated<super::{name}>").parse().expect("a type path parses"),
         Param::Unreadable(_) => q("::corten::script::ts::Any", &[]),
         Param::Any => q("::corten::script::ts::Any", &[]),
     }
@@ -450,6 +454,9 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
     let mut raw: Vec<Raw> = Vec::new();
     let mut typedefs: Vec<Typedef> = Vec::new();
     let mut events: Vec<(String, String)> = Vec::new();
+    // `@typedef {import("../types/app").SortBy} SortBy` and `@typedef {"a" | "b"} Mode`: a
+    // handler parameter of that name is the type it names.
+    let mut aliases: Vec<(String, String)> = Vec::new();
     let mut imports: Vec<String> = Vec::new();
     let mut siblings: Vec<String> = Vec::new();
     let mut doc: Option<String> = None;
@@ -483,6 +490,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
             if let Some((name, ty)) = tag_type(&block, "@typedef") {
                 match ty.strip_prefix("import(\"corten/events\").") {
                     Some(class) => events.push((name, class.trim().to_string())),
+                    None if generated_name(&ty).is_some() || literal_union(&ty) => aliases.push((name, ty)),
                     None => typedefs.push(Typedef {
                         name,
                         ty,
@@ -587,8 +595,13 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
     // has (an element, an event, a signal) or a catalog message; one of plain values stays a
     // JSON value.
     let event_of = |ty: &str| events.iter().find(|(local, _)| local == ty).map(|(_, class)| class.clone());
+    let alias_of = |ty: &str| aliases.iter().find(|(local, _)| local == ty).map(|(_, aliased)| aliased.clone());
     let plain_type = |ty: &str| match param_type(ty) {
-        Param::Any => event_of(ty.trim()).map_or(Param::Any, Param::Event),
+        Param::Any => match (event_of(ty.trim()), alias_of(ty.trim())) {
+            (Some(class), _) => Param::Event(class),
+            (None, Some(aliased)) => param_type(&aliased),
+            (None, None) => Param::Any,
+        },
         other => other,
     };
     let mut groups = Vec::new();
@@ -619,6 +632,15 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         let mut list = Vec::new();
         for (param, ty) in params {
             let ty = ty.trim().to_string();
+            // A name from a fixed set, passed by the markup, is a Rust enum whose declaration
+            // `corten::types` generates: the call is then checked, and a renamed variant fails to
+            // build. A string literal union would take any value.
+            if literal_union(&alias_of(&ty).unwrap_or_else(|| ty.clone())) {
+                return Err((
+                    line,
+                    format!("{name}: {param}: a parameter that is one of several names ({ty}) is a Rust enum the markup passes: derive ToJson and JsonSchema on it, add it with Types::add, and type the parameter with its generated declaration, @param {{import(\"../types/app\").Name}} {param}"),
+                ));
+            }
             let resolved = if groups.iter().any(|g| g.name == ty) { Param::Group(ty) } else { plain_type(&ty) };
             if let Param::Unreadable(why) = resolved {
                 return Err((line, format!("{name}: {param}: {why}")));
@@ -646,8 +668,31 @@ fn not_json(param: &Param) -> bool {
                 || path == "ts::AbortSignal"
         }
         Param::Event(_) | Param::Group(_) | Param::Feed(_) | Param::Unreadable(_) => true,
-        Param::Any => false,
+        Param::Generated(_) | Param::Any => false,
     }
+}
+
+/// The type `import("../types/app").SortBy` names, from the declarations `corten::types` writes
+/// (a path ending in `types/app`): `SortBy`.
+fn generated_name(ty: &str) -> Option<String> {
+    let rest = ty.trim().strip_prefix("import(")?;
+    let (path, name) = rest.split_once(").")?;
+    let path = path.trim().trim_matches(['"', '\'']);
+    let path = path.strip_suffix(".js").or_else(|| path.strip_suffix(".d.ts")).unwrap_or(path);
+    let name = name.trim();
+    let plain = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    (path.ends_with("types/app") && plain).then(|| name.to_string())
+}
+
+/// True for a union of string literals, `"name" | "set"` (or one literal).
+fn literal_union(ty: &str) -> bool {
+    let ty = ty.trim().trim_start_matches('(').trim_end_matches(')');
+    !ty.is_empty()
+        && ty.split('|').map(str::trim).all(|part| {
+            part.len() >= 2
+                && ((part.starts_with('"') && part.ends_with('"')) || (part.starts_with('\'') && part.ends_with('\'')))
+        })
 }
 
 /// `{ rows: HTMLTableRowElement[], all: HTMLInputElement }` as (name, type) pairs.
@@ -763,6 +808,11 @@ fn param_type(ty: &str) -> Param {
                 "FeedUrl<{inner}>: a feed's rows are one named type, FeedUrl<Level>, the Rust type Level in the component's module"
             ))
         };
+    }
+    // `import("../types/app").SortBy`: a declaration `corten::types` generated from the Rust type
+    // of that name.
+    if let Some(name) = generated_name(ty) {
+        return Param::Generated(name);
     }
     // `Message<"count">` (corten): a message of the app's catalog with exactly these arguments.
     if let Some(inner) = ty.strip_prefix("Message<").and_then(|t| t.strip_suffix('>')) {
@@ -976,6 +1026,27 @@ function helper() {}
             let err = parse(&format!("/** @param {{{ty}}} a */\nexport function f(a) {{}}")).unwrap_err();
             assert!(err.1.contains("one named type"), "{ty}: {}", err.1);
         }
+    }
+
+    #[test]
+    fn a_generated_type_is_the_rust_type_and_a_literal_union_does_not_compile() {
+        let (handlers, _) = parse(
+            "/** @typedef {import(\"../types/app\").SortBy} SortBy */\n/** @param {SortBy} a @param {import(\"../../types/app.js\").Step} b @param {import(\"./other\").Thing} c */\nexport function f(a, b, c) {}",
+        )
+        .unwrap();
+        assert_eq!(handlers[0].params[0].1, Param::Generated("SortBy".into()), "through a typedef");
+        assert_eq!(handlers[0].params[1].1, Param::Generated("Step".into()), "written in place");
+        assert_eq!(handlers[0].params[2].1, Param::Any, "not the generated declarations");
+        for (source, what) in [
+            ("/** @param {\"name\" | \"price\"} by */\nexport function f(by) {}", "a union"),
+            ("/** @param {'grid'} by */\nexport function f(by) {}", "one literal"),
+            ("/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {Mode} by */\nexport function f(by) {}", "a typedef of one"),
+        ] {
+            let err = parse(source).unwrap_err();
+            assert!(err.1.contains("is a Rust enum the markup passes"), "{what}: {}", err.1);
+        }
+        let (fine, _) = parse("/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {string} s */\nexport function f(s) {}").unwrap();
+        assert_eq!(fine[0].params[0].1, Param::Checked("ts::String".into()), "a typedef no handler takes is the script's");
     }
 
     #[test]

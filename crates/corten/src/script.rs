@@ -374,6 +374,66 @@
 //! }
 //! ```
 //!
+//! A parameter typed by a declaration `corten::types` generated (`import("../types/app").Tab`)
+//! takes a value of the Rust type of that name in the component's module, so a call cannot pass
+//! another value, and a renamed variant fails to build:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[derive(Clone, Copy, ToJson)]
+//! #[serde(rename_all = "kebab-case")]
+//! enum Tab { Details, Offers }
+//!
+//! #[component(js)]
+//! fn TabBar() -> impl Render {
+//!     html! { <nav on:click={js::show(target, Tab::Offers)}></nav> }
+//! }
+//! # fn main() {
+//! assert!(TabBar {}.to_html().contains(r#"tab_bar.show($t,&quot;offers&quot;)"#), "{}", TabBar {}.to_html());
+//! # }
+//! ```
+//!
+//! ```compile_fail,E0277
+//! use corten::prelude::*;
+//!
+//! #[derive(Clone, Copy, ToJson)]
+//! enum Tab { Details, Offers }
+//!
+//! #[component(js)]
+//! fn TabBar() -> impl Render {
+//!     html! { <nav on:click={js::show(target, "offers")}></nav> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ```compile_fail,E0277
+//! use corten::prelude::*;
+//!
+//! #[derive(Clone, Copy, ToJson)]
+//! enum Tab { Details, Offers }
+//!
+//! #[component(js)]
+//! fn TabBar() -> impl Render {
+//!     html! { <nav on:click={js::show(target, 42)}></nav> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! A string literal union (`@param {"list" | "grid"} mode`) as a handler's parameter does not
+//! compile: it would take any value. Such a name is a Rust enum with a generated declaration, as
+//! above:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn ModeSwitch() -> impl Render {
+//!     html! { <nav></nav> }
+//! }
+//! # fn main() {}
+//! ```
+//!
 //! A typed event's handler on another event (`toggled` takes a `RowToggled`, a click is a
 //! `MouseEvent`):
 //!
@@ -1159,6 +1219,9 @@ pub mod ts {
     /// `#[route(..)]` says `rows = Level`. `Level` is the type of that name in the component's
     /// module. `subscribe()` reads the row type from it.
     pub struct FeedUrl<Row>(std::marker::PhantomData<Row>);
+    /// A type `corten::types` generated (`import("../types/app").SortBy`): the Rust type of that
+    /// name in the component's module, so a call passes one of its values and nothing else.
+    pub struct Generated<T>(std::marker::PhantomData<T>);
     /// `number`.
     pub enum Number {}
     /// `boolean`.
@@ -1767,6 +1830,20 @@ pub mod __private {
     impl<R: crate::Route + crate::route::__private::FeedRows<T>, T> Arg<ts::FeedUrl<T>> for R {
         fn write_arg(&self, ctx: &Ctx, out: &mut String) {
             <R as Arg<ts::String>>::write_arg(self, ctx, out)
+        }
+    }
+
+    /// A value of the Rust type a generated declaration was made from, as JSON.
+    #[cfg(feature = "json")]
+    impl<T: crate::json::ToJson> Arg<ts::Generated<T>> for T {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            crate::view::escape_into(&self.to_json(), out);
+        }
+    }
+    #[cfg(feature = "json")]
+    impl<T: crate::json::ToJson> Arg<ts::Generated<T>> for &T {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            crate::view::escape_into(&self.to_json(), out);
         }
     }
 
