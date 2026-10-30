@@ -1,6 +1,7 @@
 use corten::prelude::*;
 
-use crate::{state, Link, Url};
+use crate::state;
+use corten::Href;
 
 /// One tab of a [`TabGroup`].
 pub struct Tab<'a, L: Render> {
@@ -26,7 +27,7 @@ pub struct Tab<'a, L: Render> {
     /// The page with this tab selected (`ItemRoute { id, tab: Some("offers") }`). Without
     /// JavaScript the tab is a link to it; with JavaScript the tab switches in place and the
     /// address bar follows, so a reload or a shared link opens the same tab. `None`: a button.
-    pub link: Option<&'a dyn Link>,
+    pub link: Option<&'a dyn Href>,
 }
 
 /// Tabs and their panels: the WAI-ARIA tabs pattern with automatic activation.
@@ -68,7 +69,7 @@ pub fn TabGroup<'a, L: Render>(id: &'a str, label: &'a str, tabs: &'a [Tab<'a, L
                             ref={tab as HTMLElement}
                             role="tab"
                             id={(id, "-tab-", i)}
-                            href={Url(link)}
+                            href={link}
                             aria-controls={(id, "-panel-", i)}
                             aria-selected={state(i == selected)}
                             on:click={js::choose(event, target, tab, panel)}

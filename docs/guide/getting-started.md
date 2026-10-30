@@ -20,7 +20,7 @@ test and a Dockerfile.
 | `corten new <dir>` | Creates an app that depends on the `corten` release matching the command's version. `--name` sets the crate name, `--corten-path` uses a local checkout instead. |
 | `corten dev` | Builds and runs the app, rebuilds and restarts on every change in the app's directory or a local package its build reads, like a workspace's shared crate (a failed build keeps the last good server running), and reloads open pages. `--port` or `PORT`. |
 | `corten fmt` | Runs `cargo fmt`, then lays out the markup inside `html!`, which rustfmt leaves alone, so it fixes what `corten check` reports (`--check` only reports; given paths, only their markup). |
-| `corten check` | `corten fmt --check` (rustfmt's and the markup's), `cargo clippy -D warnings`, `tsc` over the app's scripts (when TypeScript is installed; otherwise a note says they were not checked), `cargo test`. At a workspace root, each member that depends on `corten` is checked. |
+| `corten check` | `corten fmt --check` (rustfmt's and the markup's), `cargo clippy -D warnings`, `cargo test`, then `tsc` over the app's scripts (when TypeScript is installed; otherwise a note says they were not checked), after the tests have written `types/app.d.ts`. At a workspace root, each member that depends on `corten` is checked. |
 | `corten build` | The release binary. |
 
 The CLI is a convenience over cargo, not a build system: an app is an ordinary crate, and
@@ -129,6 +129,8 @@ async fn error_page(failure: Failure, req: Req) -> HtmlResult {
 Handlers are async functions whose arguments are extractors (axum's, and Corten's `Req`,
 `Form`, `Caller`, ...) and whose return type says what the route answers: `HtmlResult` for a
 page, a patch or a redirect, `JsonResult<T>` for JSON. The routes module checks both when the
-app compiles, and `App` adds everything a production app needs around them.
+app compiles, and `App` adds everything a production app needs around them. A route names its
+handler from where the module is declared (`home` beside `mod url`), so a `use` that brings a
+handler in goes above the module; one inside it is a compile error that says so.
 
 Next: [the app's defaults](app.md), then [views](views.md).
