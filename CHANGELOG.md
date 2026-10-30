@@ -940,8 +940,14 @@ Corten is pre-1.0, so any minor version may change the API.
     The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
     and 61 with brotli (8,287 to 8,348).
 130. A feed's `snapshot` handler gets the feed's generation as a third argument,
-    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
-    reset feed's `seq` from its own (`docs/guide/live-data.md`).
+    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted
+    feed's `seq` from its own (`docs/guide/live-data.md`).
+131. A navigation marks the link or GET form that started it `aria-busy="true"` for as long as it
+    marks `<main>`, as a `data-patch` form already was, so a page shows which control is working
+    with CSS alone (`docs/guide/requests-and-forms.md`)
+    ([#422 A navigation marks only main as busy, not the link or GET form that started it, so a page cannot show which action is on its way without a script](https://github.com/todd-skelton/corten/issues/422)).
+    The minified runtime grows by 170 bytes (25,510 to 25,680), 39 gzipped (9,278 to 9,317) and
+    54 with brotli (8,381 to 8,435).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1905,6 +1911,11 @@ Corten is pre-1.0, so any minor version may change the API.
     of the same form aborted no longer renews the key the newer one was sent with. The minified
     runtime grows by 97 bytes (25,413 to 25,510), 29 gzipped (9,249 to 9,278) and 33 with brotli
     (8,348 to 8,381).
+71. `rows()` takes a `#[component(view)]` without a key, as the scripts guide always said it could:
+    it gives a `RowList` (`at`, `of`, `indexOf`, `remove`, `swap`, `clear`, iteration), without
+    `get`, `push` or `replace`, which need a key. A view no longer needs a key only to satisfy
+    `tsc`. `scripts/typecheck-fixture.js` checks both
+    ([#418 rows() takes only a view with a key, so a keyless #[component(view)] a script only reads fails tsc (TS2769), though the guide presents key as optional](https://github.com/todd-skelton/corten/issues/418)).
 
 ### Documentation
 
