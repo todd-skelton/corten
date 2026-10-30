@@ -498,13 +498,14 @@ impl<P: Place> AttrValue for FieldName<P> {
     }
 }
 
-/// The rest of a typed route's query as hidden inputs, for a GET form that changes some of its
-/// fields: a GET form sends only its own controls (and drops its `action`'s query), so a form
-/// that changes the research on a screen whose address also holds the seller and the page would
-/// lose them. `shown` names, from the route's own [`Fields`], the fields the form's controls send;
-/// every other field the route writes is kept, in the encoding its links use (an `Option` only when
-/// set, a list once per item, an enum by its word). A field added to the route is kept by every
-/// such form without a change to it, and a name from another struct does not compile.
+/// A GET form's controls, and the rest of a typed route's query as hidden inputs: a GET form
+/// sends only its own controls (and drops its `action`'s query), so a form that changes the
+/// research on a screen whose address also holds the seller and the page would lose them.
+/// `controls` is drawn first; every key of the route's query that no control in it names
+/// (`name="grade"`, a set's `sortBy`, a prefixed `dim.color`) is then kept as a hidden input, in
+/// the encoding the route's links use (an `Option` only when set, a list once per item, an enum
+/// by its word). A field added to the route is kept by every such form without a change to it,
+/// and a control's key is never sent twice, so there is no list of names to keep in step.
 ///
 /// ```
 /// use corten::prelude::*;
@@ -518,68 +519,70 @@ impl<P: Place> AttrValue for FieldName<P> {
 /// let f = Choice::FIELDS;
 /// let form = html! {
 ///     <form method="get" action={&at}>
-///         {keep_query(&at, |f| [f.grade])}
-///         <input name={f.grade} value="10">
+///         {keep_query(&at, html! { <input name={f.grade} value="10"> <button>"Price"</button> })}
 ///     </form>
 /// };
 /// assert_eq!(
 ///     form.to_html(),
 ///     concat!(
 ///         r#"<form method="get" action="/slab-pricing?cert=a%26b&amp;trail=p1&amp;trail=p2&amp;grade=9">"#,
+///         r#"<input name="grade" value="10"><button>Price</button>"#,
 ///         r#"<input type="hidden" name="cert" value="a&amp;b">"#,
 ///         r#"<input type="hidden" name="trail" value="p1"><input type="hidden" name="trail" value="p2">"#,
-///         r#"<input name="grade" value="10"></form>"#,
+///         r#"</form>"#,
 ///     )
 /// );
 /// ```
 ///
-/// The names come from the route's own fields, so another form's do not compile:
+/// It takes a typed route, so a URL as text does not compile:
 ///
-/// ```compile_fail,E0609
+/// ```compile_fail,E0277
 /// use corten::prelude::*;
 /// use corten::form::keep_query;
 ///
-/// #[derive(Clone, Default, serde::Deserialize, Route, Fields)]
-/// #[route("/slab-pricing")]
-/// struct Choice { cert: Option<String>, grade: Option<u8> }
-///
-/// let at = Choice::default();
-/// let _ = html! { <form method="get" action={&at}>{keep_query(&at, |f| [f.seller])}</form> };
+/// let _ = html! { <form method="get">{keep_query(&"/slab-pricing?grade=9", html! { <input name="grade"> })}</form> };
 /// ```
-///
-/// A field listed here that the form does not send is left out of the address; one the form sends
-/// that is not listed is sent twice, which the route's `Params` refuses (400): list exactly the
-/// fields the form's controls name.
-pub fn keep_query<'a, R: crate::route::Route + Fields, const N: usize>(
-    route: &'a R,
-    shown: impl FnOnce(R::Names) -> [FieldName; N],
-) -> KeepQuery<'a, R, N> {
-    KeepQuery { route, shown: shown(R::NAMES) }
+pub fn keep_query<'a, R: crate::route::Route + ?Sized, C: Render>(route: &'a R, controls: C) -> KeepQuery<'a, R, C> {
+    KeepQuery { route, controls }
 }
 
-/// What [`keep_query`] returns: hidden inputs for the route's query fields but `shown`.
-pub struct KeepQuery<'a, R, const N: usize> {
+/// What [`keep_query`] returns: the controls, then hidden inputs for the route's query keys they
+/// do not name.
+pub struct KeepQuery<'a, R: ?Sized, C> {
     route: &'a R,
-    shown: [FieldName; N],
+    controls: C,
 }
 
-impl<R: crate::route::Route, const N: usize> Render for KeepQuery<'_, R, N> {
+impl<R: crate::route::Route + ?Sized, C: Render> Render for KeepQuery<'_, R, C> {
     fn render(&self, out: &mut String) {
+        let start = out.len();
+        self.controls.render(out);
         // The route's own encoding, read back: what its links send is what the form keeps.
         let mut href = String::new();
         self.route.write_href(&mut href, false);
         let query = href.split_once('?').map_or("", |(_, q)| q);
         let query = query.split_once('#').map_or(query, |(q, _)| q);
+        if query.is_empty() {
+            return;
+        }
+        let mut named = String::new();
+        let mut kept = String::new();
         for (key, value) in form_urlencoded::parse(query.as_bytes()) {
-            if self.shown.iter().any(|f| *f == key.as_ref()) {
+            // The names the controls wrote, as they wrote them: escaped, in ` name="..."`.
+            named.clear();
+            named.push_str(" name=\"");
+            escape_into(&key, &mut named);
+            named.push('"');
+            if out[start..].contains(named.as_str()) {
                 continue;
             }
-            out.push_str(r#"<input type="hidden" name=""#);
-            crate::view::escape_into(&key, out);
-            out.push_str(r#"" value=""#);
-            crate::view::escape_into(&value, out);
-            out.push_str(r#"">"#);
+            kept.push_str(r#"<input type="hidden""#);
+            kept.push_str(&named);
+            kept.push_str(r#" value=""#);
+            escape_into(&value, &mut kept);
+            kept.push_str(r#"">"#);
         }
+        out.push_str(&kept);
     }
 }
 
@@ -959,10 +962,6 @@ pub trait Fields {
     /// a group needs a default of its own.
     #[doc(hidden)]
     const LEAVE_OUT: bool;
-    /// Its names at the form's top, `Self::FIELDS`, for code generic over the struct
-    /// ([`KeepQuery`]).
-    #[doc(hidden)]
-    const NAMES: Self::Names;
     #[doc(hidden)]
     fn in_row<'k>(rows: &'static str, key: &'k (dyn RowKey + Sync)) -> Self::InRow<'k>;
 }

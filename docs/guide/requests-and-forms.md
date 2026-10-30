@@ -567,16 +567,18 @@ patches the page it was sent from: a `target` or `formtarget` on it is not follo
 
 A GET form sends only its own controls, and drops its `action`'s query. On a screen whose address
 holds more than one form changes (the seller and the page, and the research a second form sets),
-each form keeps the rest with `keep_query(&at, |f| [..])`, naming from the route's own fields
-(the struct derives `Route` and `Fields`) the ones its controls send: every other field the route
-writes becomes a hidden input, in the encoding its links use, and a field added to the route later
-is kept by every such form. List exactly the fields the form's controls name; one it sends that is
-not listed goes twice, and `Params` refuses that (400).
+each form wraps its controls in `keep_query(&at, html! { .. })`: the controls are drawn, and every
+key of the route's query that none of them names (`name=`, a `#[route(query)]` set's key, a
+`#[route(prefix)]` entry's) becomes a hidden input, in the encoding the route's links use. There
+is no list of names, so a key is neither dropped nor sent twice, and a field added to the route
+later is kept by every such form.
 
 ```rust,ignore
 <form method="get" action={&at}>
-    {keep_query(&at, |f| [f.grade, f.from, f.to])}
-    <select name={f.grade}>..</select>
+    {keep_query(&at, html! {
+        <select name={f.grade}>..</select>
+        <button>"Price"</button>
+    })}
 </form>
 ```
 

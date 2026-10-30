@@ -433,7 +433,6 @@ impl {impl_generics} ::corten::form::Fields for {name} {type_generics} {where_cl
     type InRowGroup<'k> = {name}RowGroupFields<'k>;
     const SHAPE: u8 = {{ {shape} shape }};
     const LEAVE_OUT: bool = {leave_out};
-    const NAMES: {fields_type} = Self::FIELDS;
     fn in_row<'k>(rows: &'static str, key: &'k (dyn ::corten::form::RowKey + ::core::marker::Sync)) -> {name}RowFields<'k> {{
         let _ = <Self as ::corten::form::Fields>::SHAPE;
         let at = ::corten::form::__private::row(rows, key);

@@ -1058,13 +1058,13 @@ Corten is pre-1.0, so any minor version may change the API.
     not parse 5,401 where it took 5,176 (callgrind, release build, 3 runs each); a row's error is
     found by its key, so many rows' errors do not cost each other
     ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366), [#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
-143. `corten::form::keep_query(&at, |f| [f.grade, f.from])`: the rest of a typed route's query as
-    hidden inputs, for a GET form that changes some of its fields (a GET form sends only its own
-    controls and drops its action's query). The names come from the route's own `Fields`, so another
-    struct's do not compile, and every other field is written as the route's links write it (an
-    `Option` only when set, a list once per item); a field the route gains is kept by every such
-    form, where a hand-written list silently dropped it. `Fields` gains a hidden `NAMES` constant,
-    which the derive writes. Nothing else renders differently
+143. `corten::form::keep_query(&at, html! { controls })`: a GET form's controls, then the
+    rest of a typed route's query as hidden inputs, for a form that changes some of its fields (a
+    GET form sends only its own controls and drops its action's query). Every key of the route's
+    query that no control names (a field, a `#[route(query)]` set's key, a `#[route(prefix)]`
+    entry) is kept, written as the route's links write it, so there is no list of names: a key is
+    neither dropped nor sent twice, and a field the route gains is kept by every such form, where a
+    hand-written list silently dropped it. Nothing else renders differently
     ([#439 A GET form that changes some of a typed route's query fields must write every other field as a hidden input by hand, and a missed or doubled one compiles](https://github.com/todd-skelton/corten/issues/439)).
 
 ### Removed

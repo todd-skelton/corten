@@ -4353,3 +4353,61 @@ async fn a_file_route_answers_a_page_when_it_refuses() {
     assert_eq!(headers[header::CACHE_CONTROL], "private, no-cache");
     assert!(headers.contains_key(header::CONTENT_SECURITY_POLICY));
 }
+
+#[derive(Default, crate::Route)]
+#[route(query)]
+#[serde(rename_all = "camelCase")]
+pub struct KeptPaging {
+    pub sort_by: Option<String>,
+    pub page_no: Option<u32>,
+}
+
+#[derive(crate::Route)]
+#[route("/kept")]
+pub struct Kept {
+    pub q: Option<String>,
+    pub tags: Vec<String>,
+    #[route(prefix = "dim.")]
+    pub dims: std::collections::BTreeMap<String, String>,
+    #[route(query)]
+    pub paging: KeptPaging,
+}
+
+#[test]
+fn keep_query_keeps_every_key_the_controls_do_not_name() {
+    use crate::form::keep_query;
+    let at = Kept {
+        q: Some("a \"b\" <c>".into()),
+        tags: vec!["x".into(), "y".into()],
+        dims: [("color".to_string(), "red".to_string()), ("size".to_string(), "9".to_string())].into(),
+        paging: KeptPaging { sort_by: Some("price".into()), page_no: Some(3) },
+    };
+    // A set's field, a prefixed entry and a list, each named by a control: none is kept.
+    let html = keep_query(
+        &at,
+        html! {
+            <select name="sortBy"><option>"price"</option></select>
+            <input name="dim.color" value="blue">
+            for tag in ["x", "z"] { <input type="checkbox" name="tags" value={tag}> }
+        },
+    )
+    .to_html();
+    assert!(!html.contains(r#"type="hidden" name="sortBy""#) && !html.contains(r#"type="hidden" name="tags""#), "{html}");
+    assert!(!html.contains(r#"type="hidden" name="dim.color""#), "{html}");
+    assert!(
+        html.ends_with(concat!(
+            r#"<input type="hidden" name="q" value="a &quot;b&quot; &lt;c&gt;">"#,
+            r#"<input type="hidden" name="dim.size" value="9">"#,
+            r#"<input type="hidden" name="pageNo" value="3">"#,
+        )),
+        "the rest, escaped, in the route's order: {html}"
+    );
+    // Text that only looks like a name is not one.
+    let html = keep_query(&at, html! { <p>" name=\"q\""</p> }).to_html();
+    assert!(html.contains(r#"type="hidden" name="q""#), "{html}");
+    // A route with no query keeps nothing.
+    assert_eq!(
+        keep_query(&Kept { q: None, tags: vec![], dims: Default::default(), paging: KeptPaging::default() }, "x").to_html(),
+        "x"
+    );
+}
