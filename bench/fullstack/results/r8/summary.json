@@ -1,0 +1,4230 @@
+{
+ "ssr": {
+  "fixture": {
+   "corten": {
+    "startup": {
+     "firstOkMsFromDockerRun": 405,
+     "idleMem": "11.17MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.3,
+     "p95": 0.4,
+     "p99": 0.4,
+     "failedPct": 0,
+     "cpuPct": 4.7,
+     "memMiB": 15.2,
+     "memMaxMiB": 15.7,
+     "perCpuSecond": 6450,
+     "cpuCounted": true,
+     "perMiB": 19.1,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 15747,
+     "unsentPct": 0,
+     "p50": 4.4,
+     "p95": 5.4,
+     "p99": 8.2,
+     "failedPct": 0,
+     "cpuPct": 101.4,
+     "memMiB": 15.7,
+     "memMaxMiB": 16.4,
+     "perCpuSecond": 15890,
+     "cpuCounted": true,
+     "perMiB": 960.2,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 14553,
+     "unsentPct": 0,
+     "p50": 19.8,
+     "p95": 23.5,
+     "p99": 32.9,
+     "failedPct": 0,
+     "cpuPct": 102.2,
+     "memMiB": 18.2,
+     "memMaxMiB": 18.9,
+     "perCpuSecond": 14572,
+     "cpuCounted": true,
+     "perMiB": 770,
+     "apiCpuPct": null
+    }
+   },
+   "nextjs": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1496,
+     "idleMem": "159.1MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 158,
+     "unsentPct": 36.06,
+     "p50": 1273.7,
+     "p95": 45766.2,
+     "p99": 57175,
+     "failedPct": 0.98,
+     "cpuPct": 100.4,
+     "memMiB": 205.3,
+     "memMaxMiB": 219.3,
+     "perCpuSecond": 177,
+     "cpuCounted": true,
+     "perMiB": 0.7,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 186,
+     "unsentPct": 0,
+     "p50": 358.1,
+     "p95": 395.9,
+     "p99": 410.4,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 218.8,
+     "memMaxMiB": 219.2,
+     "perCpuSecond": 186,
+     "cpuCounted": true,
+     "perMiB": 0.8,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 188,
+     "unsentPct": 0,
+     "p50": 1193.3,
+     "p95": 1393.7,
+     "p99": 10534.1,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 220.6,
+     "memMaxMiB": 221.4,
+     "perCpuSecond": 188,
+     "cpuCounted": true,
+     "perMiB": 0.8,
+     "apiCpuPct": null
+    },
+    "failed": "served 158/s of the fixed rate, 36.06% never sent"
+   },
+   "tanstack-start": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1076,
+     "idleMem": "121.3MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 1.4,
+     "p95": 18.4,
+     "p99": 33.9,
+     "failedPct": 0,
+     "cpuPct": 49.3,
+     "memMiB": 162,
+     "memMaxMiB": 162.6,
+     "perCpuSecond": 609,
+     "cpuCounted": true,
+     "perMiB": 1.8,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 683,
+     "unsentPct": 0,
+     "p50": 86.9,
+     "p95": 134.7,
+     "p99": 146.6,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 162.2,
+     "memMaxMiB": 162.7,
+     "perCpuSecond": 683,
+     "cpuCounted": true,
+     "perMiB": 4.2,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 689,
+     "unsentPct": 0,
+     "p50": 294.7,
+     "p95": 420.5,
+     "p99": 456.8,
+     "failedPct": 0,
+     "cpuPct": 100.3,
+     "memMiB": 162.9,
+     "memMaxMiB": 163.4,
+     "perCpuSecond": 689,
+     "cpuCounted": true,
+     "perMiB": 4.2,
+     "apiCpuPct": null
+    }
+   },
+   "sveltekit": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1125,
+     "idleMem": "125.4MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 1.1,
+     "p95": 7,
+     "p99": 20.7,
+     "failedPct": 0,
+     "cpuPct": 39.8,
+     "memMiB": 142.9,
+     "memMaxMiB": 143.4,
+     "perCpuSecond": 756,
+     "cpuCounted": true,
+     "perMiB": 2.1,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 920,
+     "unsentPct": 0,
+     "p50": 60.9,
+     "p95": 111.2,
+     "p99": 131.7,
+     "failedPct": 0,
+     "cpuPct": 101.2,
+     "memMiB": 143.2,
+     "memMaxMiB": 143.5,
+     "perCpuSecond": 920,
+     "cpuCounted": true,
+     "perMiB": 6.4,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 809,
+     "unsentPct": 0,
+     "p50": 287.4,
+     "p95": 367.7,
+     "p99": 410.6,
+     "failedPct": 0,
+     "cpuPct": 101,
+     "memMiB": 148.8,
+     "memMaxMiB": 148.9,
+     "perCpuSecond": 809,
+     "cpuCounted": true,
+     "perMiB": 5.4,
+     "apiCpuPct": null
+    }
+   },
+   "react-router": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1197,
+     "idleMem": "84.14MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 1.8,
+     "p95": 29.1,
+     "p99": 44.7,
+     "failedPct": 0,
+     "cpuPct": 61.6,
+     "memMiB": 141.9,
+     "memMaxMiB": 142.4,
+     "perCpuSecond": 491,
+     "cpuCounted": true,
+     "perMiB": 2.1,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 542,
+     "unsentPct": 0,
+     "p50": 110.3,
+     "p95": 169.1,
+     "p99": 182.4,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 141.7,
+     "memMaxMiB": 142,
+     "perCpuSecond": 542,
+     "cpuCounted": true,
+     "perMiB": 3.8,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 535,
+     "unsentPct": 0,
+     "p50": 444.3,
+     "p95": 545.6,
+     "p99": 566.7,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 142.6,
+     "memMaxMiB": 143,
+     "perCpuSecond": 535,
+     "cpuCounted": true,
+     "perMiB": 3.7,
+     "apiCpuPct": null
+    }
+   },
+   "leptos": {
+    "startup": {
+     "firstOkMsFromDockerRun": 739,
+     "idleMem": "8.816MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.9,
+     "p95": 1.1,
+     "p99": 1.2,
+     "failedPct": 0,
+     "cpuPct": 23.8,
+     "memMiB": 14.9,
+     "memMaxMiB": 15.4,
+     "perCpuSecond": 1267,
+     "cpuCounted": true,
+     "perMiB": 19.5,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 1408,
+     "unsentPct": 0,
+     "p50": 46.1,
+     "p95": 59.4,
+     "p99": 67.3,
+     "failedPct": 0,
+     "cpuPct": 100.9,
+     "memMiB": 15.4,
+     "memMaxMiB": 16.1,
+     "perCpuSecond": 1408,
+     "cpuCounted": true,
+     "perMiB": 87.5,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 1233,
+     "unsentPct": 0,
+     "p50": 206.2,
+     "p95": 319.7,
+     "p99": 349.8,
+     "failedPct": 0,
+     "cpuPct": 101,
+     "memMiB": 32.1,
+     "memMaxMiB": 32.5,
+     "perCpuSecond": 1233,
+     "cpuCounted": true,
+     "perMiB": 37.9,
+     "apiCpuPct": null
+    }
+   },
+   "django": {
+    "startup": {
+     "firstOkMsFromDockerRun": 2432,
+     "idleMem": "149.6MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 10.9,
+     "p95": 161.9,
+     "p99": 233.4,
+     "failedPct": 0,
+     "cpuPct": 93.4,
+     "memMiB": 343.4,
+     "memMaxMiB": 343.9,
+     "perCpuSecond": 323,
+     "cpuCounted": true,
+     "perMiB": 0.9,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 335,
+     "unsentPct": 0,
+     "p50": 187.3,
+     "p95": 222.6,
+     "p99": 234.8,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 343.7,
+     "memMaxMiB": 344,
+     "perCpuSecond": 335,
+     "cpuCounted": true,
+     "perMiB": 1,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 306,
+     "unsentPct": 0,
+     "p50": 826.5,
+     "p95": 948.3,
+     "p99": 982.5,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 344,
+     "memMaxMiB": 344.4,
+     "perCpuSecond": 306,
+     "cpuCounted": true,
+     "perMiB": 0.9,
+     "apiCpuPct": null
+    }
+   },
+   "rails": {
+    "startup": {
+     "firstOkMsFromDockerRun": 2122,
+     "idleMem": "178.7MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 2.2,
+     "p95": 19.1,
+     "p99": 48.6,
+     "failedPct": 0,
+     "cpuPct": 72.3,
+     "memMiB": 141,
+     "memMaxMiB": 142.9,
+     "perCpuSecond": 417,
+     "cpuCounted": true,
+     "perMiB": 2.1,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 457,
+     "unsentPct": 0,
+     "p50": 138.9,
+     "p95": 166.3,
+     "p99": 175.5,
+     "failedPct": 0,
+     "cpuPct": 101.4,
+     "memMiB": 135.2,
+     "memMaxMiB": 142.9,
+     "perCpuSecond": 457,
+     "cpuCounted": true,
+     "perMiB": 3.2,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 426,
+     "unsentPct": 0,
+     "p50": 602.9,
+     "p95": 675.4,
+     "p99": 703.1,
+     "failedPct": 0,
+     "cpuPct": 101.4,
+     "memMiB": 139.1,
+     "memMaxMiB": 140,
+     "perCpuSecond": 426,
+     "cpuCounted": true,
+     "perMiB": 3,
+     "apiCpuPct": null
+    }
+   },
+   "laravel": {
+    "startup": {
+     "failed": "never answered /items/item_1 within a minute",
+     "logs": [
+      "ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+      "",
+      "   WARN  worker script has failed on restart.  ",
+      "",
+      "   WARN  worker script has failed on restart.  ",
+      "",
+      "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+      "",
+      "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+      "",
+      "   WARN  worker script has failed on restart.  ",
+      "",
+      "   WARN  worker script has failed on restart.  ",
+      "",
+      "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+      "",
+      "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+      "",
+      "   ERROR  loading initial config: loading new config: frankenphp app module: start: failed to initialize workers: too many consecutive failures: worker public/frankenphp-worker.php has not reached frankenphp_handle_request()."
+     ]
+    },
+    "failed": "never answered /items/item_1 within a minute"
+   },
+   "aspnet": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1555,
+     "idleMem": "60.55MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.6,
+     "p95": 0.9,
+     "p99": 2.4,
+     "failedPct": 0,
+     "cpuPct": 21.4,
+     "memMiB": 85.6,
+     "memMaxMiB": 87.5,
+     "perCpuSecond": 1224,
+     "cpuCounted": true,
+     "perMiB": 3.4,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 4182,
+     "unsentPct": 0,
+     "p50": 15.4,
+     "p95": 21.4,
+     "p99": 23.8,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 84.8,
+     "memMaxMiB": 87.2,
+     "perCpuSecond": 4184,
+     "cpuCounted": true,
+     "perMiB": 48,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 4092,
+     "unsentPct": 0,
+     "p50": 62.9,
+     "p95": 85.9,
+     "p99": 102.8,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 88.2,
+     "memMaxMiB": 89.5,
+     "perCpuSecond": 4099,
+     "cpuCounted": true,
+     "perMiB": 45.7,
+     "apiCpuPct": null
+    }
+   },
+   "spring": {
+    "startup": {
+     "firstOkMsFromDockerRun": 9970,
+     "idleMem": "276.1MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 1,
+     "p95": 1.9,
+     "p99": 4.6,
+     "failedPct": 0,
+     "cpuPct": 37.7,
+     "memMiB": 348.6,
+     "memMaxMiB": 351.8,
+     "perCpuSecond": 665,
+     "cpuCounted": true,
+     "perMiB": 0.9,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 1136,
+     "unsentPct": 0,
+     "p50": 40.1,
+     "p95": 153.6,
+     "p99": 339.3,
+     "failedPct": 0,
+     "cpuPct": 101.2,
+     "memMiB": 356.4,
+     "memMaxMiB": 357,
+     "perCpuSecond": 1137,
+     "cpuCounted": true,
+     "perMiB": 3.2,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 1099,
+     "unsentPct": 0,
+     "p50": 192.4,
+     "p95": 540.5,
+     "p99": 1199.3,
+     "failedPct": 0,
+     "cpuPct": 101.5,
+     "memMiB": 376.5,
+     "memMaxMiB": 377,
+     "perCpuSecond": 1100,
+     "cpuCounted": true,
+     "perMiB": 2.9,
+     "apiCpuPct": null
+    }
+   },
+   "phoenix": {
+    "startup": {
+     "firstOkMsFromDockerRun": 3352,
+     "idleMem": "422.7MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 1,
+     "p95": 1.2,
+     "p99": 1.4,
+     "failedPct": 0,
+     "cpuPct": 36.2,
+     "memMiB": 286.5,
+     "memMaxMiB": 289.4,
+     "perCpuSecond": 834,
+     "cpuCounted": true,
+     "perMiB": 1,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 1420,
+     "unsentPct": 0,
+     "p50": 44.9,
+     "p95": 52.8,
+     "p99": 58.6,
+     "failedPct": 0,
+     "cpuPct": 100.9,
+     "memMiB": 280.6,
+     "memMaxMiB": 287,
+     "perCpuSecond": 1420,
+     "cpuCounted": true,
+     "perMiB": 4.9,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 1357,
+     "unsentPct": 0,
+     "p50": 136.2,
+     "p95": 188.4,
+     "p99": 5049,
+     "failedPct": 0,
+     "cpuPct": 100.8,
+     "memMiB": 297.1,
+     "memMaxMiB": 297.7,
+     "perCpuSecond": 1357,
+     "cpuCounted": true,
+     "perMiB": 4.6,
+     "apiCpuPct": null
+    }
+   },
+   "astro": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1042,
+     "idleMem": "145.2MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.9,
+     "p95": 4.3,
+     "p99": 31.4,
+     "failedPct": 0,
+     "cpuPct": 29.9,
+     "memMiB": 135.4,
+     "memMaxMiB": 135.8,
+     "perCpuSecond": 1006,
+     "cpuCounted": true,
+     "perMiB": 2.2,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 1222,
+     "unsentPct": 0,
+     "p50": 47.1,
+     "p95": 91.9,
+     "p99": 115.7,
+     "failedPct": 0,
+     "cpuPct": 100.9,
+     "memMiB": 137,
+     "memMaxMiB": 140.4,
+     "perCpuSecond": 1222,
+     "cpuCounted": true,
+     "perMiB": 8.7,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 1166,
+     "unsentPct": 0,
+     "p50": 202.9,
+     "p95": 281.8,
+     "p99": 292.7,
+     "failedPct": 0,
+     "cpuPct": 101.1,
+     "memMiB": 140.6,
+     "memMaxMiB": 141.1,
+     "perCpuSecond": 1166,
+     "cpuCounted": true,
+     "perMiB": 8.3,
+     "apiCpuPct": null
+    }
+   },
+   "nuxt": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1225,
+     "idleMem": "135.7MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 290,
+     "unsentPct": 1.73,
+     "p50": 707.6,
+     "p95": 964,
+     "p99": 25276.8,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 159.2,
+     "memMaxMiB": 160.9,
+     "perCpuSecond": 290,
+     "cpuCounted": true,
+     "perMiB": 1.8,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 329,
+     "unsentPct": 0,
+     "p50": 192.3,
+     "p95": 234.7,
+     "p99": 242.9,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 161,
+     "memMaxMiB": 161.2,
+     "perCpuSecond": 329,
+     "cpuCounted": true,
+     "perMiB": 2,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 308,
+     "unsentPct": 0,
+     "p50": 718.3,
+     "p95": 823,
+     "p99": 870.4,
+     "failedPct": 0,
+     "cpuPct": 100.1,
+     "memMiB": 161.6,
+     "memMaxMiB": 161.9,
+     "perCpuSecond": 308,
+     "cpuCounted": true,
+     "perMiB": 1.9,
+     "apiCpuPct": null
+    }
+   }
+  },
+  "api": {
+   "corten": {
+    "startup": {
+     "firstOkMsFromDockerRun": 421,
+     "idleMem": "1.32MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 0.7,
+     "p95": 0.9,
+     "p99": 1.1,
+     "failedPct": 0,
+     "cpuPct": 6.3,
+     "memMiB": 11.3,
+     "memMaxMiB": 11.7,
+     "perCpuSecond": 2341,
+     "cpuCounted": true,
+     "perMiB": 12.8,
+     "apiCpuPct": 3.1
+    },
+    "sat64": {
+     "rps": 3616,
+     "unsentPct": 0,
+     "p50": 17.8,
+     "p95": 22.6,
+     "p99": 24.3,
+     "failedPct": 0,
+     "cpuPct": 102.3,
+     "memMiB": 16.3,
+     "memMaxMiB": 17.5,
+     "perCpuSecond": 3617,
+     "cpuCounted": true,
+     "perMiB": 206.6,
+     "apiCpuPct": 46.2
+    },
+    "sat256": {
+     "rps": 3219,
+     "unsentPct": 0,
+     "p50": 79.1,
+     "p95": 106.3,
+     "p99": 121.7,
+     "failedPct": 0,
+     "cpuPct": 102.8,
+     "memMiB": 50.8,
+     "memMaxMiB": 58.4,
+     "perCpuSecond": 3222,
+     "cpuCounted": true,
+     "perMiB": 55.1,
+     "apiCpuPct": 45.4
+    }
+   },
+   "nextjs": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1157,
+     "idleMem": "51.66MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 80,
+     "unsentPct": 22.85,
+     "p50": 2485.7,
+     "p95": 44668.9,
+     "p99": 52135.5,
+     "failedPct": 1.21,
+     "cpuPct": 100.4,
+     "memMiB": 232.1,
+     "memMaxMiB": 262.2,
+     "perCpuSecond": 104,
+     "cpuCounted": true,
+     "perMiB": 0.3,
+     "apiCpuPct": 2.2
+    },
+    "sat64": {
+     "rps": 119,
+     "unsentPct": 0,
+     "p50": 513.9,
+     "p95": 622.3,
+     "p99": 812.3,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 262.4,
+     "memMaxMiB": 263.1,
+     "perCpuSecond": 119,
+     "cpuCounted": true,
+     "perMiB": 0.5,
+     "apiCpuPct": 2.3
+    },
+    "sat256": {
+     "rps": 110,
+     "unsentPct": 0,
+     "p50": 2056.4,
+     "p95": 2477.3,
+     "p99": 23790.2,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 264,
+     "memMaxMiB": 266,
+     "perCpuSecond": 110,
+     "cpuCounted": true,
+     "perMiB": 0.4,
+     "apiCpuPct": 2.1
+    },
+    "failed": "served 80/s of the fixed rate, 22.85% never sent"
+   },
+   "tanstack-start": {
+    "startup": {
+     "firstOkMsFromDockerRun": 514,
+     "idleMem": "26.75MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.6,
+     "p95": 26.9,
+     "p99": 35.2,
+     "failedPct": 0,
+     "cpuPct": 49.7,
+     "memMiB": 124.3,
+     "memMaxMiB": 125.9,
+     "perCpuSecond": 302,
+     "cpuCounted": true,
+     "perMiB": 1.2,
+     "apiCpuPct": 3.1
+    },
+    "sat64": {
+     "rps": 327,
+     "unsentPct": 0,
+     "p50": 197.8,
+     "p95": 222.5,
+     "p99": 234.9,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 136.6,
+     "memMaxMiB": 138.7,
+     "perCpuSecond": 327,
+     "cpuCounted": true,
+     "perMiB": 2.4,
+     "apiCpuPct": 4
+    },
+    "sat256": {
+     "rps": 305,
+     "unsentPct": 0,
+     "p50": 775.8,
+     "p95": 918.1,
+     "p99": 973.4,
+     "failedPct": 0,
+     "cpuPct": 100.3,
+     "memMiB": 160.9,
+     "memMaxMiB": 172.8,
+     "perCpuSecond": 305,
+     "cpuCounted": true,
+     "perMiB": 1.8,
+     "apiCpuPct": 4
+    }
+   },
+   "sveltekit": {
+    "startup": {
+     "firstOkMsFromDockerRun": 663,
+     "idleMem": "24.39MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.2,
+     "p95": 15.4,
+     "p99": 23.1,
+     "failedPct": 0,
+     "cpuPct": 42.2,
+     "memMiB": 129.2,
+     "memMaxMiB": 130.5,
+     "perCpuSecond": 356,
+     "cpuCounted": true,
+     "perMiB": 1.1,
+     "apiCpuPct": 3.2
+    },
+    "sat64": {
+     "rps": 364,
+     "unsentPct": 0,
+     "p50": 175.3,
+     "p95": 203.4,
+     "p99": 214.4,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 146.8,
+     "memMaxMiB": 149.6,
+     "perCpuSecond": 364,
+     "cpuCounted": true,
+     "perMiB": 2.4,
+     "apiCpuPct": 4.5
+    },
+    "sat256": {
+     "rps": 357,
+     "unsentPct": 0,
+     "p50": 643.1,
+     "p95": 764.1,
+     "p99": 851.8,
+     "failedPct": 0,
+     "cpuPct": 100.3,
+     "memMiB": 153.5,
+     "memMaxMiB": 158.6,
+     "perCpuSecond": 357,
+     "cpuCounted": true,
+     "perMiB": 2.2,
+     "apiCpuPct": 4.7
+    }
+   },
+   "react-router": {
+    "startup": {
+     "firstOkMsFromDockerRun": 767,
+     "idleMem": "33.29MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 3.1,
+     "p95": 32.2,
+     "p99": 67.8,
+     "failedPct": 0,
+     "cpuPct": 57.8,
+     "memMiB": 129.1,
+     "memMaxMiB": 130.4,
+     "perCpuSecond": 262,
+     "cpuCounted": true,
+     "perMiB": 1.2,
+     "apiCpuPct": 3.2
+    },
+    "sat64": {
+     "rps": 290,
+     "unsentPct": 0,
+     "p50": 223,
+     "p95": 252.5,
+     "p99": 266.8,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 137.1,
+     "memMaxMiB": 140.8,
+     "perCpuSecond": 290,
+     "cpuCounted": true,
+     "perMiB": 2.1,
+     "apiCpuPct": 3.4
+    },
+    "sat256": {
+     "rps": 294,
+     "unsentPct": 0,
+     "p50": 819.4,
+     "p95": 936,
+     "p99": 2324.9,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 144.8,
+     "memMaxMiB": 149.4,
+     "perCpuSecond": 294,
+     "cpuCounted": true,
+     "perMiB": 2,
+     "apiCpuPct": 3.9
+    }
+   },
+   "leptos": {
+    "startup": {
+     "firstOkMsFromDockerRun": 444,
+     "idleMem": "1.609MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.7,
+     "p95": 2.1,
+     "p99": 2.4,
+     "failedPct": 0,
+     "cpuPct": 21.2,
+     "memMiB": 12.1,
+     "memMaxMiB": 12.5,
+     "perCpuSecond": 711,
+     "cpuCounted": true,
+     "perMiB": 12,
+     "apiCpuPct": 3.1
+    },
+    "sat64": {
+     "rps": 773,
+     "unsentPct": 0,
+     "p50": 84.9,
+     "p95": 95.2,
+     "p99": 99.8,
+     "failedPct": 0,
+     "cpuPct": 100.8,
+     "memMiB": 15.1,
+     "memMaxMiB": 16.9,
+     "perCpuSecond": 773,
+     "cpuCounted": true,
+     "perMiB": 45.7,
+     "apiCpuPct": 12.6
+    },
+    "sat256": {
+     "rps": 651,
+     "unsentPct": 0,
+     "p50": 395.8,
+     "p95": 484.1,
+     "p99": 520,
+     "failedPct": 0,
+     "cpuPct": 100.7,
+     "memMiB": 49.7,
+     "memMaxMiB": 57.4,
+     "perCpuSecond": 652,
+     "cpuCounted": true,
+     "perMiB": 11.3,
+     "apiCpuPct": 11.6
+    }
+   },
+   "django": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1716,
+     "idleMem": "63.2MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 5.1,
+     "p95": 15,
+     "p99": 24.5,
+     "failedPct": 0,
+     "cpuPct": 79.5,
+     "memMiB": 126.9,
+     "memMaxMiB": 127.4,
+     "perCpuSecond": 190,
+     "cpuCounted": true,
+     "perMiB": 1.2,
+     "apiCpuPct": 3.5
+    },
+    "sat64": {
+     "rps": 181,
+     "unsentPct": 0,
+     "p50": 350.6,
+     "p95": 384,
+     "p99": 394.7,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 127.1,
+     "memMaxMiB": 127.7,
+     "perCpuSecond": 181,
+     "cpuCounted": true,
+     "perMiB": 1.4,
+     "apiCpuPct": 4.5
+    },
+    "sat256": {
+     "rps": 179,
+     "unsentPct": 0,
+     "p50": 1427.9,
+     "p95": 1484.5,
+     "p99": 1503.7,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 127.2,
+     "memMaxMiB": 127.7,
+     "perCpuSecond": 179,
+     "cpuCounted": true,
+     "perMiB": 1.4,
+     "apiCpuPct": 4.5
+    }
+   },
+   "rails": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1510,
+     "idleMem": "64.09MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 3.4,
+     "p95": 19.4,
+     "p99": 33.6,
+     "failedPct": 0,
+     "cpuPct": 55.6,
+     "memMiB": 105.1,
+     "memMaxMiB": 108.4,
+     "perCpuSecond": 270,
+     "cpuCounted": true,
+     "perMiB": 1.4,
+     "apiCpuPct": 3.4
+    },
+    "sat64": {
+     "rps": 334,
+     "unsentPct": 0,
+     "p50": 188.8,
+     "p95": 225.5,
+     "p99": 237.5,
+     "failedPct": 0,
+     "cpuPct": 101,
+     "memMiB": 106.8,
+     "memMaxMiB": 109.2,
+     "perCpuSecond": 334,
+     "cpuCounted": true,
+     "perMiB": 3.1,
+     "apiCpuPct": 6.7
+    },
+    "sat256": {
+     "rps": 297,
+     "unsentPct": 0,
+     "p50": 859.6,
+     "p95": 968.6,
+     "p99": 1018.4,
+     "failedPct": 0,
+     "cpuPct": 101,
+     "memMiB": 112.4,
+     "memMaxMiB": 113.2,
+     "perCpuSecond": 297,
+     "cpuCounted": true,
+     "perMiB": 2.6,
+     "apiCpuPct": 6.3
+    }
+   },
+   "laravel": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1574,
+     "idleMem": "97.3MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 92,
+     "unsentPct": 28.27,
+     "p50": 9738.3,
+     "p95": 10951.3,
+     "p99": 10978.2,
+     "failedPct": 0,
+     "cpuPct": 99.5,
+     "memMiB": 151.8,
+     "memMaxMiB": 178.8,
+     "perCpuSecond": 94,
+     "cpuCounted": true,
+     "perMiB": 0.5,
+     "apiCpuPct": 8.6
+    },
+    "sat64": {
+     "rps": 97,
+     "unsentPct": 0,
+     "p50": 659.7,
+     "p95": 709.8,
+     "p99": 735.8,
+     "failedPct": 0,
+     "cpuPct": 99.4,
+     "memMiB": 116.6,
+     "memMaxMiB": 177.4,
+     "perCpuSecond": 98,
+     "cpuCounted": true,
+     "perMiB": 0.5,
+     "apiCpuPct": 8
+    },
+    "sat256": {
+     "rps": 95,
+     "unsentPct": 0,
+     "p50": 2695.2,
+     "p95": 2814.6,
+     "p99": 2849.3,
+     "failedPct": 0,
+     "cpuPct": 99.3,
+     "memMiB": 125.2,
+     "memMaxMiB": 125.8,
+     "perCpuSecond": 96,
+     "cpuCounted": true,
+     "perMiB": 0.8,
+     "apiCpuPct": 8.1
+    },
+    "failed": "served 92/s of the fixed rate, 28.27% never sent"
+   },
+   "aspnet": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1230,
+     "idleMem": "32.36MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.8,
+     "p95": 5.1,
+     "p99": 8.4,
+     "failedPct": 0,
+     "cpuPct": 38.1,
+     "memMiB": 61.1,
+     "memMaxMiB": 63.9,
+     "perCpuSecond": 383,
+     "cpuCounted": true,
+     "perMiB": 2.3,
+     "apiCpuPct": 3.4
+    },
+    "sat64": {
+     "rps": 1065,
+     "unsentPct": 0,
+     "p50": 58.1,
+     "p95": 80.9,
+     "p99": 95.6,
+     "failedPct": 0,
+     "cpuPct": 101.1,
+     "memMiB": 70.8,
+     "memMaxMiB": 75.1,
+     "perCpuSecond": 1065,
+     "cpuCounted": true,
+     "perMiB": 14.2,
+     "apiCpuPct": 15.7
+    },
+    "sat256": {
+     "rps": 973,
+     "unsentPct": 0,
+     "p50": 257.7,
+     "p95": 320.5,
+     "p99": 344.1,
+     "failedPct": 0,
+     "cpuPct": 100.8,
+     "memMiB": 91.9,
+     "memMaxMiB": 99.8,
+     "perCpuSecond": 975,
+     "cpuCounted": true,
+     "perMiB": 9.7,
+     "apiCpuPct": 14.3
+    }
+   },
+   "spring": {
+    "startup": {
+     "firstOkMsFromDockerRun": 8665,
+     "idleMem": "136MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.3,
+     "p95": 5,
+     "p99": 8.3,
+     "failedPct": 0,
+     "cpuPct": 50.9,
+     "memMiB": 412.4,
+     "memMaxMiB": 417,
+     "perCpuSecond": 262,
+     "cpuCounted": true,
+     "perMiB": 0.4,
+     "apiCpuPct": 4.4
+    },
+    "sat64": {
+     "rps": 515,
+     "unsentPct": 0,
+     "p50": 120.8,
+     "p95": 190.5,
+     "p99": 231.6,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 432.7,
+     "memMaxMiB": 435.8,
+     "perCpuSecond": 514,
+     "cpuCounted": true,
+     "perMiB": 1.2,
+     "apiCpuPct": 8.2
+    },
+    "sat256": {
+     "rps": 415,
+     "unsentPct": 0,
+     "p50": 555.7,
+     "p95": 976.7,
+     "p99": 1202.9,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 457.6,
+     "memMaxMiB": 462.7,
+     "perCpuSecond": 415,
+     "cpuCounted": true,
+     "perMiB": 0.9,
+     "apiCpuPct": 6.4
+    }
+   },
+   "phoenix": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1932,
+     "idleMem": "121.6MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 3.1,
+     "p95": 4.1,
+     "p99": 5,
+     "failedPct": 0,
+     "cpuPct": 50.3,
+     "memMiB": 248.1,
+     "memMaxMiB": 267.9,
+     "perCpuSecond": 299,
+     "cpuCounted": true,
+     "perMiB": 0.6,
+     "apiCpuPct": 4.4
+    },
+    "sat64": {
+     "rps": 373,
+     "unsentPct": 0,
+     "p50": 171.2,
+     "p95": 206.9,
+     "p99": 224.6,
+     "failedPct": 0,
+     "cpuPct": 100.7,
+     "memMiB": 230,
+     "memMaxMiB": 245.2,
+     "perCpuSecond": 373,
+     "cpuCounted": true,
+     "perMiB": 1.5,
+     "apiCpuPct": 6.3
+    },
+    "sat256": {
+     "rps": 380,
+     "unsentPct": 0,
+     "p50": 675.6,
+     "p95": 760.5,
+     "p99": 787,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 323.8,
+     "memMaxMiB": 344.7,
+     "perCpuSecond": 380,
+     "cpuCounted": true,
+     "perMiB": 1.1,
+     "apiCpuPct": 6
+    }
+   },
+   "astro": {
+    "startup": {
+     "firstOkMsFromDockerRun": 793,
+     "idleMem": "36.11MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.1,
+     "p95": 26.7,
+     "p99": 36.9,
+     "failedPct": 0,
+     "cpuPct": 43.7,
+     "memMiB": 114.3,
+     "memMaxMiB": 115.9,
+     "perCpuSecond": 344,
+     "cpuCounted": true,
+     "perMiB": 1.3,
+     "apiCpuPct": 3
+    },
+    "sat64": {
+     "rps": 462,
+     "unsentPct": 0,
+     "p50": 142.1,
+     "p95": 168,
+     "p99": 176.8,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 125.3,
+     "memMaxMiB": 127.4,
+     "perCpuSecond": 462,
+     "cpuCounted": true,
+     "perMiB": 3.6,
+     "apiCpuPct": 5.9
+    },
+    "sat256": {
+     "rps": 426,
+     "unsentPct": 0,
+     "p50": 572.5,
+     "p95": 690.9,
+     "p99": 747.7,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 141.5,
+     "memMaxMiB": 146.7,
+     "perCpuSecond": 425,
+     "cpuCounted": true,
+     "perMiB": 2.9,
+     "apiCpuPct": 5.4
+    }
+   },
+   "nuxt": {
+    "startup": {
+     "firstOkMsFromDockerRun": 793,
+     "idleMem": "35.69MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 4.6,
+     "p95": 56.7,
+     "p99": 274.6,
+     "failedPct": 0,
+     "cpuPct": 74.9,
+     "memMiB": 126.6,
+     "memMaxMiB": 127.7,
+     "perCpuSecond": 202,
+     "cpuCounted": true,
+     "perMiB": 1.2,
+     "apiCpuPct": 3.4
+    },
+    "sat64": {
+     "rps": 211,
+     "unsentPct": 0,
+     "p50": 301.3,
+     "p95": 317.2,
+     "p99": 383.1,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 131.5,
+     "memMaxMiB": 133.2,
+     "perCpuSecond": 211,
+     "cpuCounted": true,
+     "perMiB": 1.6,
+     "apiCpuPct": 2.9
+    },
+    "sat256": {
+     "rps": 204,
+     "unsentPct": 0,
+     "p50": 973.9,
+     "p95": 1284.8,
+     "p99": 14505.1,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 163.8,
+     "memMaxMiB": 189.6,
+     "perCpuSecond": 204,
+     "cpuCounted": true,
+     "perMiB": 1.1,
+     "apiCpuPct": 3.1
+    }
+   }
+  },
+  "fixture-json": {
+   "corten": {
+    "startup": {
+     "firstOkMsFromDockerRun": 610,
+     "idleMem": "11.17MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.3,
+     "p95": 0.3,
+     "p99": 0.4,
+     "failedPct": 0,
+     "cpuPct": 3.9,
+     "memMiB": 15.2,
+     "memMaxMiB": 15.6,
+     "perCpuSecond": 7641,
+     "cpuCounted": true,
+     "perMiB": 19.2,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 24652,
+     "unsentPct": 0,
+     "p50": 2,
+     "p95": 4,
+     "p99": 8.1,
+     "failedPct": 0,
+     "cpuPct": 98.6,
+     "memMiB": 15.8,
+     "memMaxMiB": 16.3,
+     "perCpuSecond": 25527,
+     "cpuCounted": true,
+     "perMiB": 1512.4,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 23937,
+     "unsentPct": 0,
+     "p50": 8.6,
+     "p95": 18,
+     "p99": 32.8,
+     "failedPct": 0,
+     "cpuPct": 98.4,
+     "memMiB": 18,
+     "memMaxMiB": 18.7,
+     "perCpuSecond": 24771,
+     "cpuCounted": true,
+     "perMiB": 1280,
+     "apiCpuPct": null
+    }
+   },
+   "nextjs": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1483,
+     "idleMem": "156.3MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.9,
+     "p95": 3.1,
+     "p99": 30.2,
+     "failedPct": 0,
+     "cpuPct": 30.8,
+     "memMiB": 165.2,
+     "memMaxMiB": 165.7,
+     "perCpuSecond": 979,
+     "cpuCounted": true,
+     "perMiB": 1.8,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 1141,
+     "unsentPct": 0,
+     "p50": 50.5,
+     "p95": 106.9,
+     "p99": 117.7,
+     "failedPct": 0,
+     "cpuPct": 101.1,
+     "memMiB": 165.5,
+     "memMaxMiB": 166.6,
+     "perCpuSecond": 1141,
+     "cpuCounted": true,
+     "perMiB": 6.9,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 1102,
+     "unsentPct": 0,
+     "p50": 203.2,
+     "p95": 283.7,
+     "p99": 306.6,
+     "failedPct": 0,
+     "cpuPct": 101.2,
+     "memMiB": 167.1,
+     "memMaxMiB": 167.5,
+     "perCpuSecond": 1102,
+     "cpuCounted": true,
+     "perMiB": 6.6,
+     "apiCpuPct": null
+    }
+   },
+   "tanstack-start": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1063,
+     "idleMem": "119.4MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.5,
+     "p95": 0.6,
+     "p99": 4.1,
+     "failedPct": 0,
+     "cpuPct": 12.9,
+     "memMiB": 139.6,
+     "memMaxMiB": 140.1,
+     "perCpuSecond": 2317,
+     "cpuCounted": true,
+     "perMiB": 2.1,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 3625,
+     "unsentPct": 0,
+     "p50": 14.7,
+     "p95": 36.2,
+     "p99": 46.8,
+     "failedPct": 0,
+     "cpuPct": 101.9,
+     "memMiB": 140.8,
+     "memMaxMiB": 141.3,
+     "perCpuSecond": 3626,
+     "cpuCounted": true,
+     "perMiB": 25.7,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 3308,
+     "unsentPct": 0,
+     "p50": 72.2,
+     "p95": 116,
+     "p99": 122.4,
+     "failedPct": 0,
+     "cpuPct": 102.3,
+     "memMiB": 142.9,
+     "memMaxMiB": 143.5,
+     "perCpuSecond": 3309,
+     "cpuCounted": true,
+     "perMiB": 23.1,
+     "apiCpuPct": null
+    }
+   },
+   "sveltekit": {
+    "startup": {
+     "firstOkMsFromDockerRun": 875,
+     "idleMem": "124.1MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.5,
+     "p95": 0.6,
+     "p99": 3.7,
+     "failedPct": 0,
+     "cpuPct": 13.3,
+     "memMiB": 122.3,
+     "memMaxMiB": 123,
+     "perCpuSecond": 2264,
+     "cpuCounted": true,
+     "perMiB": 2.4,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 3223,
+     "unsentPct": 0,
+     "p50": 18.4,
+     "p95": 40.1,
+     "p99": 49.2,
+     "failedPct": 0,
+     "cpuPct": 101.8,
+     "memMiB": 123.1,
+     "memMaxMiB": 123.7,
+     "perCpuSecond": 3223,
+     "cpuCounted": true,
+     "perMiB": 26.1,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 3184,
+     "unsentPct": 0,
+     "p50": 68.2,
+     "p95": 121.9,
+     "p99": 136.7,
+     "failedPct": 0,
+     "cpuPct": 102.2,
+     "memMiB": 125.4,
+     "memMaxMiB": 126.1,
+     "perCpuSecond": 3182,
+     "cpuCounted": true,
+     "perMiB": 25.2,
+     "apiCpuPct": null
+    }
+   },
+   "react-router": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1177,
+     "idleMem": "135.6MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.7,
+     "p95": 0.8,
+     "p99": 1.8,
+     "failedPct": 0,
+     "cpuPct": 18.7,
+     "memMiB": 117,
+     "memMaxMiB": 117.5,
+     "perCpuSecond": 1627,
+     "cpuCounted": true,
+     "perMiB": 2.6,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 2351,
+     "unsentPct": 0,
+     "p50": 24.4,
+     "p95": 34.7,
+     "p99": 76.4,
+     "failedPct": 0,
+     "cpuPct": 101.5,
+     "memMiB": 117.5,
+     "memMaxMiB": 118.3,
+     "perCpuSecond": 2352,
+     "cpuCounted": true,
+     "perMiB": 19.9,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 2247,
+     "unsentPct": 0,
+     "p50": 107.4,
+     "p95": 163.2,
+     "p99": 189.1,
+     "failedPct": 0,
+     "cpuPct": 101.9,
+     "memMiB": 118.3,
+     "memMaxMiB": 119.3,
+     "perCpuSecond": 2248,
+     "cpuCounted": true,
+     "perMiB": 18.8,
+     "apiCpuPct": null
+    }
+   },
+   "leptos": {
+    "startup": {
+     "firstOkMsFromDockerRun": 763,
+     "idleMem": "8.699MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.3,
+     "p95": 0.4,
+     "p99": 0.4,
+     "failedPct": 0,
+     "cpuPct": 4.7,
+     "memMiB": 13.7,
+     "memMaxMiB": 14.6,
+     "perCpuSecond": 6355,
+     "cpuCounted": true,
+     "perMiB": 20.5,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 13758,
+     "unsentPct": 0,
+     "p50": 5.3,
+     "p95": 6.3,
+     "p99": 8.3,
+     "failedPct": 0,
+     "cpuPct": 102.2,
+     "memMiB": 14.6,
+     "memMaxMiB": 15.2,
+     "perCpuSecond": 13844,
+     "cpuCounted": true,
+     "perMiB": 905.1,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 12843,
+     "unsentPct": 0,
+     "p50": 23.3,
+     "p95": 26.3,
+     "p99": 33.9,
+     "failedPct": 0,
+     "cpuPct": 102.4,
+     "memMiB": 17.2,
+     "memMaxMiB": 18,
+     "perCpuSecond": 12858,
+     "cpuCounted": true,
+     "perMiB": 713.5,
+     "apiCpuPct": null
+    }
+   },
+   "django": {
+    "startup": {
+     "firstOkMsFromDockerRun": 2322,
+     "idleMem": "146.4MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.7,
+     "p95": 1,
+     "p99": 1.2,
+     "failedPct": 0,
+     "cpuPct": 28.3,
+     "memMiB": 293.5,
+     "memMaxMiB": 293.9,
+     "perCpuSecond": 1076,
+     "cpuCounted": true,
+     "perMiB": 1,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 1193,
+     "unsentPct": 0,
+     "p50": 50,
+     "p95": 70.4,
+     "p99": 73.7,
+     "failedPct": 0,
+     "cpuPct": 100.8,
+     "memMiB": 293.5,
+     "memMaxMiB": 293.9,
+     "perCpuSecond": 1195,
+     "cpuCounted": true,
+     "perMiB": 4.1,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 1186,
+     "unsentPct": 0,
+     "p50": 211.7,
+     "p95": 267.6,
+     "p99": 275.9,
+     "failedPct": 0,
+     "cpuPct": 100.9,
+     "memMiB": 293.6,
+     "memMaxMiB": 293.9,
+     "perCpuSecond": 1188,
+     "cpuCounted": true,
+     "perMiB": 4,
+     "apiCpuPct": null
+    }
+   },
+   "rails": {
+    "startup": {
+     "firstOkMsFromDockerRun": 2175,
+     "idleMem": "176.6MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 1.2,
+     "p95": 1.9,
+     "p99": 6.5,
+     "failedPct": 0,
+     "cpuPct": 38.6,
+     "memMiB": 130.3,
+     "memMaxMiB": 131.6,
+     "perCpuSecond": 785,
+     "cpuCounted": true,
+     "perMiB": 2.3,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 934,
+     "unsentPct": 0,
+     "p50": 68.3,
+     "p95": 88.5,
+     "p99": 94.7,
+     "failedPct": 0,
+     "cpuPct": 102.1,
+     "memMiB": 130,
+     "memMaxMiB": 131.1,
+     "perCpuSecond": 934,
+     "cpuCounted": true,
+     "perMiB": 7.1,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 927,
+     "unsentPct": 0,
+     "p50": 277.1,
+     "p95": 336.1,
+     "p99": 354.2,
+     "failedPct": 0,
+     "cpuPct": 102.3,
+     "memMiB": 130.5,
+     "memMaxMiB": 131.1,
+     "perCpuSecond": 927,
+     "cpuCounted": true,
+     "perMiB": 7.1,
+     "apiCpuPct": null
+    }
+   },
+   "laravel": {
+    "startup": {
+     "failed": "never answered /api/items/item_1 within a minute",
+     "logs": [
+      "ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+      "",
+      "   WARN  worker script has failed on restart.  ",
+      "",
+      "   WARN  worker script has failed on restart.  ",
+      "",
+      "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+      "",
+      "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+      "",
+      "   WARN  worker script has failed on restart.  ",
+      "",
+      "   WARN  worker script has failed on restart.  ",
+      "",
+      "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+      "",
+      "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+      "",
+      "   ERROR  loading initial config: loading new config: frankenphp app module: start: failed to initialize workers: too many consecutive failures: worker public/frankenphp-worker.php has not reached frankenphp_handle_request()."
+     ]
+    },
+    "failed": "never answered /api/items/item_1 within a minute"
+   },
+   "aspnet": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1542,
+     "idleMem": "59.02MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.3,
+     "p95": 0.4,
+     "p99": 0.5,
+     "failedPct": 0,
+     "cpuPct": 14.9,
+     "memMiB": 77.9,
+     "memMaxMiB": 78.1,
+     "perCpuSecond": 2001,
+     "cpuCounted": true,
+     "perMiB": 3.8,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 12347,
+     "unsentPct": 0,
+     "p50": 4.8,
+     "p95": 7.8,
+     "p99": 9.5,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 77.7,
+     "memMaxMiB": 79.4,
+     "perCpuSecond": 12359,
+     "cpuCounted": true,
+     "perMiB": 155.5,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 12024,
+     "unsentPct": 0,
+     "p50": 20.7,
+     "p95": 30.2,
+     "p99": 36.2,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 80.1,
+     "memMaxMiB": 82,
+     "perCpuSecond": 12070,
+     "cpuCounted": true,
+     "perMiB": 146.6,
+     "apiCpuPct": null
+    }
+   },
+   "spring": {
+    "startup": {
+     "firstOkMsFromDockerRun": 9338,
+     "idleMem": "252.8MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.3,
+     "p95": 0.5,
+     "p99": 1.2,
+     "failedPct": 0,
+     "cpuPct": 10.6,
+     "memMiB": 337,
+     "memMaxMiB": 337.6,
+     "perCpuSecond": 1414,
+     "cpuCounted": true,
+     "perMiB": 0.9,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 6620,
+     "unsentPct": 0,
+     "p50": 6.2,
+     "p95": 16.6,
+     "p99": 89.3,
+     "failedPct": 0,
+     "cpuPct": 101.1,
+     "memMiB": 343.2,
+     "memMaxMiB": 343.9,
+     "perCpuSecond": 6629,
+     "cpuCounted": true,
+     "perMiB": 19.3,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 6348,
+     "unsentPct": 0,
+     "p50": 26.6,
+     "p95": 78.3,
+     "p99": 216.3,
+     "failedPct": 0,
+     "cpuPct": 101,
+     "memMiB": 366.3,
+     "memMaxMiB": 367.2,
+     "perCpuSecond": 6360,
+     "cpuCounted": true,
+     "perMiB": 17.3,
+     "apiCpuPct": null
+    }
+   },
+   "phoenix": {
+    "startup": {
+     "firstOkMsFromDockerRun": 3357,
+     "idleMem": "421.5MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.7,
+     "p95": 0.9,
+     "p99": 1,
+     "failedPct": 0,
+     "cpuPct": 26.8,
+     "memMiB": 314.4,
+     "memMaxMiB": 323,
+     "perCpuSecond": 1128,
+     "cpuCounted": true,
+     "perMiB": 0.9,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 2127,
+     "unsentPct": 0,
+     "p50": 29.3,
+     "p95": 41.9,
+     "p99": 47,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 300.1,
+     "memMaxMiB": 307.3,
+     "perCpuSecond": 2137,
+     "cpuCounted": true,
+     "perMiB": 6.9,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 2019,
+     "unsentPct": 0,
+     "p50": 23.5,
+     "p95": 33.3,
+     "p99": 4018.4,
+     "failedPct": 0,
+     "cpuPct": 101.5,
+     "memMiB": 324.8,
+     "memMaxMiB": 325.4,
+     "perCpuSecond": 2019,
+     "cpuCounted": true,
+     "perMiB": 6.2,
+     "apiCpuPct": null
+    }
+   },
+   "astro": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1199,
+     "idleMem": "144.5MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.7,
+     "p95": 0.8,
+     "p99": 22.8,
+     "failedPct": 0,
+     "cpuPct": 21.8,
+     "memMiB": 136,
+     "memMaxMiB": 136.5,
+     "perCpuSecond": 1394,
+     "cpuCounted": true,
+     "perMiB": 2.2,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 1971,
+     "unsentPct": 0,
+     "p50": 27.9,
+     "p95": 61.1,
+     "p99": 77.7,
+     "failedPct": 0,
+     "cpuPct": 101.3,
+     "memMiB": 136.6,
+     "memMaxMiB": 137.5,
+     "perCpuSecond": 1971,
+     "cpuCounted": true,
+     "perMiB": 14.3,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 1877,
+     "unsentPct": 0,
+     "p50": 126.6,
+     "p95": 180.4,
+     "p99": 189.9,
+     "failedPct": 0,
+     "cpuPct": 101.7,
+     "memMiB": 137.4,
+     "memMaxMiB": 138,
+     "perCpuSecond": 1877,
+     "cpuCounted": true,
+     "perMiB": 13.6,
+     "apiCpuPct": null
+    }
+   },
+   "nuxt": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1073,
+     "idleMem": "133.3MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.4,
+     "p95": 0.5,
+     "p99": 0.6,
+     "failedPct": 0,
+     "cpuPct": 9.8,
+     "memMiB": 95.1,
+     "memMaxMiB": 95.5,
+     "perCpuSecond": 3076,
+     "cpuCounted": true,
+     "perMiB": 3.1,
+     "apiCpuPct": null
+    },
+    "sat64": {
+     "rps": 6693,
+     "unsentPct": 0,
+     "p50": 8,
+     "p95": 17.5,
+     "p99": 32.8,
+     "failedPct": 0,
+     "cpuPct": 100.7,
+     "memMiB": 95.3,
+     "memMaxMiB": 96.1,
+     "perCpuSecond": 6694,
+     "cpuCounted": true,
+     "perMiB": 69.6,
+     "apiCpuPct": null
+    },
+    "sat256": {
+     "rps": 6162,
+     "unsentPct": 0,
+     "p50": 38.2,
+     "p95": 69,
+     "p99": 87.4,
+     "failedPct": 0,
+     "cpuPct": 100.8,
+     "memMiB": 96.1,
+     "memMaxMiB": 97,
+     "perCpuSecond": 6164,
+     "cpuCounted": true,
+     "perMiB": 63.5,
+     "apiCpuPct": null
+    }
+   }
+  },
+  "api-json": {
+   "corten": {
+    "startup": {
+     "firstOkMsFromDockerRun": 560,
+     "idleMem": "1.332MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 0.7,
+     "p95": 0.8,
+     "p99": 0.9,
+     "failedPct": 0,
+     "cpuPct": 5.8,
+     "memMiB": 9.9,
+     "memMaxMiB": 10.4,
+     "perCpuSecond": 2571,
+     "cpuCounted": true,
+     "perMiB": 14.4,
+     "apiCpuPct": 3.1
+    },
+    "sat64": {
+     "rps": 3852,
+     "unsentPct": 0,
+     "p50": 17.6,
+     "p95": 21,
+     "p99": 22.9,
+     "failedPct": 0,
+     "cpuPct": 102.4,
+     "memMiB": 16,
+     "memMaxMiB": 18.4,
+     "perCpuSecond": 3853,
+     "cpuCounted": true,
+     "perMiB": 209.4,
+     "apiCpuPct": 50.5
+    },
+    "sat256": {
+     "rps": 3429,
+     "unsentPct": 0,
+     "p50": 75,
+     "p95": 98.2,
+     "p99": 109.7,
+     "failedPct": 0,
+     "cpuPct": 102.8,
+     "memMiB": 50.2,
+     "memMaxMiB": 58.2,
+     "perCpuSecond": 3431,
+     "cpuCounted": true,
+     "perMiB": 58.9,
+     "apiCpuPct": 48.1
+    }
+   },
+   "nextjs": {
+    "startup": {
+     "firstOkMsFromDockerRun": 874,
+     "idleMem": "46.14MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.2,
+     "p95": 44.1,
+     "p99": 61.6,
+     "failedPct": 0,
+     "cpuPct": 43.1,
+     "memMiB": 153.8,
+     "memMaxMiB": 155.5,
+     "perCpuSecond": 338,
+     "cpuCounted": true,
+     "perMiB": 1,
+     "apiCpuPct": 3.2
+    },
+    "sat64": {
+     "rps": 354,
+     "unsentPct": 0,
+     "p50": 190.9,
+     "p95": 217.1,
+     "p99": 227.2,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 156.1,
+     "memMaxMiB": 157.5,
+     "perCpuSecond": 354,
+     "cpuCounted": true,
+     "perMiB": 2.2,
+     "apiCpuPct": 4.4
+    },
+    "sat256": {
+     "rps": 334,
+     "unsentPct": 0,
+     "p50": 657.9,
+     "p95": 850.5,
+     "p99": 1480.9,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 184.4,
+     "memMaxMiB": 195.2,
+     "perCpuSecond": 334,
+     "cpuCounted": true,
+     "perMiB": 1.7,
+     "apiCpuPct": 4.6
+    }
+   },
+   "tanstack-start": {
+    "startup": {
+     "firstOkMsFromDockerRun": 642,
+     "idleMem": "24.23MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.5,
+     "p95": 11,
+     "p99": 17.6,
+     "failedPct": 0,
+     "cpuPct": 27.9,
+     "memMiB": 112.7,
+     "memMaxMiB": 114.6,
+     "perCpuSecond": 536,
+     "cpuCounted": true,
+     "perMiB": 1.3,
+     "apiCpuPct": 3.1
+    },
+    "sat64": {
+     "rps": 676,
+     "unsentPct": 0,
+     "p50": 98.2,
+     "p95": 118.7,
+     "p99": 125.8,
+     "failedPct": 0,
+     "cpuPct": 100.8,
+     "memMiB": 121.7,
+     "memMaxMiB": 124.2,
+     "perCpuSecond": 676,
+     "cpuCounted": true,
+     "perMiB": 5.4,
+     "apiCpuPct": 7.9
+    },
+    "sat256": {
+     "rps": 589,
+     "unsentPct": 0,
+     "p50": 417.6,
+     "p95": 500.3,
+     "p99": 547.5,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 140,
+     "memMaxMiB": 145,
+     "perCpuSecond": 589,
+     "cpuCounted": true,
+     "perMiB": 4.1,
+     "apiCpuPct": 7.4
+    }
+   },
+   "sveltekit": {
+    "startup": {
+     "firstOkMsFromDockerRun": 610,
+     "idleMem": "22.2MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.4,
+     "p95": 8.2,
+     "p99": 14.7,
+     "failedPct": 0,
+     "cpuPct": 26.2,
+     "memMiB": 114.5,
+     "memMaxMiB": 116.5,
+     "perCpuSecond": 571,
+     "cpuCounted": true,
+     "perMiB": 1.3,
+     "apiCpuPct": 2.8
+    },
+    "sat64": {
+     "rps": 716,
+     "unsentPct": 0,
+     "p50": 91.3,
+     "p95": 112.2,
+     "p99": 120.1,
+     "failedPct": 0,
+     "cpuPct": 100.8,
+     "memMiB": 124.1,
+     "memMaxMiB": 125.9,
+     "perCpuSecond": 716,
+     "cpuCounted": true,
+     "perMiB": 5.7,
+     "apiCpuPct": 8.5
+    },
+    "sat256": {
+     "rps": 619,
+     "unsentPct": 0,
+     "p50": 399.9,
+     "p95": 469.5,
+     "p99": 500.3,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 137.6,
+     "memMaxMiB": 142.9,
+     "perCpuSecond": 619,
+     "cpuCounted": true,
+     "perMiB": 4.3,
+     "apiCpuPct": 7.5
+    }
+   },
+   "react-router": {
+    "startup": {
+     "firstOkMsFromDockerRun": 735,
+     "idleMem": "30.78MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.7,
+     "p95": 18.4,
+     "p99": 26.9,
+     "failedPct": 0,
+     "cpuPct": 34.7,
+     "memMiB": 104.3,
+     "memMaxMiB": 105.5,
+     "perCpuSecond": 433,
+     "cpuCounted": true,
+     "perMiB": 1.4,
+     "apiCpuPct": 3
+    },
+    "sat64": {
+     "rps": 554,
+     "unsentPct": 0,
+     "p50": 116.8,
+     "p95": 133.8,
+     "p99": 143.1,
+     "failedPct": 0,
+     "cpuPct": 100.7,
+     "memMiB": 120.9,
+     "memMaxMiB": 124.2,
+     "perCpuSecond": 554,
+     "cpuCounted": true,
+     "perMiB": 4.5,
+     "apiCpuPct": 7
+    },
+    "sat256": {
+     "rps": 519,
+     "unsentPct": 0,
+     "p50": 479,
+     "p95": 570.1,
+     "p99": 608.4,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 132.7,
+     "memMaxMiB": 138.1,
+     "perCpuSecond": 519,
+     "cpuCounted": true,
+     "perMiB": 3.8,
+     "apiCpuPct": 6.9
+    }
+   },
+   "leptos": {
+    "startup": {
+     "firstOkMsFromDockerRun": 492,
+     "idleMem": "1.832MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.3,
+     "p95": 1.7,
+     "p99": 1.9,
+     "failedPct": 0,
+     "cpuPct": 15.2,
+     "memMiB": 12,
+     "memMaxMiB": 12.3,
+     "perCpuSecond": 988,
+     "cpuCounted": true,
+     "perMiB": 12.2,
+     "apiCpuPct": 3
+    },
+    "sat64": {
+     "rps": 1075,
+     "unsentPct": 0,
+     "p50": 58.3,
+     "p95": 76.1,
+     "p99": 79.3,
+     "failedPct": 0,
+     "cpuPct": 101.8,
+     "memMiB": 15,
+     "memMaxMiB": 16.7,
+     "perCpuSecond": 1075,
+     "cpuCounted": true,
+     "perMiB": 64.4,
+     "apiCpuPct": 15.4
+    },
+    "sat256": {
+     "rps": 1010,
+     "unsentPct": 0,
+     "p50": 235.7,
+     "p95": 392.2,
+     "p99": 481.7,
+     "failedPct": 0,
+     "cpuPct": 101.2,
+     "memMiB": 50.2,
+     "memMaxMiB": 58.5,
+     "perCpuSecond": 1011,
+     "cpuCounted": true,
+     "perMiB": 17.3,
+     "apiCpuPct": 15.7
+    }
+   },
+   "django": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1438,
+     "idleMem": "60.77MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.9,
+     "p95": 3.7,
+     "p99": 4.5,
+     "failedPct": 0,
+     "cpuPct": 45,
+     "memMiB": 76.8,
+     "memMaxMiB": 77.2,
+     "perCpuSecond": 335,
+     "cpuCounted": true,
+     "perMiB": 1.9,
+     "apiCpuPct": 3.2
+    },
+    "sat64": {
+     "rps": 335,
+     "unsentPct": 0,
+     "p50": 189.6,
+     "p95": 217,
+     "p99": 224.3,
+     "failedPct": 0,
+     "cpuPct": 100.7,
+     "memMiB": 76.8,
+     "memMaxMiB": 77.2,
+     "perCpuSecond": 335,
+     "cpuCounted": true,
+     "perMiB": 4.3,
+     "apiCpuPct": 6.5
+    },
+    "sat256": {
+     "rps": 336,
+     "unsentPct": 0,
+     "p50": 753.1,
+     "p95": 830.1,
+     "p99": 863.5,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 76.9,
+     "memMaxMiB": 77.4,
+     "perCpuSecond": 337,
+     "cpuCounted": true,
+     "perMiB": 4.3,
+     "apiCpuPct": 6.6
+    }
+   },
+   "rails": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1615,
+     "idleMem": "63.22MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.4,
+     "p95": 5.9,
+     "p99": 23.1,
+     "failedPct": 0,
+     "cpuPct": 39.2,
+     "memMiB": 82.2,
+     "memMaxMiB": 84.8,
+     "perCpuSecond": 387,
+     "cpuCounted": true,
+     "perMiB": 1.8,
+     "apiCpuPct": 3.7
+    },
+    "sat64": {
+     "rps": 405,
+     "unsentPct": 0,
+     "p50": 157.2,
+     "p95": 203.5,
+     "p99": 214.6,
+     "failedPct": 0,
+     "cpuPct": 101,
+     "memMiB": 82.9,
+     "memMaxMiB": 84.5,
+     "perCpuSecond": 405,
+     "cpuCounted": true,
+     "perMiB": 4.8,
+     "apiCpuPct": 7.7
+    },
+    "sat256": {
+     "rps": 390,
+     "unsentPct": 0,
+     "p50": 649.7,
+     "p95": 757.9,
+     "p99": 784.6,
+     "failedPct": 0,
+     "cpuPct": 100.9,
+     "memMiB": 83.5,
+     "memMaxMiB": 85.8,
+     "perCpuSecond": 391,
+     "cpuCounted": true,
+     "perMiB": 4.5,
+     "apiCpuPct": 7.5
+    }
+   },
+   "laravel": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1372,
+     "idleMem": "96.25MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 4.3,
+     "p95": 5.6,
+     "p99": 14.2,
+     "failedPct": 0,
+     "cpuPct": 61,
+     "memMiB": 103.3,
+     "memMaxMiB": 103.8,
+     "perCpuSecond": 248,
+     "cpuCounted": true,
+     "perMiB": 1.4,
+     "apiCpuPct": 6.4
+    },
+    "sat64": {
+     "rps": 242,
+     "unsentPct": 0,
+     "p50": 256.8,
+     "p95": 321,
+     "p99": 463.1,
+     "failedPct": 0,
+     "cpuPct": 99.9,
+     "memMiB": 100.3,
+     "memMaxMiB": 102.3,
+     "perCpuSecond": 244,
+     "cpuCounted": true,
+     "perMiB": 2.4,
+     "apiCpuPct": 9.9
+    },
+    "sat256": {
+     "rps": 241,
+     "unsentPct": 0,
+     "p50": 1027.8,
+     "p95": 1362.1,
+     "p99": 1612.7,
+     "failedPct": 0,
+     "cpuPct": 100.1,
+     "memMiB": 116.6,
+     "memMaxMiB": 117.2,
+     "perCpuSecond": 243,
+     "cpuCounted": true,
+     "perMiB": 2.1,
+     "apiCpuPct": 9.9
+    }
+   },
+   "aspnet": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1049,
+     "idleMem": "30.56MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.4,
+     "p95": 3.5,
+     "p99": 6.6,
+     "failedPct": 0,
+     "cpuPct": 28.2,
+     "memMiB": 54.2,
+     "memMaxMiB": 55.1,
+     "perCpuSecond": 501,
+     "cpuCounted": true,
+     "perMiB": 2.7,
+     "apiCpuPct": 3.6
+    },
+    "sat64": {
+     "rps": 1483,
+     "unsentPct": 0,
+     "p50": 41,
+     "p95": 60.3,
+     "p99": 68.6,
+     "failedPct": 0,
+     "cpuPct": 101,
+     "memMiB": 59.7,
+     "memMaxMiB": 62.4,
+     "perCpuSecond": 1484,
+     "cpuCounted": true,
+     "perMiB": 23.8,
+     "apiCpuPct": 21
+    },
+    "sat256": {
+     "rps": 1421,
+     "unsentPct": 0,
+     "p50": 178,
+     "p95": 225.3,
+     "p99": 247.3,
+     "failedPct": 0,
+     "cpuPct": 100.9,
+     "memMiB": 78.5,
+     "memMaxMiB": 87,
+     "perCpuSecond": 1423,
+     "cpuCounted": true,
+     "perMiB": 16.3,
+     "apiCpuPct": 19.1
+    }
+   },
+   "spring": {
+    "startup": {
+     "firstOkMsFromDockerRun": 8329,
+     "idleMem": "138.2MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.5,
+     "p95": 3.1,
+     "p99": 5.6,
+     "failedPct": 0,
+     "cpuPct": 31.9,
+     "memMiB": 395.1,
+     "memMaxMiB": 400.2,
+     "perCpuSecond": 370,
+     "cpuCounted": true,
+     "perMiB": 0.4,
+     "apiCpuPct": 4.3
+    },
+    "sat64": {
+     "rps": 912,
+     "unsentPct": 0,
+     "p50": 65.1,
+     "p95": 119.7,
+     "p99": 147.3,
+     "failedPct": 0,
+     "cpuPct": 100.9,
+     "memMiB": 416.7,
+     "memMaxMiB": 420.2,
+     "perCpuSecond": 912,
+     "cpuCounted": true,
+     "perMiB": 2.2,
+     "apiCpuPct": 13.4
+    },
+    "sat256": {
+     "rps": 723,
+     "unsentPct": 0,
+     "p50": 331.1,
+     "p95": 577.9,
+     "p99": 688.4,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 440.8,
+     "memMaxMiB": 445.1,
+     "perCpuSecond": 723,
+     "cpuCounted": true,
+     "perMiB": 1.6,
+     "apiCpuPct": 10.2
+    }
+   },
+   "phoenix": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1874,
+     "idleMem": "121.7MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.8,
+     "p95": 3.8,
+     "p99": 4.7,
+     "failedPct": 0,
+     "cpuPct": 45.7,
+     "memMiB": 262.1,
+     "memMaxMiB": 287.1,
+     "perCpuSecond": 329,
+     "cpuCounted": true,
+     "perMiB": 0.5,
+     "apiCpuPct": 4.3
+    },
+    "sat64": {
+     "rps": 421,
+     "unsentPct": 0,
+     "p50": 150.5,
+     "p95": 188.1,
+     "p99": 202.5,
+     "failedPct": 0,
+     "cpuPct": 100.7,
+     "memMiB": 231.8,
+     "memMaxMiB": 237.7,
+     "perCpuSecond": 421,
+     "cpuCounted": true,
+     "perMiB": 1.8,
+     "apiCpuPct": 6.9
+    },
+    "sat256": {
+     "rps": 421,
+     "unsentPct": 0,
+     "p50": 98,
+     "p95": 3770.6,
+     "p99": 7154.3,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 302.7,
+     "memMaxMiB": 311.6,
+     "perCpuSecond": 421,
+     "cpuCounted": true,
+     "perMiB": 1.3,
+     "apiCpuPct": 6.8
+    }
+   },
+   "astro": {
+    "startup": {
+     "firstOkMsFromDockerRun": 801,
+     "idleMem": "36.18MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.8,
+     "p95": 19.4,
+     "p99": 29.5,
+     "failedPct": 0,
+     "cpuPct": 36.6,
+     "memMiB": 109.9,
+     "memMaxMiB": 111.5,
+     "perCpuSecond": 412,
+     "cpuCounted": true,
+     "perMiB": 1.3,
+     "apiCpuPct": 3.1
+    },
+    "sat64": {
+     "rps": 547,
+     "unsentPct": 0,
+     "p50": 119.9,
+     "p95": 140.2,
+     "p99": 147.7,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 122.5,
+     "memMaxMiB": 126.1,
+     "perCpuSecond": 547,
+     "cpuCounted": true,
+     "perMiB": 4.3,
+     "apiCpuPct": 6.9
+    },
+    "sat256": {
+     "rps": 510,
+     "unsentPct": 0,
+     "p50": 486.5,
+     "p95": 580.6,
+     "p99": 628.8,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 134.9,
+     "memMaxMiB": 139.5,
+     "perCpuSecond": 510,
+     "cpuCounted": true,
+     "perMiB": 3.7,
+     "apiCpuPct": 6.4
+    }
+   },
+   "nuxt": {
+    "startup": {
+     "firstOkMsFromDockerRun": 676,
+     "idleMem": "27.96MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.4,
+     "p95": 7.6,
+     "p99": 15.7,
+     "failedPct": 0,
+     "cpuPct": 25.9,
+     "memMiB": 104.9,
+     "memMaxMiB": 107.1,
+     "perCpuSecond": 579,
+     "cpuCounted": true,
+     "perMiB": 1.4,
+     "apiCpuPct": 3.3
+    },
+    "sat64": {
+     "rps": 772,
+     "unsentPct": 0,
+     "p50": 83.9,
+     "p95": 115.6,
+     "p99": 128.3,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 125.5,
+     "memMaxMiB": 128.3,
+     "perCpuSecond": 772,
+     "cpuCounted": true,
+     "perMiB": 6,
+     "apiCpuPct": 11.5
+    },
+    "sat256": {
+     "rps": 693,
+     "unsentPct": 0,
+     "p50": 354.8,
+     "p95": 485.3,
+     "p99": 535.1,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 132.6,
+     "memMaxMiB": 136.9,
+     "perCpuSecond": 694,
+     "cpuCounted": true,
+     "perMiB": 5.1,
+     "apiCpuPct": 10.8
+    }
+   }
+  }
+ },
+ "coldStart": {
+  "corten": {
+   "firstOkMs": {
+    "median": 6.7,
+    "min": 5.9,
+    "max": 36.2
+   },
+   "memAfterFirstRequest": "1.23MiB",
+   "imageMB": 123
+  },
+  "nextjs": {
+   "firstOkMs": {
+    "median": 719.3,
+    "min": 691.7,
+    "max": 1030.2
+   },
+   "memAfterFirstRequest": "51.55MiB",
+   "imageMB": 385
+  },
+  "tanstack-start": {
+   "firstOkMs": {
+    "median": 217.1,
+    "min": 209.7,
+    "max": 229.9
+   },
+   "memAfterFirstRequest": "26.38MiB",
+   "imageMB": 332
+  },
+  "sveltekit": {
+   "firstOkMs": {
+    "median": 187.5,
+    "min": 176.9,
+    "max": 245.9
+   },
+   "memAfterFirstRequest": "23.73MiB",
+   "imageMB": 333
+  },
+  "react-router": {
+   "firstOkMs": {
+    "median": 315.2,
+    "min": 303.7,
+    "max": 334.2
+   },
+   "memAfterFirstRequest": "31.79MiB",
+   "imageMB": 353
+  },
+  "leptos": {
+   "firstOkMs": {
+    "median": 7.8,
+    "min": 6.7,
+    "max": 10.2
+   },
+   "memAfterFirstRequest": "1.473MiB",
+   "imageMB": 127
+  },
+  "django": {
+   "firstOkMs": {
+    "median": 1134.2,
+    "min": 1114,
+    "max": 1169.3
+   },
+   "memAfterFirstRequest": "63.1MiB",
+   "imageMB": 276
+  },
+  "rails": {
+   "firstOkMs": {
+    "median": 1196.7,
+    "min": 1177.7,
+    "max": 1293.3
+   },
+   "memAfterFirstRequest": "63.9MiB",
+   "imageMB": 431
+  },
+  "laravel": {
+   "firstOkMs": {
+    "median": 908.1,
+    "min": 869.9,
+    "max": 993.2
+   },
+   "memAfterFirstRequest": "95.47MiB",
+   "imageMB": 947
+  },
+  "aspnet": {
+   "firstOkMs": {
+    "median": 752.3,
+    "min": 718.6,
+    "max": 834.3
+   },
+   "memAfterFirstRequest": "30.56MiB",
+   "imageMB": 342
+  },
+  "spring": {
+   "firstOkMs": {
+    "median": 8190.2,
+    "min": 8012.7,
+    "max": 8333.4
+   },
+   "memAfterFirstRequest": "142.2MiB",
+   "imageMB": 516
+  },
+  "phoenix": {
+   "firstOkMs": {
+    "median": 1435,
+    "min": 1408,
+    "max": 1510.1
+   },
+   "memAfterFirstRequest": "125.6MiB",
+   "imageMB": 262
+  },
+  "astro": {
+   "firstOkMs": {
+    "median": 347.8,
+    "min": 322.7,
+    "max": 426.7
+   },
+   "memAfterFirstRequest": "36.11MiB",
+   "imageMB": 528
+  },
+  "nuxt": {
+   "firstOkMs": {
+    "median": 322.1,
+    "min": 318.3,
+    "max": 333.4
+   },
+   "memAfterFirstRequest": "35.55MiB",
+   "imageMB": 335
+  }
+ },
+ "bytes": {
+  "corten": {
+   "html": {
+    "raw": 11517,
+    "gzip": 2385
+   },
+   "js": {
+    "raw": 27321,
+    "gzip": 10394,
+    "files": 4
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 8626,
+    "gzip": 2609,
+    "files": 2
+   }
+  },
+  "nextjs": {
+   "html": {
+    "raw": 25906,
+    "gzip": 4890
+   },
+   "js": {
+    "raw": 467154,
+    "gzip": 139374,
+    "files": 7
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 1974,
+    "gzip": 817,
+    "files": 1
+   }
+  },
+  "tanstack-start": {
+   "html": {
+    "raw": 17836,
+    "gzip": 4392
+   },
+   "js": {
+    "raw": 350871,
+    "gzip": 113588,
+    "files": 5
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 1974,
+    "gzip": 817,
+    "files": 1
+   }
+  },
+  "sveltekit": {
+   "html": {
+    "raw": 16732,
+    "gzip": 3651
+   },
+   "js": {
+    "raw": 98609,
+    "gzip": 37882,
+    "files": 11
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 1974,
+    "gzip": 817,
+    "files": 1
+   }
+  },
+  "react-router": {
+   "html": {
+    "raw": 19962,
+    "gzip": 5005
+   },
+   "js": {
+    "raw": 317136,
+    "gzip": 100964,
+    "files": 4
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 1974,
+    "gzip": 817,
+    "files": 1
+   }
+  },
+  "leptos": {
+   "html": {
+    "raw": 18237,
+    "gzip": 3552
+   },
+   "js": {
+    "raw": 25351,
+    "gzip": 7124,
+    "files": 1
+   },
+   "wasm": {
+    "raw": 737168,
+    "gzip": 293553,
+    "files": 1
+   },
+   "css": {
+    "raw": 2041,
+    "gzip": 869,
+    "files": 1
+   }
+  },
+  "django": {
+   "html": {
+    "raw": 7448,
+    "gzip": 1869
+   },
+   "js": {
+    "raw": 52985,
+    "gzip": 17377,
+    "files": 2
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 2399,
+    "gzip": 946,
+    "files": 1
+   }
+  },
+  "rails": {
+   "html": {
+    "raw": 8713,
+    "gzip": 2236
+   },
+   "js": {
+    "raw": 155818,
+    "gzip": 41613,
+    "files": 7
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 2399,
+    "gzip": 946,
+    "files": 1
+   }
+  },
+  "laravel": {
+   "html": {
+    "raw": 11036,
+    "gzip": 2905
+   },
+   "js": {
+    "raw": 261969,
+    "gzip": 86336,
+    "files": 1
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 2399,
+    "gzip": 946,
+    "files": 1
+   }
+  },
+  "aspnet": {
+   "html": {
+    "raw": 7494,
+    "gzip": 1958
+   },
+   "js": {
+    "raw": 52985,
+    "gzip": 17377,
+    "files": 2
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 2399,
+    "gzip": 946,
+    "files": 1
+   }
+  },
+  "spring": {
+   "html": {
+    "raw": 7365,
+    "gzip": 1822
+   },
+   "js": {
+    "raw": 52985,
+    "gzip": 17377,
+    "files": 2
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 2399,
+    "gzip": 946,
+    "files": 1
+   }
+  },
+  "phoenix": {
+   "html": {
+    "raw": 10190,
+    "gzip": 2494
+   },
+   "js": {
+    "raw": 152827,
+    "gzip": 47305,
+    "files": 1
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 2399,
+    "gzip": 946,
+    "files": 1
+   }
+  },
+  "astro": {
+   "html": {
+    "raw": 9479,
+    "gzip": 2658
+   },
+   "js": {
+    "raw": 25528,
+    "gzip": 9434,
+    "files": 3
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   }
+  },
+  "nuxt": {
+   "html": {
+    "raw": 17722,
+    "gzip": 4571
+   },
+   "js": {
+    "raw": 202058,
+    "gzip": 75513,
+    "files": 4
+   },
+   "wasm": {
+    "raw": 0,
+    "gzip": 0,
+    "files": 0
+   },
+   "css": {
+    "raw": 1963,
+    "gzip": 823,
+    "files": 1
+   }
+  }
+ },
+ "instructions": {},
+ "browser": {
+  "desktop/corten": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 5,
+    "p90": 6
+   },
+   "fcp": {
+    "med": 72,
+    "p90": 76
+   },
+   "lcp": {
+    "med": 72,
+    "p90": 76
+   },
+   "interactive": {
+    "med": 61,
+    "p90": 65
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 83,
+    "p90": 88
+   },
+   "clientNav": {
+    "med": 14,
+    "p90": 14
+   },
+   "heapMB": {
+    "med": 1.6
+   }
+  },
+  "desktop/nextjs": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 23,
+    "p90": 34
+   },
+   "fcp": {
+    "med": 80,
+    "p90": 88
+   },
+   "lcp": {
+    "med": 80,
+    "p90": 88
+   },
+   "interactive": {
+    "med": 153,
+    "p90": 158
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 84,
+    "p90": 85
+   },
+   "clientNav": {
+    "med": 136,
+    "p90": 143
+   },
+   "heapMB": {
+    "med": 3.4
+   }
+  },
+  "desktop/tanstack-start": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 10,
+    "p90": 14
+   },
+   "fcp": {
+    "med": 72,
+    "p90": 76
+   },
+   "lcp": {
+    "med": 72,
+    "p90": 76
+   },
+   "interactive": {
+    "med": 124,
+    "p90": 126
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 81,
+    "p90": 81
+   },
+   "clientNav": {
+    "med": 26,
+    "p90": 29
+   },
+   "heapMB": {
+    "med": 3.1
+   }
+  },
+  "desktop/sveltekit": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 8,
+    "p90": 11
+   },
+   "fcp": {
+    "med": 80,
+    "p90": 80
+   },
+   "lcp": {
+    "med": 80,
+    "p90": 80
+   },
+   "interactive": {
+    "med": 109,
+    "p90": 112
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 72,
+    "p90": 72
+   },
+   "clientNav": {
+    "med": 21,
+    "p90": 26
+   },
+   "heapMB": {
+    "med": 2.3
+   }
+  },
+  "desktop/react-router": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 16,
+    "p90": 23
+   },
+   "fcp": {
+    "med": 112,
+    "p90": 136
+   },
+   "lcp": {
+    "med": 112,
+    "p90": 136
+   },
+   "interactive": {
+    "med": 170,
+    "p90": 177
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 86,
+    "p90": 96
+   },
+   "clientNav": {
+    "med": 30,
+    "p90": 31
+   },
+   "heapMB": {
+    "med": 2.7
+   }
+  },
+  "desktop/leptos": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 6,
+    "p90": 6
+   },
+   "fcp": {
+    "med": 76,
+    "p90": 96
+   },
+   "lcp": {
+    "med": 76,
+    "p90": 96
+   },
+   "interactive": {
+    "med": 102,
+    "p90": 111
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 71,
+    "p90": 74
+   },
+   "clientNav": {
+    "med": 23,
+    "p90": 24
+   },
+   "heapMB": {
+    "med": 1.9
+   }
+  },
+  "desktop/django": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 11,
+    "p90": 12
+   },
+   "fcp": {
+    "med": 72,
+    "p90": 76
+   },
+   "lcp": {
+    "med": 72,
+    "p90": 76
+   },
+   "interactive": {
+    "med": 51,
+    "p90": 52
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 72,
+    "p90": 73
+   },
+   "clientNav": {
+    "med": 21,
+    "p90": 28
+   },
+   "heapMB": {
+    "med": 1.7
+   }
+  },
+  "desktop/rails": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 14,
+    "p90": 17
+   },
+   "fcp": {
+    "med": 68,
+    "p90": 76
+   },
+   "lcp": {
+    "med": 68,
+    "p90": 76
+   },
+   "interactive": {
+    "med": 63,
+    "p90": 71
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 88,
+    "p90": 120
+   },
+   "clientNav": {
+    "med": 24,
+    "p90": 46
+   },
+   "heapMB": {
+    "med": 2.1
+   }
+  },
+  "desktop/laravel": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 18,
+    "p90": 19
+   },
+   "fcp": {
+    "med": 68,
+    "p90": 72
+   },
+   "lcp": {
+    "med": 68,
+    "p90": 72
+   },
+   "interactive": {
+    "med": 77,
+    "p90": 81
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 88,
+    "p90": 89
+   },
+   "clientNav": {
+    "med": 24,
+    "p90": 25
+   },
+   "heapMB": {
+    "med": 2.2
+   }
+  },
+  "desktop/aspnet": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 9,
+    "p90": 13
+   },
+   "fcp": {
+    "med": 72,
+    "p90": 76
+   },
+   "lcp": {
+    "med": 72,
+    "p90": 76
+   },
+   "interactive": {
+    "med": 51,
+    "p90": 56
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 73,
+    "p90": 75
+   },
+   "clientNav": {
+    "med": 16,
+    "p90": 19
+   },
+   "heapMB": {
+    "med": 1.7
+   }
+  },
+  "desktop/spring": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 27,
+    "p90": 49
+   },
+   "fcp": {
+    "med": 72,
+    "p90": 96
+   },
+   "lcp": {
+    "med": 72,
+    "p90": 96
+   },
+   "interactive": {
+    "med": 60,
+    "p90": 86
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 73,
+    "p90": 87
+   },
+   "clientNav": {
+    "med": 34,
+    "p90": 50
+   },
+   "heapMB": {
+    "med": 1.7
+   }
+  },
+  "desktop/phoenix": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 12,
+    "p90": 16
+   },
+   "fcp": {
+    "med": 92,
+    "p90": 108
+   },
+   "lcp": {
+    "med": 92,
+    "p90": 108
+   },
+   "interactive": {
+    "med": 113,
+    "p90": 124
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 79,
+    "p90": 79
+   },
+   "clientNav": {
+    "med": 17,
+    "p90": 17
+   },
+   "heapMB": {
+    "med": 2.3
+   }
+  },
+  "desktop/astro": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 10,
+    "p90": 11
+   },
+   "fcp": {
+    "med": 64,
+    "p90": 64
+   },
+   "lcp": {
+    "med": 64,
+    "p90": 64
+   },
+   "interactive": {
+    "med": 55,
+    "p90": 58
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 73,
+    "p90": 74
+   },
+   "clientNav": {
+    "med": 16,
+    "p90": 17
+   },
+   "heapMB": {
+    "med": 1.6
+   }
+  },
+  "desktop/nuxt": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 14,
+    "p90": 16
+   },
+   "fcp": {
+    "med": 76,
+    "p90": 76
+   },
+   "lcp": {
+    "med": 76,
+    "p90": 76
+   },
+   "interactive": {
+    "med": 99,
+    "p90": 103
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 71,
+    "p90": 83
+   },
+   "clientNav": {
+    "med": 23,
+    "p90": 24
+   },
+   "heapMB": {
+    "med": 2.9
+   }
+  },
+  "mobile/corten": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 4,
+    "p90": 5
+   },
+   "fcp": {
+    "med": 460,
+    "p90": 468
+   },
+   "lcp": {
+    "med": 460,
+    "p90": 468
+   },
+   "interactive": {
+    "med": 461,
+    "p90": 474
+   },
+   "tbt": {
+    "med": 14,
+    "p90": 22
+   },
+   "action": {
+    "med": 291,
+    "p90": 302
+   },
+   "clientNav": {
+    "med": 201,
+    "p90": 203
+   },
+   "heapMB": {
+    "med": 1.6
+   }
+  },
+  "mobile/nextjs": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 22,
+    "p90": 25
+   },
+   "fcp": {
+    "med": 400,
+    "p90": 412
+   },
+   "lcp": {
+    "med": 400,
+    "p90": 412
+   },
+   "interactive": {
+    "med": 1390,
+    "p90": 1460
+   },
+   "tbt": {
+    "med": 153,
+    "p90": 193
+   },
+   "action": {
+    "med": 307,
+    "p90": 316
+   },
+   "clientNav": {
+    "med": 433,
+    "p90": 441
+   },
+   "heapMB": {
+    "med": 3.3
+   }
+  },
+  "mobile/tanstack-start": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 12,
+    "p90": 17
+   },
+   "fcp": {
+    "med": 420,
+    "p90": 436
+   },
+   "lcp": {
+    "med": 420,
+    "p90": 436
+   },
+   "interactive": {
+    "med": 2317,
+    "p90": 2337
+   },
+   "tbt": {
+    "med": 69,
+    "p90": 78
+   },
+   "action": {
+    "med": 284,
+    "p90": 291
+   },
+   "clientNav": {
+    "med": 344,
+    "p90": 352
+   },
+   "heapMB": {
+    "med": 3.1
+   }
+  },
+  "mobile/sveltekit": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 8,
+    "p90": 14
+   },
+   "fcp": {
+    "med": 476,
+    "p90": 480
+   },
+   "lcp": {
+    "med": 476,
+    "p90": 480
+   },
+   "interactive": {
+    "med": 841,
+    "p90": 847
+   },
+   "tbt": {
+    "med": 7,
+    "p90": 8
+   },
+   "action": {
+    "med": 275,
+    "p90": 278
+   },
+   "clientNav": {
+    "med": 270,
+    "p90": 273
+   },
+   "heapMB": {
+    "med": 2.3
+   }
+  },
+  "mobile/react-router": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 17,
+    "p90": 19
+   },
+   "fcp": {
+    "med": 432,
+    "p90": 440
+   },
+   "lcp": {
+    "med": 432,
+    "p90": 440
+   },
+   "interactive": {
+    "med": 1057,
+    "p90": 1102
+   },
+   "tbt": {
+    "med": 33,
+    "p90": 44
+   },
+   "action": {
+    "med": 336,
+    "p90": 352
+   },
+   "clientNav": {
+    "med": 257,
+    "p90": 273
+   },
+   "heapMB": {
+    "med": 2.8
+   }
+  },
+  "mobile/leptos": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 7,
+    "p90": 10
+   },
+   "fcp": {
+    "med": 416,
+    "p90": 424
+   },
+   "lcp": {
+    "med": 416,
+    "p90": 424
+   },
+   "interactive": {
+    "med": 1835,
+    "p90": 1846
+   },
+   "tbt": {
+    "med": 69,
+    "p90": 80
+   },
+   "action": {
+    "med": 285,
+    "p90": 289
+   },
+   "clientNav": {
+    "med": 246,
+    "p90": 250
+   },
+   "heapMB": {
+    "med": 1.9
+   }
+  },
+  "mobile/django": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 13,
+    "p90": 14
+   },
+   "fcp": {
+    "med": 412,
+    "p90": 420
+   },
+   "lcp": {
+    "med": 412,
+    "p90": 420
+   },
+   "interactive": {
+    "med": 437,
+    "p90": 442
+   },
+   "tbt": {
+    "med": 6,
+    "p90": 8
+   },
+   "action": {
+    "med": 284,
+    "p90": 295
+   },
+   "clientNav": {
+    "med": 241,
+    "p90": 246
+   },
+   "heapMB": {
+    "med": 1.7
+   }
+  },
+  "mobile/rails": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 10,
+    "p90": 13
+   },
+   "fcp": {
+    "med": 428,
+    "p90": 444
+   },
+   "lcp": {
+    "med": 428,
+    "p90": 444
+   },
+   "interactive": {
+    "med": 1149,
+    "p90": 1156
+   },
+   "tbt": {
+    "med": 4,
+    "p90": 6
+   },
+   "action": {
+    "med": 298,
+    "p90": 313
+   },
+   "clientNav": {
+    "med": 251,
+    "p90": 254
+   },
+   "heapMB": {
+    "med": 2.1
+   }
+  },
+  "mobile/laravel": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 21,
+    "p90": 22
+   },
+   "fcp": {
+    "med": 420,
+    "p90": 424
+   },
+   "lcp": {
+    "med": 420,
+    "p90": 424
+   },
+   "interactive": {
+    "med": 876,
+    "p90": 889
+   },
+   "tbt": {
+    "med": 20,
+    "p90": 27
+   },
+   "action": {
+    "med": 318,
+    "p90": 333
+   },
+   "clientNav": {
+    "med": 214,
+    "p90": 217
+   },
+   "heapMB": {
+    "med": 2.2
+   }
+  },
+  "mobile/aspnet": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 9,
+    "p90": 14
+   },
+   "fcp": {
+    "med": 412,
+    "p90": 416
+   },
+   "lcp": {
+    "med": 412,
+    "p90": 416
+   },
+   "interactive": {
+    "med": 432,
+    "p90": 437
+   },
+   "tbt": {
+    "med": 6,
+    "p90": 7
+   },
+   "action": {
+    "med": 280,
+    "p90": 289
+   },
+   "clientNav": {
+    "med": 243,
+    "p90": 247
+   },
+   "heapMB": {
+    "med": 1.7
+   }
+  },
+  "mobile/spring": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 20,
+    "p90": 22
+   },
+   "fcp": {
+    "med": 420,
+    "p90": 424
+   },
+   "lcp": {
+    "med": 420,
+    "p90": 424
+   },
+   "interactive": {
+    "med": 612,
+    "p90": 619
+   },
+   "tbt": {
+    "med": 5,
+    "p90": 7
+   },
+   "action": {
+    "med": 286,
+    "p90": 288
+   },
+   "clientNav": {
+    "med": 244,
+    "p90": 245
+   },
+   "heapMB": {
+    "med": 1.7
+   }
+  },
+  "mobile/phoenix": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 10,
+    "p90": 11
+   },
+   "fcp": {
+    "med": 408,
+    "p90": 416
+   },
+   "lcp": {
+    "med": 408,
+    "p90": 416
+   },
+   "interactive": {
+    "med": 932,
+    "p90": 951
+   },
+   "tbt": {
+    "med": 44,
+    "p90": 53
+   },
+   "action": {
+    "med": 148,
+    "p90": 154
+   },
+   "clientNav": {
+    "med": 129,
+    "p90": 143
+   },
+   "heapMB": {
+    "med": 2.3
+   }
+  },
+  "mobile/astro": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 9,
+    "p90": 12
+   },
+   "fcp": {
+    "med": 272,
+    "p90": 276
+   },
+   "lcp": {
+    "med": 272,
+    "p90": 276
+   },
+   "interactive": {
+    "med": 618,
+    "p90": 628
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 5
+   },
+   "action": {
+    "med": 302,
+    "p90": 308
+   },
+   "clientNav": {
+    "med": 242,
+    "p90": 246
+   },
+   "heapMB": {
+    "med": 1.6
+   }
+  },
+  "mobile/nuxt": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 16,
+    "p90": 20
+   },
+   "fcp": {
+    "med": 436,
+    "p90": 448
+   },
+   "lcp": {
+    "med": 436,
+    "p90": 448
+   },
+   "interactive": {
+    "med": 1505,
+    "p90": 1515
+   },
+   "tbt": {
+    "med": 68,
+    "p90": 82
+   },
+   "action": {
+    "med": 272,
+    "p90": 275
+   },
+   "clientNav": {
+    "med": 272,
+    "p90": 279
+   },
+   "heapMB": {
+    "med": 2.9
+   }
+  }
+ }
+}
