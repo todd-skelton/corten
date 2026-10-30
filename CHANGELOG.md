@@ -2086,6 +2086,14 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_views_are__Row`, `corten__two_events_are__RowToggled`, and
     `corten__two_events_named__row_toggled` for the event's name in the page)
     ([#371 Two features' #[event] types or views with the same name still fail only when the server starts](https://github.com/todd-skelton/corten/issues/371)).
+78. A `for`, `if` or `match` inside a `for` in `html!` compiles, in a patch and in any view: it
+    failed with "use of moved value" on the whole `html!`, since the marker that says whether each
+    part is a patch was moved on the loop's first pass. A patch can now redraw rows known from data
+    in one loop, with a branch per row. A view refused as a patch now names the kind of part that
+    is not one (`ComponentOrExpressionNotAPatch`: a component declared `-> impl Render`;
+    `IdNotADeriveIdType`; `TextOrElementWithoutId`), though not its place in the view. The markers are zero-sized and the macro's output is otherwise the same, so rendering
+    is unchanged
+    ([#383 An if or match inside a for in html! fails with E0382 (use of moved value), and a patch's E0277 does not name the part that is not a patch](https://github.com/todd-skelton/corten/issues/383)).
 
 ### Documentation
 
