@@ -2025,6 +2025,13 @@ Corten is pre-1.0, so any minor version may change the API.
     closure and a second read was E0382. A view given by value, and the view at the top of an
     `html!`, still own what they use
     ([#414 A view in a prop (action={&html! {..}}) takes ownership of the locals it uses, so a local also read elsewhere in the page fails with E0382](https://github.com/todd-skelton/corten/issues/414)).
+76. An element with the `hidden` attribute stays hidden when a component's class gives it a
+    `display`: `components.css` (or, when only areas have stylesheets, each area's file) starts with
+    `[hidden]:where(:not([hidden=until-found i])){display:none!important}`, so neither an app nor a
+    design system for corten-ui has to know to add it. The rule adds 69 bytes to the stylesheet,
+    before compression ([#423 The [hidden] { display: none !important } rule corten-ui requires is
+    not in the template and nothing checks it, so a component's display silently shows hidden
+    parts](https://github.com/todd-skelton/corten/issues/423)).
 
 ### Documentation
 
