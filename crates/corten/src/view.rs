@@ -1578,6 +1578,9 @@ pub mod __private {
         fn __text(&self, name: &str, out: &mut String);
     }
 
+    // Not named in the error: a value that is not text is told what an attribute takes, not that
+    // it lacks `Display`.
+    #[diagnostic::do_not_recommend]
     impl<T: Display + ?Sized> AttrText for &Attr<'_, T> {
         fn __text(&self, name: &str, out: &mut String) {
             out.push_str(name);
