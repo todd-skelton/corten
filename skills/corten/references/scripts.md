@@ -49,7 +49,12 @@ export function showAll(rows, rest, button) {
    parameter typed `HTMLX[]` gets every element with that ref.
 2. Arguments a handler can take: refs, `event`, `target` (the element with the `on:`),
    `signal` (aborts when that element leaves the page), `scope` (the component's root), and any
-   Rust value (`&str`, numbers, `bool`, a typed route, `Serialize` with feature `json`).
+   Rust value (`&str`, numbers, `bool`, a typed route, `ToJson` with feature `json`). A name from a
+   fixed set (a sort column, a step) is a Rust enum deriving `ToJson` and `JsonSchema`, added with
+   `Types::add`, and the parameter is typed by its generated declaration,
+   `@param {import("../types/app").SortBy} by`: the call then takes only that enum. Never type a
+   handler's parameter as a string literal union: a call to it does not compile (an export only
+   other scripts import may use one).
 3. A wrong ref type, wrong event type, wrong value type or a handler the script does not export
    is a compile error at the call. `tsc --checkJs` checks the function bodies.
 4. `on:connect={..}` runs when the element joins the page: first load, navigation, a patch.
