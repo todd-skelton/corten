@@ -1071,6 +1071,28 @@ Corten is pre-1.0, so any minor version may change the API.
     per locale (from Node's Intl, checked against it, and in the cases the browser's `format.js` is
     checked with); no other format changes
     ([#473 t.date has no month-and-day style without the year (Intl { month: 'short', day: 'numeric' }), so chart labels hand-build month names](https://github.com/todd-skelton/corten/issues/473)).
+145. A handler parameter typed by a declaration `corten::types` generated
+    (`@param {import("../types/app").SortBy} by`, or a `@typedef` of it) takes a value of the Rust
+    type of that name in the component's module, so `js::sortBy(target, SortBy::Price)` compiles
+    and `42` or `"prodcut"` do not: one handler serves every name of a fixed set, and a renamed
+    variant fails to build. A call to a handler whose parameter is a string literal union
+    (`@param {"name" | "price"} by`) no longer compiles, since it took any value; the error and a
+    warning on the call say to make it a Rust enum with a generated declaration, and so does a
+    list or a generic of one (`Mode[]`, `Record<Mode, number>`, `[Mode, number]`, `{ m: Mode }`):
+    any string literal in the parameter's type counts, outside `import("..")`, `Message<..>`, a key
+    (an object's, an indexed type's, the keys and members `Pick`, `Omit` and `Exclude` take) and a
+    callback's parameter names; a set in a template literal's `${..}` counts. The script still compiles, so an export only other
+    scripts import types its parameters as it needs. A `@typedef` of
+    any type but an object or a generic one (`@template`) (`Tab | null`, `Tab[]`, `string`) is
+    checked as the type it names where a handler takes it, through any number of typedefs, and a
+    generated declaration a handler's parameter holds in a shape the call is not checked against is
+    refused rather than taking any value, in any shape of a typedef of plain values that holds one;
+    a typedef the script keeps for itself is not checked. Typedefs that refer to each other (a
+    recursive `Json`, a `Tree` and `Forest`) are seen through as one, and each typedef is
+    written out once, so a recursive one, a long chain or a type with thousands of declarations
+    costs the macro no more than another.
+    What the page gets is unchanged
+    ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
 145. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
     answer (a carrier, a payment provider, another app), answered by `req.invalid` and
@@ -1727,6 +1749,15 @@ Corten is pre-1.0, so any minor version may change the API.
     label="Menu" items={&items} />` becomes `<MenuButton id="m" label="Menu">` with an element per
     item
     ([#413 MenuButton items are only a link or a field-less post, so a row menu with a download, a new-tab link, a post with a field or a confirm dialog is hand-built](https://github.com/todd-skelton/corten/issues/413)).
+92. Breaking: a call to a handler whose parameter is a set of names written as string literals
+    (`@param {"name" | "price"} by`, also with `null`, optional, through a `@typedef`, or as a
+    group's field) no longer compiles, and neither does one to a handler whose parameter holds a
+    generated declaration inside another type (`import("../types/app").Tab[]`,
+    `.. | null`, a typedef of plain values holding one): each took any value at the call. A
+    typedef of a plain type (`@typedef {string} Id`, `@typedef {HTMLElement} Root`) a handler
+    takes is now checked as that type, where it took any value. Make the set a Rust enum with a
+    generated declaration and type the value with it, alone
+    ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -2191,6 +2222,21 @@ Corten is pre-1.0, so any minor version may change the API.
     the lock was written for, and says nothing for a tag or branch whose commit the lock does not
     know yet
     ([#475 During a pin bump, the CLI version note reads the stale Cargo.lock and tells you to install the older corten](https://github.com/todd-skelton/corten/issues/475)).
+80. A `Box<dyn Href>` (a link a shared component's function prop returns, when one enum of every
+    page's route would join separate feature modules) is written as `href={boxed}`, as the `dyn
+    Href` it holds; it was an `Href` but not an attribute value. A value that is neither text nor a
+    link nor an attribute value is now an error that says so ("this value cannot be written in an
+    attribute", naming what an attribute takes) instead of one about a private `__attr` method. The
+    item page's `render_cost` (release, callgrind, 3 runs) is 35,567,415,208 instructions against
+    35,548,560,642 on main (+0.05%; the page writes no boxed link, so this is layout)
+    ([#457 Box<dyn Href> is an Href but not an attribute value, so href={boxed} fails with an error naming a private method](https://github.com/todd-skelton/corten/issues/457)).
+81. A query word an enum parameter does not have (`?state=due_now`, an old bookmark or an address
+    edited by hand) reads as missing, `None` or the field's `#[serde(default)]`, so `Params` shows
+    the page with its filter, sort or tab at its default where it answered 400 with serde's text, and
+    a `#[route(prefix = ..)]` entry holding one is left out of the map. A
+    parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
+    and a form's body are still refused. Links write what they did
+    ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
 
 ### Documentation
 

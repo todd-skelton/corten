@@ -228,7 +228,10 @@ value that is one of several routes (an app's screens, the links a shared list m
 column) is an enum whose variants each hold one, `#[derive(Href)] enum Screen<'a> {
 Inventory(url::Inventory), PullSheet(url::PullSheet<'a>) }`, written as `href={screen}`, and the
 page passes a function that builds it, `link: &'a dyn Fn(SortBy) -> SheetLink<'a>`. A unit
-variant does not compile (it has no URL), and neither does text where a `&dyn Href` goes. A
+variant does not compile (it has no URL), and neither does text where a `&dyn Href` goes. When
+one enum of every page's route would tie together modules that should stay apart (the pages that
+draw a shared list live in separate features), the function returns a boxed link instead,
+`link: &'a dyn Fn(SortBy) -> Box<dyn Href + 'a>`, and `href={link(by)}` takes the box as it is. A
 part of each row the page decides (a detail one screen shows) is a function the same way,
 `detail: &'a dyn Fn(&Item) -> Box<dyn Render + 'a>`, drawn as `{detail(item)}`.
 
