@@ -1064,6 +1064,13 @@ Corten is pre-1.0, so any minor version may change the API.
     Problem Details document with neither, as from `invalid` (feature `json`). An app no longer branches on
     `req.mode` for such a refusal and loses the JSON answer
     ([#468 req.invalid takes the refused form's patch already drawn, so a patch that needs a read is read for the no-JavaScript page too](https://github.com/todd-skelton/corten/issues/468)).
+144. `DayStyle` for `t.date` and `t.js().date`: the month and day without the year, `Short` (`Mar
+    2`) and `Long` (`March 2`), written as Intl writes `{ month, day }` in each locale's order and
+    words (`2 mars`, `2. März`), for a chart's axis, a week's row or a timeline whose year the page
+    says once; like `MonthStyle`, `t.date_time` does not take it. The locale data gains two patterns
+    per locale (from Node's Intl, checked against it, and in the cases the browser's `format.js` is
+    checked with); no other format changes
+    ([#473 t.date has no month-and-day style without the year (Intl { month: 'short', day: 'numeric' }), so chart labels hand-build month names](https://github.com/todd-skelton/corten/issues/473)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -2173,7 +2180,15 @@ Corten is pre-1.0, so any minor version may change the API.
     the lock was written for, and says nothing for a tag or branch whose commit the lock does not
     know yet
     ([#475 During a pin bump, the CLI version note reads the stale Cargo.lock and tells you to install the older corten](https://github.com/todd-skelton/corten/issues/475)).
-80. A query word an enum parameter does not have (`?state=due_now`, an old bookmark or an address
+80. A `Box<dyn Href>` (a link a shared component's function prop returns, when one enum of every
+    page's route would join separate feature modules) is written as `href={boxed}`, as the `dyn
+    Href` it holds; it was an `Href` but not an attribute value. A value that is neither text nor a
+    link nor an attribute value is now an error that says so ("this value cannot be written in an
+    attribute", naming what an attribute takes) instead of one about a private `__attr` method. The
+    item page's `render_cost` (release, callgrind, 3 runs) is 35,567,415,208 instructions against
+    35,548,560,642 on main (+0.05%; the page writes no boxed link, so this is layout)
+    ([#457 Box<dyn Href> is an Href but not an attribute value, so href={boxed} fails with an error naming a private method](https://github.com/todd-skelton/corten/issues/457)).
+81. A query word an enum parameter does not have (`?state=due_now`, an old bookmark or an address
     edited by hand) reads as missing, `None` or the field's `#[serde(default)]`, so `Params` shows
     the page with its filter, sort or tab at its default where it answered 400 with serde's text, and
     a `#[route(prefix = ..)]` entry holding one is left out of the map. A
