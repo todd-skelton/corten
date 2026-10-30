@@ -15,20 +15,29 @@ use corten::{
 /// field's type is.
 ///
 /// `terms` are matched as the label is, without being shown: a card number, a SKU, an
-/// abbreviation. Typing a term whole puts its option first:
+/// abbreviation. Typing a term whole puts its option first. [`Choice::terms`] sets them from a
+/// slice of anything that is text: constant `&str`s, or the `String`s a row computed, borrowed
+/// where they are with no second list:
 ///
-/// ```ignore
-/// Choice { terms: &["4", "004/102"], ..Choice::new(card.id, "Charizard - Base Set") }
+/// ```
+/// use corten_ui::Choice;
+///
+/// let charizard = Choice::new(4, "Charizard - Base Set").terms(&["4", "004/102"]);
+///
+/// struct Card { id: i32, label: String, terms: Vec<String> }
+/// let cards = [Card { id: 4, label: "Charizard - Base Set".into(), terms: vec!["4/102".into(), "004/102".into()] }];
+/// let options: Vec<_> = cards.iter().map(|c| Choice::new(c.id, &c.label).terms(&c.terms)).collect();
+/// # let _ = (charizard, options);
 /// ```
 #[derive(Clone, Copy)]
-pub struct Choice<'a, V> {
+pub struct Choice<'a, V, S = &'a str> {
     /// What the form sends: its `Display`.
     pub value: V,
     /// What the user reads and types to find it.
     pub label: &'a str,
     /// Other words that find it, each matched as the label is. A term is one line: it is written
     /// in one attribute, a line each, so a line break in a term splits it in two.
-    pub terms: &'a [&'a str],
+    pub terms: &'a [S],
 }
 
 impl<'a, V> Choice<'a, V> {
@@ -38,18 +47,26 @@ impl<'a, V> Choice<'a, V> {
     }
 }
 
-/// A choice's terms as one `data-terms` attribute, a line each, or nothing when there are none.
-struct Terms<'a>(&'a [&'a str]);
+impl<'a, V: Copy, S> Choice<'a, V, S> {
+    /// The same option, also found by `terms`: `&str`s, `String`s, or any `AsRef<str>` a
+    /// [`ComboBox`] writes.
+    pub const fn terms<T>(self, terms: &'a [T]) -> Choice<'a, V, T> {
+        Choice { value: self.value, label: self.label, terms }
+    }
+}
 
-impl AttrValue for Terms<'_> {
+/// A choice's terms as one `data-terms` attribute, a line each, or nothing when there are none.
+struct Terms<'a, S>(&'a [S]);
+
+impl<S: AsRef<str>> AttrValue for Terms<'_, S> {
     fn write_attr(&self, name: &str, out: &mut String) {
         let Some((first, rest)) = self.0.split_first() else { return };
         out.push_str(name);
         out.push_str("=\"");
-        escape_into(first, out);
+        escape_into(first.as_ref(), out);
         for term in rest {
             out.push('\n');
-            escape_into(term, out);
+            escape_into(term.as_ref(), out);
         }
         out.push('"');
     }
@@ -79,7 +96,7 @@ impl AttrValue for Terms<'_> {
 /// let colors = [Choice::new(Color::Salt, "Salt"), Choice::new(Color::Sand, "Sand")];
 /// let field = Picker { value: Some(Size::Small), ..Picker::new("color", Order::FIELDS.color, "Choose", "None", &colors) };
 /// ```
-pub struct Picker<'a, V> {
+pub struct Picker<'a, V, S = &'a str> {
     /// The `id` the app's `<label for>` points at. It names the `<select>` until the script
     /// runs and the text input after, so the label always labels the control that shows.
     pub id: &'a str,
@@ -92,7 +109,7 @@ pub struct Picker<'a, V> {
     pub placeholder: &'a str,
     /// Shown when no option matches what was typed: "No matches".
     pub empty: &'a str,
-    pub options: &'a [Choice<'a, V>],
+    pub options: &'a [Choice<'a, V, S>],
     pub required: bool,
     pub disabled: bool,
     /// More attributes for both controls, such as `errors.within(form).aria(field)`.
@@ -101,9 +118,9 @@ pub struct Picker<'a, V> {
 
 static NO_ATTRS: [(&str, bool); 0] = [];
 
-impl<'a, V> Picker<'a, V> {
+impl<'a, V, S> Picker<'a, V, S> {
     /// A field with nothing selected, optional and enabled.
-    pub fn new(id: &'a str, name: FieldName, placeholder: &'a str, empty: &'a str, options: &'a [Choice<'a, V>]) -> Self {
+    pub fn new(id: &'a str, name: FieldName, placeholder: &'a str, empty: &'a str, options: &'a [Choice<'a, V, S>]) -> Self {
         Picker { id, name, value: None, placeholder, empty, options, required: false, disabled: false, attrs: &NO_ATTRS }
     }
 }
@@ -137,7 +154,7 @@ impl<'a, V> Picker<'a, V> {
 /// #[derive(serde::Deserialize, Fields)]
 /// struct Order { color: Color }
 ///
-/// const COLORS: [Choice<Color>; 2] = [Choice::new(Color::Salt, "Salt & Pepper"), Choice { terms: &["tan"], ..Choice::new(Color::Sand, "Desert Sand") }];
+/// const COLORS: [Choice<Color>; 2] = [Choice::new(Color::Salt, "Salt & Pepper"), Choice::new(Color::Sand, "Desert Sand").terms(&["tan"])];
 /// let field = Picker { value: Some(Color::Sand), ..Picker::new("color", Order::FIELDS.color, "Choose a color", "No matches", &COLORS) };
 /// let html = ComboBox { field: &field }.to_html();
 /// assert!(html.contains(r#"<select data-ref="select" id="color" name="color""#));
@@ -145,7 +162,7 @@ impl<'a, V> Picker<'a, V> {
 /// assert!(html.contains(r#"role="combobox""#) && html.contains(r#"value="Desert Sand""#));
 /// ```
 #[component(js)]
-pub fn ComboBox<'a, V: Copy + PartialEq + std::fmt::Display>(field: &'a Picker<'a, V>) -> impl Render {
+pub fn ComboBox<'a, V: Copy + PartialEq + std::fmt::Display, S: AsRef<str>>(field: &'a Picker<'a, V, S>) -> impl Render {
     let f = field;
     let (select, input, popup, list, empty) = refs();
     let shown = f.value.and_then(|v| f.options.iter().find(|o| o.value == v)).map(|o| o.label);

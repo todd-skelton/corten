@@ -75,7 +75,9 @@ export function showAll(rows, rest, button) {
    script becomes `js::Selection { rows: row, count }`; build it once, pass it as one argument.
 3. Rows a feed updates by id: `key={item.id}` on the cells, a `Map<string, HTMLTableCellElement>`
    parameter, `cells.get(row.id)`. Do not read `data-*` attributes for this.
-4. A value borrowed from one the view owns: compute it inside `html!` with `let`.
+4. A value borrowed from one the view owns: compute it inside `html!` with `let`. A view lent
+   to a prop (`action={&html! { .. }}`) borrows what it uses, so read the same local in it and
+   in the rest of the markup; do not rebind it with `as_ref()` first.
 5. Rows a write removes: `req.patch(html! { for id in &done { {Remove(RowId(id))} } })`
    (`corten::view::Remove`), with `#[derive(Id)] struct RowId<'a>(&'a str);` and
    `<tr id={RowId(&item.id)}>` on the row. Rows Load more adds: `view::Append(RowsId, rows)`,
