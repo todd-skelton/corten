@@ -480,7 +480,11 @@ async function run(browser) {
   delayWatch = 600;
   failWatch = true;
   await page.click("#watch-form button");
-  await page.selectOption("select[name=id]", "GLBX");
+  // Another stock the form still offers, so the newer submit differs from the one it waits for.
+  const other = await page.$eval("select[name=id]", (s) =>
+    [.../** @type {HTMLSelectElement} */ (s).options].map((o) => o.value).find((v) => v && v !== /** @type {HTMLSelectElement} */ (s).value),
+  );
+  if (other) await page.selectOption("select[name=id]", other);
   await page.click("#watch-form button");
   await failedAgain;
   await page.waitForTimeout(500);
