@@ -72,7 +72,7 @@ const CONDITIONS: [Choice<Condition>; 5] = {
     let mut i = 0;
     while i < 5 {
         let c = Condition::ALL[i];
-        out[i] = Choice { terms: c.grades(), ..Choice::new(c, c.label()) };
+        out[i] = Choice::new(c, c.label()).terms(c.grades());
         i += 1;
     }
     out

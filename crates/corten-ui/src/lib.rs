@@ -52,7 +52,7 @@
 //! except the `−` and `+` of [`NumberField`]'s buttons, which a design system replaces with
 //! icons.
 //!
-//! **Links** are typed routes ([`Link`]): a menu item or tab cannot point at a URL the app does
+//! **Links** are typed routes (`&dyn corten::Href`): a menu item or tab cannot point at a URL the app does
 //! not route.
 //!
 //! ```compile_fail
@@ -145,7 +145,7 @@
 //! }
 //! ```
 
-use corten::{script::script, view::AttrValue, Component, Route};
+use corten::{script::script, Component};
 
 mod checkbox_group;
 mod combo_box;
@@ -186,31 +186,6 @@ pub const COMPONENTS: &[Component] = &[
     RequiredWhen,
     dialog::COMPONENT,
 ];
-
-/// A typed route a component links to (`#[derive(Route)]`), as a trait object so a list of
-/// items can hold different routes. A string is not a `Link`.
-pub trait Link {
-    /// Writes the URL, escaped for an attribute.
-    fn write_link(&self, out: &mut String);
-}
-
-impl<R: Route> Link for R {
-    fn write_link(&self, out: &mut String) {
-        self.write_href(out, true)
-    }
-}
-
-/// A [`Link`] as an attribute value: `href={Url(item.link)}`.
-pub(crate) struct Url<'a>(pub &'a dyn Link);
-
-impl AttrValue for Url<'_> {
-    fn write_attr(&self, name: &str, out: &mut String) {
-        out.push_str(name);
-        out.push_str("=\"");
-        self.0.write_link(out);
-        out.push('"');
-    }
-}
 
 /// `"true"` or `"false"`, for ARIA states, which are text.
 pub(crate) fn state(on: bool) -> &'static str {
