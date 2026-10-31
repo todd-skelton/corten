@@ -1181,7 +1181,7 @@ Corten is pre-1.0, so any minor version may change the API.
     that sets no value runs 22,976 instructions a request against 22,842 on its base (base runs
     22,829 to 22,842, branch 22,975 to 22,976), the empty collection around the render and the
     look in the security headers; a page of four meters with three distinct values runs 40,115
-    against 21,911 for the same markup without them, about 8,400 of it the SHA-256 of its block
+    (runs 40,114 to 40,115) against 21,911 (all three runs) for the same markup without them, about 8,400 of it the SHA-256 of its block
     (which now hashes the input in place rather than copying it)
     ([#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
 ### Removed

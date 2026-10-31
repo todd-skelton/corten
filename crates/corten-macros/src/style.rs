@@ -57,7 +57,7 @@ pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
 /// Whether `syntax` (the text of an `@property`'s `syntax`) is one the browser reads: `*`, or
 /// components joined by `|`, each a data type (`<length>`) or a keyword, a data type followed by
 /// `+` (a list) or `#` (a comma list), but `<transform-list>`, which is a list already
-/// (CSS Properties and Values API, the syntax string). A rule with another is ignored.
+/// (CSS Properties and Values API Level 1, its supported names: no `<string>`). A rule with another is ignored.
 fn syntax_valid(syntax: &str) -> bool {
     const TYPES: &[&str] = &[
         "angle",
@@ -70,7 +70,6 @@ fn syntax_valid(syntax: &str) -> bool {
         "number",
         "percentage",
         "resolution",
-        "string",
         "time",
         "transform-function",
         "transform-list",
@@ -1073,7 +1072,16 @@ mod tests {
             scope("@property --fill { syntax: '*'; inherits: false }\n.a { --probe: xéé(--fill); }", "m").is_ok(),
             "text that is not ASCII"
         );
-        for bad in ["''", "'<not-a-type>'", "'<length'", "'<transform-list>+'", "'inherit'", "'<length> |'", "'- | <length>'"] {
+        for bad in [
+            "''",
+            "'<not-a-type>'",
+            "'<length'",
+            "'<transform-list>+'",
+            "'inherit'",
+            "'<length> |'",
+            "'- | <length>'",
+            "'<string>'",
+        ] {
             assert!(
                 error(&format!("@property --a {{ syntax: {bad}; inherits: false; initial-value: 0 }}"))
                     .contains("is not a syntax"),

@@ -113,8 +113,8 @@ macro_rules! units {
     };
 }
 // Every unit of CSS Values 4 but `in`, a Rust keyword: an inch is `px(96.0)`.
-units!(Length: px, cm, mm, q, pt, pc, em, rem, ex, rex, cap, rcap, ch, rch, ic, ric, lh, rlh, vw, vh, vi, vb, vmin, vmax, svw, svh, lvw, lvh, dvw, dvh, cqw, cqh, cqi, cqb, cqmin, cqmax);
-units!(LengthPercentage: px, cm, mm, q, pt, pc, em, rem, ex, rex, cap, rcap, ch, rch, ic, ric, lh, rlh, vw, vh, vi, vb, vmin, vmax, svw, svh, lvw, lvh, dvw, dvh, cqw, cqh, cqi, cqb, cqmin, cqmax);
+units!(Length: px, cm, mm, q, pt, pc, em, rem, ex, rex, cap, rcap, ch, rch, ic, ric, lh, rlh, vw, vh, vi, vb, vmin, vmax, svw, svh, svi, svb, svmin, svmax, lvw, lvh, lvi, lvb, lvmin, lvmax, dvw, dvh, dvi, dvb, dvmin, dvmax, cqw, cqh, cqi, cqb, cqmin, cqmax);
+units!(LengthPercentage: px, cm, mm, q, pt, pc, em, rem, ex, rex, cap, rcap, ch, rch, ic, ric, lh, rlh, vw, vh, vi, vb, vmin, vmax, svw, svh, svi, svb, svmin, svmax, lvw, lvh, lvi, lvb, lvmin, lvmax, dvw, dvh, dvi, dvb, dvmin, dvmax, cqw, cqh, cqi, cqb, cqmin, cqmax);
 units!(Angle: deg, grad, rad, turn);
 units!(Time: ms, s);
 
