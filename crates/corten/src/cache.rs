@@ -204,16 +204,22 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
             entry.insert(PRIVATE);
             return;
         }
-        header::Entry::Occupied(entry) => entry.get().to_str().unwrap_or("private").to_string(),
+        header::Entry::Occupied(entry) => {
+            // The directives of every line count, as HTTP joins them (a second line is rare: only
+            // a header written by hand has one). Only a plain `private` makes the answer private:
+            // `private="set-cookie"` still lets a shared cache keep the rest. A line that is not
+            // text is taken as private.
+            let kept = |line: &HeaderValue| {
+                line.to_str().is_err() || plain(line.as_bytes(), b"private") || has(line.as_bytes(), b"no-store")
+            };
+            if entry.iter().any(kept) {
+                return;
+            }
+            entry.get().to_str().unwrap_or("private").to_string()
+        }
     };
     let typed = res.extensions().get::<Typed>().is_some();
     let headers = res.headers_mut();
-    // The directives of every line count, as HTTP joins them (a second line is rare: only a
-    // header written by hand has one).
-    let kept = |text: &str| has(text, "private") || has(text, "no-store");
-    if kept(&text) || headers.get_all(header::CACHE_CONTROL).iter().skip(1).any(|v| v.to_str().is_ok_and(kept)) {
-        return;
-    }
     let bug = if seen.nonce {
         Some("its HTML has this request's CSP nonce (req.nonce() in the layout, or a handler that takes Nonce)")
     } else if headers
@@ -249,13 +255,15 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     }
 }
 
-/// True when `Cache-Control` text has `directive`.
-pub(crate) fn has(text: &str, directive: &str) -> bool {
-    // Bytes, not chars: the whitespace HTTP allows around a directive (spaces and tabs) is ASCII.
-    text.as_bytes().split(|&b| b == b',').any(|d| {
-        let name = d.split(|&b| b == b'=').next().unwrap_or(d);
-        name.trim_ascii().eq_ignore_ascii_case(directive.as_bytes())
-    })
+/// True when a `Cache-Control` line has `directive`, with or without a value. Bytes, not text: the
+/// whitespace HTTP allows around a directive (spaces and tabs) is ASCII.
+pub(crate) fn has(line: &[u8], directive: &[u8]) -> bool {
+    line.split(|&b| b == b',').any(|d| d.split(|&b| b == b'=').next().unwrap_or(d).trim_ascii().eq_ignore_ascii_case(directive))
+}
+
+/// True when a `Cache-Control` line has `directive` without a value.
+fn plain(line: &[u8], directive: &[u8]) -> bool {
+    line.split(|&b| b == b',').any(|d| d.trim_ascii().eq_ignore_ascii_case(directive))
 }
 
 /// The same lifetime for the browser alone: `public` and `s-maxage` become `private`.

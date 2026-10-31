@@ -2724,6 +2724,26 @@ fn cached_routes() -> Router {
             }),
         )
         .route("/statement/other", get(|| async { NoStore(Err::<StatusCode, Error>(Error::not_found())) }))
+        // A no-store line with a byte that is not text.
+        .route(
+            "/odd",
+            get(|| async {
+                let line = HeaderValue::from_bytes(b"no-store, x=\"\xE9\"").unwrap();
+                (StatusCode::BAD_REQUEST, [(header::CACHE_CONTROL, line)], "")
+            }),
+        )
+        // Shared, with a limited private that still lets a shared cache keep the rest.
+        .route(
+            "/limited",
+            get(|| async {
+                let lines = [
+                    (header::CACHE_CONTROL, "public, max-age=600"),
+                    (header::CACHE_CONTROL, "private=\"set-cookie\""),
+                    (header::SET_COOKIE, "seen=1"),
+                ];
+                (axum::response::AppendHeaders(lines), "limited")
+            }),
+        )
         .route(
             "/cookies",
             // `with_cookie` on a `Public` answer does not compile; a header written by hand still
@@ -3147,6 +3167,20 @@ async fn a_failure_under_no_store_is_not_stored() {
         .unwrap();
     let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
     assert_eq!(lines, ["max-age=60", "no-store"], "with a caller");
+    // A line that is not text still counts.
+    let res =
+        router.clone().oneshot(Request::get("/odd").header("accept", "text/html").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res.headers()[header::CACHE_CONTROL].as_bytes(), b"no-store, x=\"\xE9\"");
+}
+
+/// `private="set-cookie"` limits only that header: a shared cache may still keep the rest, so it
+/// does not stand for a plain `private` on an answer that sets a cookie.
+#[tokio::test]
+async fn a_limited_private_is_not_private() {
+    let res = app(cached_routes(), None).oneshot(Request::get("/limited").body(Body::empty()).unwrap()).await.unwrap();
+    let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
+    assert_eq!(lines, ["private, no-cache"]);
 }
 
 #[tokio::test]

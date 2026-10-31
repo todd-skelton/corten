@@ -2532,6 +2532,9 @@ Corten is pre-1.0, so any minor version may change the API.
     back/forward cache. A failure's `Cache-Control` with `no-store` (`NoStore`'s, or one written
     by hand) now goes out with the error page (a JSON failure already kept it). A request refused
     before the handler runs, a panic and a deadline never reach `NoStore` and keep the default.
+    A `Cache-Control` written by hand now counts on every line when Corten decides whether an
+    answer may be shared, and `private="set-cookie"` no longer stands for `private`: an answer
+    that sets a cookie or read a caller with only that limited form is sent `private, no-cache`.
     Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
     requests over 1,000, median of three and the range of the nine pairs, against main at
     a83452c9): a `NoStore` failure as an HTML error page runs 32,218 instructions a request

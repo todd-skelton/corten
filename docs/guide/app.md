@@ -680,10 +680,12 @@ stay public for clients without credentials. A cache in front of the app must ke
 (`corten`, `accept`, `accept-encoding`, and `accept-language` with `App::messages`).
 `NoStore<..>` keeps an answer out of every cache, the browser's back/forward cache included:
 `async fn statement(req: Req) -> NoStore<HtmlResult>`. A failure it returns is not kept either:
-the error page for an expired code or someone else's statement goes out with `no-store` too (a
-request refused before the handler runs, such as a path that does not parse, a handler that
-panics and one past its deadline never reach `NoStore` and get the default). A handler cannot mark an answer public
-any other way: a response it builds by hand is not an answer a route can name, and if anything
+the error page for an expired code or someone else's statement goes out with `no-store` too.
+Three failures never reach `NoStore` and get the default: a request refused before the handler
+runs (a path that does not parse), a handler that panics, and one past its deadline. A
+`Cache-Control` written by hand counts on any of its lines, and only a plain `private` makes it
+private (`private="set-cookie"` lets a shared cache keep the rest). A handler cannot mark an
+answer public any other way: a response it builds by hand is not an answer a route can name, and if anything
 read a caller the answer is private whatever its header says.
 
 An answer at a URL that names its content (a hash of its bytes, as an uploaded picture's can be)
