@@ -101,7 +101,36 @@ pub fn sitemap<'a>(urls: impl IntoIterator<Item = SitemapUrl<'a>>) -> Public<Fil
     xml(out)
 }
 
-/// A `<sitemapindex>` that points at sitemap pages (`/sitemap/items/1.xml`, ...).
+/// A `<sitemapindex>` that points at sitemap pages (`/sitemap/items/1.xml`, ...), each a typed
+/// route whose page number comes before `.xml`:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/sitemap.xml", get = index)]
+///     pub struct Index;
+///
+///     #[route("/sitemap/items/{page}.xml", get = items)]
+///     pub struct ItemsPage {
+///         pub page: u32,
+///     }
+/// }
+///
+/// const ORIGIN: &str = "https://shop.example";
+///
+/// async fn index() -> Public<corten::seo::File> {
+///     let pages: Vec<String> = (1..=3).map(|page| format!("{ORIGIN}{}", url::ItemsPage { page }.href())).collect();
+///     corten::seo::sitemap_index(pages.iter().map(String::as_str))
+/// }
+///
+/// async fn items(at: Params<url::ItemsPage>) -> Public<corten::seo::File> {
+///     let loc = format!("{ORIGIN}/items/{}", at.page);
+///     corten::seo::sitemap([corten::seo::SitemapUrl { loc: &loc, lastmod: None }])
+/// }
+/// # fn main() { let _ = App::new(url::router()).router(); }
+/// ```
 pub fn sitemap_index<'a>(sitemaps: impl IntoIterator<Item = &'a str>) -> Public<File> {
     let mut out = String::from(
         r#"<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">"#,

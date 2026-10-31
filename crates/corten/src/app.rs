@@ -74,6 +74,8 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 pub struct Area<P> {
     routes: Router,
     pages: Vec<(&'static str, bool)>,
+    /// Its routes with text after a parameter, for [`crate::route::assert_no_clash_with`].
+    with_text: Vec<&'static str>,
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
     sources: crate::security::Sources,
@@ -135,7 +137,13 @@ impl<P: Prefix> Area<P> {
             );
         };
         // Before the router, which would merge the two or refuse them less clearly.
-        crate::route::assert_no_clash(self.pages.iter().map(|(p, _)| *p).chain([R::WRITTEN]));
+        if R::WRITTEN != R::PATH || !self.with_text.is_empty() {
+            let earlier: Vec<&str> = self.pages.iter().map(|(p, _)| *p).collect();
+            crate::route::assert_no_clash_with(&earlier, &self.with_text, R::WRITTEN);
+        }
+        if R::WRITTEN != R::PATH {
+            self.with_text.push(R::WRITTEN);
+        }
         self.routes = self.routes.route(R::PATH, crate::route::with_suffixes::<R, _>(methods.0));
         self.pages.push((R::WRITTEN, methods.1));
         self
@@ -434,6 +442,7 @@ impl<M: Middleware> App<M> {
         let area = build(Area {
             routes: Router::new(),
             pages: Vec::new(),
+            with_text: Vec::new(),
             components: Vec::new(),
             deadline: None,
             sources: crate::security::Sources::default(),
@@ -866,13 +875,14 @@ impl<M: Middleware> App<M> {
         // The same path routed in two places (the app's routes and an area's) is one route to axum,
         // with the methods of both.
         let mut pages: Vec<(&'static str, bool)> = Vec::new();
-        crate::route::assert_no_clash(
-            self.pages
-                .iter()
-                .chain(self.areas.iter().flat_map(|area| &area.pages))
-                .map(|(p, _)| *p)
-                .chain(self.api_paths.iter().copied()),
-        );
+        let written: Vec<&str> = self
+            .pages
+            .iter()
+            .chain(self.areas.iter().flat_map(|area| &area.pages))
+            .map(|(p, _)| *p)
+            .chain(self.api_paths.iter().copied())
+            .collect();
+        crate::route::assert_no_clash(&written);
         for &(pattern, get) in self.pages.iter().chain(self.areas.iter().flat_map(|area| &area.pages)) {
             match pages.iter_mut().find(|(p, _)| *p == pattern) {
                 Some((_, has)) => *has |= get,

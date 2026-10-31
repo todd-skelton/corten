@@ -53,7 +53,34 @@
 //! # fn main() {}
 //! ```
 //!
-//! (Either route alone compiles:)
+//! Text goes after a parameter, in its segment, and only one parameter is in a segment; a
+//! `{*rest}`, which takes the rest of the path, has nothing after it:
+//!
+//! ```compile_fail
+//! #[derive(corten::Route)]
+//! #[route("/files/{*path}.xml")]
+//! struct File { path: String }
+//! ```
+//!
+//! ```compile_fail
+//! #[derive(corten::Route)]
+//! #[route("/files/{name}.{ext}")]
+//! struct File { name: String, ext: String }
+//! ```
+//!
+//! ```compile_fail
+//! #[derive(corten::Route)]
+//! #[route("/items/item_{id}")]
+//! struct Item { id: u32 }
+//! ```
+//!
+//! (Either feed route alone compiles, as does `/files/{name}.xml`:)
+//!
+//! ```
+//! #[derive(corten::Route)]
+//! #[route("/files/{name}.xml")]
+//! struct File { name: String }
+//! ```
 //!
 //! ```
 //! use corten::Params;
@@ -1236,7 +1263,8 @@ const fn plain(c: u8) -> bool {
 /// Whether `path` has the shape `#[derive(Route)]` writes, checked when the app compiles so a
 /// `Route` written by hand is held to it too: each segment is `{name}` (lowercase letters, digits
 /// and `_`), `{*name}` as the last, or text a browser sends as it is (letters, digits and
-/// `-._~!$*+,;=:@`). [`chosen`] matches only this shape, as the router does. (The derive also
+/// `-._~!$*+,;=:@`); [`with_suffixes`] adds a route with text after a parameter (`{name}.xml`), and
+/// [`chosen`] matches both shapes, as the router does. (The derive also
 /// refuses a name used twice; that changes no route's match, so it is not checked here.)
 pub(crate) const fn route_shaped(path: &str) -> bool {
     const fn name(c: u8, first: bool) -> bool {
@@ -1364,8 +1392,16 @@ fn segments_match(pattern: &str, path: &str, text: bool) -> bool {
                 if after.is_empty() && got.is_empty() && pattern.clone().next().is_none() {
                     return false;
                 }
-                if !after.is_empty() && !(got.len() > after.len() && got.ends_with(after)) {
-                    return false;
+                if !after.is_empty() {
+                    // The text must end the segment as written, not as the tail of an escape
+                    // (`a%2e` does not end in `e`: it is `a.`).
+                    let Some(head) = got.strip_suffix(after).filter(|head| !head.is_empty()) else {
+                        return false;
+                    };
+                    let head = head.as_bytes();
+                    if head.ends_with(b"%") || (head.len() >= 2 && head[head.len() - 2] == b'%') {
+                        return false;
+                    }
                 }
             }
             (Some(want), Some(got)) if want == got => {}
@@ -1405,6 +1441,9 @@ mod local_tests {
             ("/sitemap/{page}.xml", "/sitemap/3", false),
             ("/sitemap/{page}.xml", "/sitemap/.xml", false),
             ("/sitemap/{page}.xml", "/sitemap/3.xml.bak", false),
+            ("/x/{n}e", "/x/a%2e", false),
+            ("/x/{n}ab", "/x/a%ab", false),
+            ("/x/{n}e", "/x/a%25e", true),
             ("/sitemap/{page}.xml/x", "/sitemap/3.xml/x", true),
         ] {
             assert_eq!(routes_path(pattern, path), want, "{pattern} {path}");
@@ -2267,48 +2306,69 @@ const fn written_fits(path: &str, written: &str) -> bool {
     j == w.len()
 }
 
-/// A route written `written` as the router sees it, with each parameter's name left out (`{}`,
-/// `{*}`): the path it matches (the text after each parameter left out too, `/sitemap/{}` for
-/// `/sitemap/{page}.xml`) and the path with that text (`/sitemap/{}.xml`).
-fn shape(written: &str) -> (String, String) {
-    let (mut matched, mut whole) = (String::new(), String::new());
-    for (i, segment) in written.split('/').enumerate() {
-        if i > 0 {
-            matched.push('/');
-            whole.push('/');
-        }
-        match (segment.strip_prefix('{'), segment.find('}')) {
-            (Some(name), Some(end)) => {
-                let param = if name.starts_with('*') { "{*}" } else { "{}" };
-                matched.push_str(param);
-                whole.push_str(param);
-                whole.push_str(&segment[end + 1..]);
-            }
-            _ => {
-                matched.push_str(segment);
-                whole.push_str(segment);
-            }
+/// Whether routes written `a` and `b` are one path to the router but not the same route: each
+/// segment the same text or the same kind of parameter (`{name}`, `{*rest}`, whatever its name),
+/// and the text after some parameter different (`/feeds/{name}.rss` and `/feeds/{id}.atom`).
+/// Compares in place, with nothing allocated.
+pub(crate) fn clash(a: &str, b: &str) -> bool {
+    let (mut a, mut b) = (a.split('/'), b.split('/'));
+    let mut differ = false;
+    loop {
+        match (a.next(), b.next()) {
+            (None, None) => return differ,
+            (Some(x), Some(y)) => match (x.strip_prefix('{'), y.strip_prefix('{')) {
+                (Some(x), Some(y)) => {
+                    if x.starts_with('*') != y.starts_with('*') {
+                        return false;
+                    }
+                    differ |= text_after(x) != text_after(y);
+                }
+                (None, None) if x == y => {}
+                _ => return false,
+            },
+            _ => return false,
         }
     }
-    (matched, whole)
+}
+
+/// The text after a parameter's `}` in its segment (`.xml` for `page}.xml`).
+fn text_after(segment: &str) -> &str {
+    segment.find('}').map_or("", |n| &segment[n + 1..])
 }
 
 /// Two routes of the app (in any module, area or API) that differ only in the text after a
 /// parameter, which axum matches as one path: a startup panic naming both, since only one could
 /// be reached (a `#[corten::routes]` module already refuses them when it compiles). Routes that
 /// differ only in their parameters' names are left to the router, which refuses them itself.
-pub(crate) fn assert_no_clash<'a>(written: impl IntoIterator<Item = &'a str>) {
-    let mut seen: Vec<(String, String, &str)> = Vec::new();
-    for path in written {
-        let (matched, whole) = shape(path);
-        match seen.iter().find(|(m, _, _)| *m == matched) {
-            Some((_, w, other)) if *w != whole => panic!(
-                "corten: the routes {other:?} and {path:?} differ only in the text after a parameter, which the router does not tell apart: give one a segment of its own"
-            ),
-            Some(_) => {}
-            None => seen.push((matched, whole, path)),
+/// Only a route with text after a parameter can clash, so each of those is compared with the
+/// others, and an app with none compares nothing.
+pub(crate) fn assert_no_clash(written: &[&str]) {
+    for (i, a) in written.iter().enumerate().filter(|(_, a)| has_text_after(a)) {
+        if let Some(other) = written[..i].iter().chain(&written[i + 1..]).find(|b| clash(a, b)) {
+            refuse(other, a);
         }
     }
+}
+
+/// [`assert_no_clash`] for one route `new`, as an area or an API adds it: against every earlier
+/// route when `new` has text after a parameter, else against the earlier ones that have
+/// (`with_text`).
+pub(crate) fn assert_no_clash_with(earlier: &[&str], with_text: &[&str], new: &str) {
+    let against = if has_text_after(new) { earlier } else { with_text };
+    if let Some(other) = against.iter().find(|other| clash(other, new)) {
+        refuse(other, new);
+    }
+}
+
+/// Whether a route written `written` has text after one of its parameters.
+pub(crate) fn has_text_after(written: &str) -> bool {
+    written.split('/').any(|segment| segment.starts_with('{') && !text_after(segment).is_empty())
+}
+
+fn refuse(a: &str, b: &str) -> ! {
+    panic!(
+        "corten: the routes {a:?} and {b:?} differ only in the text after a parameter, which the router does not tell apart: give one a segment of its own"
+    )
 }
 
 /// `methods` for `R`'s path: when a parameter of it is followed by text (`{page}.xml`), a request
