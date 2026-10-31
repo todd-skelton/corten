@@ -2350,7 +2350,10 @@ Corten is pre-1.0, so any minor version may change the API.
     only from a request without `Sec-Fetch-Site`, so on HTTPS another site on the domain cannot
     plant one in a current browser; an app with `Policy::hsts()` never sets or reads it, and
     `localhost` and `127.0.0.1` keep `__Host-`. The ui-gallery smoke renames from the machine's
-    LAN address in each engine (it fails on the image before this change). MEASURE_TBD
+    LAN address in each engine (it fails on the image before this change). The item page's
+    `render_cost` (release, callgrind, 3 runs) is 35,612,123,545 instructions against
+    35,603,094,486 on main (+0.03%, within the runs' spread: a page's GET only compares the
+    method and looks at its cookies once, as before)
     ([#498 redirect_with_notice is lost without a trace on a plain-HTTP LAN deployment: __Host- cookies need a secure origin](https://github.com/todd-skelton/corten/issues/498)).
 
 ### Documentation
