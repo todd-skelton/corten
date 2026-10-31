@@ -58,6 +58,10 @@ pub fn strip(source: &str) -> String {
     let mut condition = false;
     // Whether the last token was `.`.
     let mut dot = false;
+    // Whether the last token was a block's `}` or a `++`/`--`, after which a `/` may divide or
+    // start a regular expression and only a parser could say which: the script is then served as
+    // it is.
+    let mut unsure = false;
     // Set when a template literal's text is being copied (at its start or after a `}`).
     let mut in_template = false;
     while at < bytes.len() {
@@ -74,8 +78,8 @@ pub fn strip(source: &str) -> String {
             at += source[at..].chars().next().map_or(1, char::len_utf8);
             continue;
         }
-        // What this token leaves for the next `(` and word; most tokens clear both.
-        let (mut next_condition, mut next_dot) = (false, false);
+        // What this token leaves for the next `(`, word and `/`; most tokens clear them.
+        let (mut next_condition, mut next_dot, mut next_unsure) = (false, false, false);
         match b {
             // JavaScript's whitespace includes the vertical tab, which Rust's ASCII whitespace does not.
             _ if b.is_ascii_whitespace() || b == 0x0b => {
@@ -121,6 +125,7 @@ pub fn strip(source: &str) -> String {
                 at = end;
                 continue;
             }
+            b'/' if unsure => return source.to_string(),
             // Only where a value is expected is a `/` looked at as a regular expression's start, so a
             // line of divisions stays linear.
             b'/' => match (before == Before::Operator).then(|| regex(source, at)).flatten() {
@@ -149,11 +154,15 @@ pub fn strip(source: &str) -> String {
             b'}' => {
                 if opens.pop() == Some(Open::Substitution) {
                     in_template = true;
+                } else if matches!(opens.last(), Some(Open::Group | Open::Condition)) {
+                    // Inside parentheses or brackets a `}` ends an object or a pattern, a value
+                    // (`({}) / 2`, `for (const {a} of /re/)`).
+                    before = Before::Value;
                 } else {
-                    // A block's end starts a statement, which may be a regular expression. An
-                    // object or class divided by something (`({}) / 2`) is read wrongly, and
-                    // its line's text after a `//` in a string may be cut: no script divides one.
+                    // A block's end, or an object, function or class at a statement's level: a `/`
+                    // after it is not read either way (`unsure`).
                     before = Before::Operator;
+                    next_unsure = true;
                 }
                 at += 1;
             }
@@ -177,14 +186,17 @@ pub fn strip(source: &str) -> String {
                 before = Before::Value;
                 at += 1;
             }
-            // `a++ / 2`: `++` and `--` leave what came before them.
-            b'+' | b'-' if bytes.get(at + 1) == Some(&b) => at += 2,
+            // `a++ / 2` or `++/re/.lastIndex`: a `/` after `++` or `--` is not read either way.
+            b'+' | b'-' if bytes.get(at + 1) == Some(&b) => {
+                next_unsure = true;
+                at += 2;
+            }
             _ if b.is_ascii_digit() || (b == b'.' && bytes.get(at + 1).is_some_and(u8::is_ascii_digit)) => {
-                at = word_end(source, at + 1);
+                at = word_end(source, at + 1, true);
                 before = Before::Value;
             }
             _ if b.is_ascii_alphabetic() || b == b'_' || b == b'$' || b == b'#' || b >= 0x80 => {
-                let end = word_end(source, at + b.is_ascii() as usize);
+                let end = word_end(source, at + b.is_ascii() as usize, false);
                 let word = &source[at..end];
                 // After a `.`, a word is a property, a value even when it is `return`.
                 let keyword = !dot;
@@ -206,6 +218,7 @@ pub fn strip(source: &str) -> String {
         }
         condition = next_condition;
         dot = next_dot;
+        unsure = next_unsure;
     }
     out.push_str(&source[copied..]);
     out
@@ -229,7 +242,11 @@ fn line_breaks(comment: &str) -> String {
                 chars.next();
                 out.push_str("\r\n");
             }
-            '\n' | '\r' | '\u{2028}' | '\u{2029}' => out.push(c),
+            '\n' | '\r' | '\u{2028}' | '\u{2029}' => {
+                // A lone `\r` before a later `\n` stays two line ends.
+                keep_apart(&mut out, (c == '\n').then_some(&b'\n'));
+                out.push(c);
+            }
             _ => {}
         }
     }
@@ -255,12 +272,15 @@ fn trim_end_of_line(out: &mut String) {
     out.truncate(kept);
 }
 
-/// The end of a word or number that starts before `at` (or at it, when it starts with a character
-/// outside ASCII).
-fn word_end(source: &str, at: usize) -> usize {
+/// The end of a word, or of a number (`number`, which may hold a `.`), that starts before `at` (or
+/// at it, when it starts with a character outside ASCII). A word stops at a `.`, which is then
+/// read as a property access.
+fn word_end(source: &str, at: usize, number: bool) -> usize {
     source[at..]
         .char_indices()
-        .find(|&(_, c)| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '.') || (!c.is_ascii() && !space(c))))
+        .find(|&(_, c)| {
+            !(c.is_ascii_alphanumeric() || matches!(c, '_' | '$') || (number && c == '.') || (!c.is_ascii() && !space(c)))
+        })
         .map_or(source.len(), |(n, _)| at + n)
 }
 
@@ -318,7 +338,7 @@ fn regex(source: &str, at: usize) -> Option<usize> {
                 class = false;
                 i += 1;
             }
-            b'/' if !class => return Some(word_end(source, i + 1)),
+            b'/' if !class => return Some(word_end(source, i + 1, false)),
             _ => i += 1,
         }
     }
@@ -363,10 +383,52 @@ mod tests {
         let divisions = format!("x = {}0;", "a / 2 + \"[\" + ".repeat(50_000));
         assert_eq!(strip(&divisions), divisions);
         // A lone CR, a comment, then an LF: still two line ends.
-        for (source, lines) in [("a\r// c\nb", 3), ("a\r/* c */\nb", 3), ("a/* x\r*/\nb", 3), ("a\r/*\n*/b", 3)] {
+        for (source, lines) in
+            [("a\r// c\nb", 3), ("a\r/* c */\nb", 3), ("a/* x\r*/\nb", 3), ("a\r/*\n*/b", 3), ("x = 1;/* a\rb\nc */\ny", 4)]
+        {
             let out = strip(source);
             let ends = |s: &str| s.matches("\r\n").count() + s.matches(['\r', '\n']).count() - 2 * s.matches("\r\n").count();
             assert_eq!(ends(&out) + 1, lines, "{source:?} -> {out:?}");
+        }
+    }
+
+    #[test]
+    fn a_slash_only_a_parser_could_read_leaves_the_script_as_it_is() {
+        // After a block's `}` or a `++`, a `/` divides or starts a regular expression and only a
+        // parser knows which: the script is served as written.
+        for source in [
+            "x = class {} / 2 + \"/\" + \"//kept\"; // c",
+            "w = {} / 2 + \"/\" + \"//kept\"; // c",
+            "x = function () {} / 2 + \"//kept\"; // c",
+            "if (a) { b() }\n/\"/.test(s); const u = \"//kept\"; // c",
+            "x\n++/[//]/.a; // c",
+            "a++ / 2; // c",
+        ] {
+            assert_eq!(strip(source), source, "{source:?}");
+        }
+        // Inside parentheses a `}` ends a value or a pattern, and the rest is stripped.
+        for (source, out) in [
+            ("y = ({}) / 2 + \"//kept\"; // c", "y = ({}) / 2 + \"//kept\";"),
+            (
+                "for (const {a} of /\"/.exec(s)) g(a); const u = \"//kept\"; // c",
+                "for (const {a} of /\"/.exec(s)) g(a); const u = \"//kept\";",
+            ),
+            ("for (const { a: { b } } of /\"/.exec(s)) g(b); // c", "for (const { a: { b } } of /\"/.exec(s)) g(b);"),
+            ("for await (const {a} of /\"/.exec(s)) g(a); // c", "for await (const {a} of /\"/.exec(s)) g(a);"),
+            ("f(() => {}, /\"/); const u = \"//kept\"; // c", "f(() => {}, /\"/); const u = \"//kept\";"),
+        ] {
+            assert_eq!(strip(source), out, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn a_property_named_as_a_keyword_is_a_property_across_a_line_or_comment() {
+        for (source, out) in [
+            ("x = o.\n  in / 2 + \"/\" + \"//kept\"; // c", "x = o.\n  in / 2 + \"/\" + \"//kept\";"),
+            ("x = o./* c */in / 2 + \"/\" + \"//kept\";", "x = o. in / 2 + \"/\" + \"//kept\";"),
+            ("x = o.return / 2 + \"//kept\"; // c", "x = o.return / 2 + \"//kept\";"),
+        ] {
+            assert_eq!(strip(source), out, "{source:?}");
         }
     }
 
