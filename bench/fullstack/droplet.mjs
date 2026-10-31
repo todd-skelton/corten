@@ -32,6 +32,8 @@ const args = process.argv.slice(2);
 const round = args[0];
 const flag = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : fallback; };
 if (!round || round.startsWith("--")) throw new Error("usage: node droplet.mjs <round> (--ssh-key <id> | --host <ip>)");
+// The round goes into droplet names, paths, shell commands and a pgrep pattern unquoted.
+if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(round)) throw new Error("the round is letters, digits, - and _ (r10)");
 const suite = flag("suite", "fullstack");
 if (!["fullstack", "live", "browser"].includes(suite)) throw new Error("--suite is fullstack, live or browser");
 const suiteDir = `/bench/bench/${suite === "live" ? "live" : "fullstack"}`;
@@ -77,14 +79,17 @@ let host = flag("host");
 let dropletId = null;
 const tagged = () => (run("doctl", ["compute", "droplet", "list", "--tag-name", "corten-bench", "--format", "ID,Name,PublicIPv4", "--no-header"], { quiet: true, allowFail: true })
   .stdout ?? "").split("\n").map((l) => l.trim().split(/\s+/));
-const dropletByName = (name) => tagged().find(([, n]) => n === name)?.[0] ?? null;
 const dropletAt = (ip) => tagged().find(([, , a]) => a === ip)?.[0] ?? null;
 const destroy = () => {
   if (dropletId && !args.includes("--keep")) {
     console.log(`destroying droplet ${dropletId}`);
-    if (run("doctl", ["compute", "droplet", "delete", dropletId, "--force"], { allowFail: true }).status !== 0) {
-      console.log(`could not delete droplet ${dropletId}: delete it with doctl compute droplet delete ${dropletId} --force`);
+    // Three tries a minute apart (synchronous: this also runs on SIGINT).
+    let deleted = false;
+    for (let i = 0; i < 3 && !deleted; i += 1) {
+      if (i) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, minute);
+      deleted = run("doctl", ["compute", "droplet", "delete", dropletId, "--force"], { allowFail: true, timeout: minute }).status === 0;
     }
+    if (!deleted) console.log(`could not delete droplet ${dropletId}: delete it with doctl compute droplet delete ${dropletId} --force`);
     dropletId = null;
   }
 };
@@ -127,9 +132,9 @@ const stepOf = (line) => {
 
 const log = `${suiteDir}/results-${round}.log`;
 const itemApi = "(docker rm -f item-api >/dev/null 2>&1; docker run -d --name item-api --network rustbench --cpuset-cpus 2-3 -v /bench/bench/fullstack:/b:ro node:24-bookworm-slim node /b/item-api/server.mjs /b/fixtures/items.json >/dev/null)";
-// The round's process: run-all.mjs or run.mjs, or the summarize.mjs that ends a round whose last
-// step was skipped. "([^0-9]|$)" keeps r9 from matching r90.
-const running = `pgrep -f '(run(-all)?|summarize)\\.mjs ${round}([^0-9]|$)' >/dev/null`;
+// The round's process: this suite's runner (run.mjs for live, run-all.mjs otherwise), or the
+// summarize.mjs that ends a round whose last step was skipped. "([^0-9]|$)" keeps r9 from r90.
+const running = `pgrep -f '(${suite === "live" ? "run" : "run-all"}|summarize)\\.mjs ${round}([^0-9]|$)' >/dev/null`;
 // Starts `command` in the background on the droplet, detached, so a dropped connection does not
 // stop it (`;`, not `&&`: only the command goes to the background, so ssh returns at once). Not
 // retried blindly: if the call fails, the round counts as started when its process is there.
@@ -160,11 +165,15 @@ try {
     const key = flag("ssh-key");
     if (!key) throw new Error("--ssh-key <DigitalOcean key id> is required to create a droplet");
     const name = `corten-bench-${suite === "fullstack" ? "" : `${suite}-`}${round}`;
+    // A droplet already named so (a --keep run's) is never reused or, below, mistaken for this one.
+    const before = tagged();
+    if (before.some(([, n]) => n === name)) throw new Error(`a corten-bench droplet named ${name} already exists: delete it or pick another round`);
     const created = run("doctl", ["compute", "droplet", "create", name, "--size", flag("size", "c-8"), "--region", flag("region", "sfo2"),
       "--image", "ubuntu-24-04-x64", "--ssh-keys", key, "--tag-name", "corten-bench", "--wait", "--format", "ID,PublicIPv4", "--no-header"], { quiet: true, allowFail: true, timeout: 10 * minute });
     if (created.status !== 0) {
       // The droplet may exist even though the call failed or timed out: find it so finally deletes it.
-      dropletId = dropletByName(name);
+      const known = new Set(before.map(([id]) => id));
+      dropletId = tagged().find(([id, n]) => n === name && !known.has(id))?.[0] ?? null;
       throw new Error(`could not create droplet ${name}: ${String(created.error?.message ?? created.stderr).trim()}`);
     }
     [dropletId, host] = created.stdout.trim().split(/\s+/);
@@ -220,6 +229,7 @@ try {
         itemApi,
       ].join(" && "), 90));
 
+    launched = true;
     console.log(`running round ${round} (${{ live: "about an hour", browser: "about an hour", fullstack: "about six hours for fourteen apps" }[suite]})`);
     launch({
       live: `sh -c 'node run.mjs ${round}; node summarize.mjs ${round}; echo all done'`,
@@ -266,6 +276,9 @@ try {
       // A network problem here looks the same as a hung droplet: only a droplet that DigitalOcean
       // can be reached past is restarted.
       if (run("doctl", ["account", "get"], { quiet: true, allowFail: true, timeout: minute }).status !== 0) {
+        // Not forever: after four hours the run fails (its download and delete will likely fail too,
+        // and say so).
+        if (Date.now() - silentSince > 4 * 60 * minute) throw new Error(`neither the droplet at ${host} nor DigitalOcean has answered for four hours`);
         console.log("neither the droplet nor DigitalOcean answers from here: waiting for the network");
         continue;
       }
@@ -301,9 +314,16 @@ try {
     // A reboot stops every container: clear the apps and start the item API again. skipped.txt
     // tells summarize.mjs (and so summary.json) which step's results are partly or wholly missing.
     const stamp = "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)";
-    if (ssh(`mkdir -p ${suiteDir}/results/${round}; echo "${stamp} ${note}" | tee -a ${log} >> ${suiteDir}/results/${round}/skipped.txt; docker ps -aq --filter name=fsw- | xargs -r docker rm -f >/dev/null; ${itemApi}`, { quiet: true, allowFail: true }).status !== 0) {
-      console.log("could not record the skip, clear the app containers or start the item API; the next steps will say what failed");
-    }
+    // Under remote()'s lock and time limit, so a retry never runs beside an attempt still going,
+    // and the next step starts only once all of it worked. The skip is written once.
+    const skipped = `${suiteDir}/results/${round}/skipped.txt`;
+    await retry(3, () => remote([
+      `mkdir -p ${suiteDir}/results/${round}`,
+      `(grep -qF ${quote(note)} ${skipped} 2>/dev/null || echo "${stamp} ${note}" | tee -a ${log} >> ${skipped})`,
+      "(docker ps -aq --filter name=fsw- | xargs -r docker rm -f >/dev/null)",
+      itemApi,
+      `grep -qF ${quote(note)} ${skipped}`,
+    ].join(" && "), 5, { quiet: true }));
     launch(next ? `node run-all.mjs ${round} 10 ${next}` : `sh -c 'node summarize.mjs ${round}; echo "${stamp} all done"'`, true);
     floor = next ? steps.indexOf(next) : steps.length - 1;
     silentSince = null;
