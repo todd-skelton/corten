@@ -50,7 +50,7 @@ pub struct Args {
 /// Parses `#[component]`, `#[component(css)]`, `#[component(css = Owner)]`, `#[component(js)]`,
 /// `#[component(view)]` or several, comma-separated.
 pub fn args(args: TokenStream) -> Result<Args, Error> {
-    let usage = "#[component] takes css (a stylesheet named after the component, next to it), css = OtherComponent or css = path::to::OtherComponent (its stylesheet, from another module of the crate), js (a script named after it), js = OtherComponent or js = path::to::OtherComponent (its handlers, for a part of it) and view (a class scripts write its holes through)";
+    let usage = "#[component] takes css (a stylesheet named after the component, next to it), css = OtherComponent or css = path::to::OtherComponent (its stylesheet, from another module of the crate), js (a script named after it), js = OtherComponent or js = path::to::OtherComponent (its handlers, for a part of it, from another module of the crate) and view (a class scripts write its holes through)";
     let mut out = Args::default();
     let mut sheet = None;
     for (i, part) in split(args, ',').into_iter().enumerate() {
@@ -314,7 +314,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             (Some(crate::script::Module::read(&path, span)?), None)
         }
         Some(JsArg::Of { path, owner }) => {
-            if owner.to_string() == name.to_string() {
+            if owner.to_string() == name.to_string() || owner.to_string() == "Self" {
                 return err(owner.span(), "js = names another component; for this component's own script write js");
             }
             (None, Some((path, owner)))
@@ -323,9 +323,11 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     };
     let (body, has_refs) = refs(&body, &scope_name)?;
     // A script that keeps state (`keep`) keeps it on the component's root, one per instance.
-    // A part's (`js = Owner`) `scope` is its owner's, whose handlers they are.
-    let scoped =
-        has_refs || (js_owner.is_none() && handlers_take_scope(&body.stream())) || script.as_ref().is_some_and(|s| s.keeps);
+    // In a part (`js = Owner`), the `scope` its owner's handlers take is the owner's root, so they
+    // do not make the part a root; any other handler's `scope` does, as in any component.
+    let takes_scope = handlers_take_scope(&body.stream(), js_owner.as_ref().map(|_| false));
+    let scoped = has_refs || takes_scope || script.as_ref().is_some_and(|s| s.keeps);
+    let owner_scope = js_owner.is_some() && handlers_take_scope(&body.stream(), Some(true));
     let body = if scoped { mark_root(&body, &scope_name)? } else { body };
 
     let css = args.css;
@@ -393,7 +395,8 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             // A scoped component's handlers are its own wherever they render, children a child
             // renders included, and a part's.
             scoped.then_some(scope_name.as_str()),
-            TokenStream::new(),
+            // Whether it has a root, which a part's handler taking `scope` needs.
+            q(if scoped { "pub const SCOPED: bool = true;" } else { "pub const SCOPED: bool = false;" }, &[]),
         ));
         scope.extend(q("#[allow(unused_imports)] use __A0 as js;", &[TokenTree::Ident(module_name).into()]));
     }
@@ -404,13 +407,22 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         module.extend([TokenTree::Ident(js_module(owner))]);
         let mut owner_path = path.clone();
         owner_path.extend([TokenTree::Ident(owner.clone())]);
-        scope
-            .extend(q("#[allow(unused_imports)] use __A0 as _; #[allow(unused_imports)] use __A1 as js;", &[owner_path, module]));
+        scope.extend(q(
+            "#[allow(unused_imports)] use __A0 as _; #[allow(unused_imports)] use __A1 as js;",
+            &[owner_path, module.clone()],
+        ));
+        if owner_scope {
+            let message = format!(
+                "a handler of {owner}'s here takes scope, {owner}'s root, but {owner} has none: give {owner} a ref, a handler that takes scope, or a script that keeps state, so its markup has a root"
+            );
+            scope.extend(q("const _: () = ::core::assert!(__A0::SCOPED, __A1);", &[module, literal(&message)]));
+        }
     }
+    // A part (`css = Owner`, `js = Owner`) renders as its owner, which the app lists.
     let owner = if has_constant {
         Some(TokenTree::Ident(name.clone()).into())
     } else {
-        css_owner.map(|(path, owner)| {
+        css_owner.or(js_owner.clone()).map(|(path, owner)| {
             let mut out = path;
             out.extend([TokenTree::Ident(owner)]);
             out
@@ -601,19 +613,28 @@ fn refs(body: &Group, scope: &str) -> Result<(Group, bool), Error> {
 }
 
 /// True when a handler in the markup (`on:click={js::close(scope)}`) takes the keyword `scope`.
-/// A variable, field or call that happens to be named `scope` elsewhere does not count.
-fn handlers_take_scope(tokens: &TokenStream) -> bool {
+/// A variable, field or call that happens to be named `scope` elsewhere does not count. `js`:
+/// only the calls through `js::` (`Some(true)`), only the others (`Some(false)`), or any.
+fn handlers_take_scope(tokens: &TokenStream, js: Option<bool>) -> bool {
     let tokens: Vec<TokenTree> = tokens.clone().into_iter().collect();
     tokens.iter().enumerate().any(|(i, token)| match token {
         TokenTree::Ident(on) if on.to_string() == "on" => {
             is_punct(tokens.get(i + 1), ':')
                 && matches!(tokens.get(i + 2), Some(TokenTree::Ident(_)))
                 && is_punct(tokens.get(i + 3), '=')
-                && matches!(tokens.get(i + 4), Some(TokenTree::Group(value)) if crate::html::passes_keyword(value.stream(), "scope"))
+                && matches!(tokens.get(i + 4), Some(TokenTree::Group(value))
+                    if crate::html::passes_keyword(value.stream(), "scope")
+                        && js.is_none_or(|js| js == through_js(&value.stream())))
         }
-        TokenTree::Group(g) => handlers_take_scope(&g.stream()),
+        TokenTree::Group(g) => handlers_take_scope(&g.stream(), js),
         _ => false,
     })
+}
+
+/// A handler written `js::name(..)`: the component's own script's, or its owner's in a part.
+fn through_js(value: &TokenStream) -> bool {
+    let tokens: Vec<TokenTree> = value.clone().into_iter().take(3).collect();
+    is_ident(tokens.first(), "js") && is_punct(tokens.get(1), ':') && is_punct(tokens.get(2), ':')
 }
 
 /// Tells the body's final `html! { .. }` to mark its root element with the component's scope.

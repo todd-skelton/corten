@@ -118,8 +118,9 @@
 //! an event reaches it.
 //!
 //! A component is scoped (one root element, marked `data-scope`) when it has refs, one of its
-//! handlers takes `scope`, or its script imports `keep` (state each instance keeps). A variable
-//! that happens to be named `scope` does not count:
+//! handlers takes `scope`, or its script imports `keep` (state each instance keeps); in a part
+//! (`js = Owner`, below), the owner's handlers' `scope` is the owner's root and does not count. A
+//! variable that happens to be named `scope` does not count:
 //!
 //! ```
 //! use corten::prelude::*;
@@ -176,6 +177,42 @@
 //!
 //! let html = CartLine { name: "Lamp", quantity: 2 }.to_html();
 //! assert!(html.contains(r#"<span data-scope="quantity"><input value="2" data-on="input:cart_line.enable(@save)">"#), "{html}");
+//! ```
+//!
+//! A handler of the owner's that takes `scope` gets the owner's root, so the owner has one (a
+//! ref, a handler that takes `scope`, or a script that keeps state); a part whose owner has none
+//! does not compile, and says so:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! pub fn CartLine<'a>(name: &'a str) -> impl Render {
+//!     let line = refs();
+//!     html! { <li ref={line}>{name}<RemoveButton /></li> }
+//! }
+//!
+//! #[component(js = CartLine)]
+//! fn RemoveButton() -> impl Render {
+//!     html! { <button type="button" on:click={js::remove(scope)}>"Remove"</button> }
+//! }
+//!
+//! let html = CartLine { name: "Lamp" }.to_html();
+//! assert!(html.starts_with(r#"<li data-scope="cart-line""#), "{html}");
+//! ```
+//!
+//! ```compile_fail,E0080
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! pub fn CartLine<'a>(name: &'a str) -> impl Render {
+//!     html! { <li>{name}<RemoveButton /></li> }
+//! }
+//!
+//! #[component(js = CartLine)]
+//! fn RemoveButton() -> impl Render {
+//!     html! { <button type="button" on:click={js::remove(scope)}>"Remove"</button> }
+//! }
 //! ```
 //!
 //! The owner has a script, or `js = Owner` does not compile:
