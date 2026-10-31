@@ -4,6 +4,7 @@
 import { chromium, firefox, webkit } from "@playwright/test";
 import { stall } from "../../scripts/stall.mjs";
 import { browserBug } from "../../scripts/browser-bugs.mjs";
+import { networkInterfaces } from "node:os";
 
 const base = process.argv[2] ?? "http://localhost:18482";
 const engines = { chromium, firefox, webkit };
@@ -29,6 +30,18 @@ const check = (name, ok, detail = "") => {
  * @type {Map<import("@playwright/test").Request, { at: number, context: import("@playwright/test").BrowserContext }>}
  */
 const inflight = new Map();
+
+/**
+ * The app's address on this machine's LAN interface, when `base` is loopback: plain http there is
+ * not a secure origin, as a tool served on the LAN is not.
+ * @param {string} base
+ */
+function lanBase(base) {
+  const url = new URL(base);
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return null;
+  const address = Object.values(networkInterfaces()).flat().find((a) => a && a.family === "IPv4" && !a.internal)?.address;
+  return address ? `http://${address}:${url.port}` : null;
+}
 /** @param {import("@playwright/test").Browser} browser */
 function track(browser) {
   /** @param {(r: import("@playwright/test").Request, at: { context: import("@playwright/test").BrowserContext }) => boolean} gone */
@@ -462,6 +475,21 @@ async function run(browser) {
     check(noticeChecks[3], kept && loaded && (await page.locator("#ui-toast").isVisible()), `${loaded} ${await page.locator("#ui-toast").textContent()}`);
     await page.unroute("**/*");
   } else for (const name of noticeChecks) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
+  // Over plain http from an address that is not loopback (a tool on the LAN) the browser refuses
+  // the Secure `__Host-` cookie, so the notice rides in a plain one there, in every engine (#498).
+  const lan = lanBase(base);
+  const lanCheck = "a redirect's notice on a plain-http LAN address reaches the toaster";
+  if (lan) {
+    const onLan = await (await browser.newContext()).newPage();
+    await onLan.goto(`${lan}/`);
+    await onLan.getByRole("button", { name: "Rename draft" }).click();
+    await onLan.locator("#draft-name").fill("Lan draft");
+    await onLan.getByRole("button", { name: "Rename", exact: true }).click();
+    const shown = await onLan.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Lan draft.", null, { timeout: 5000 }).then(() => true, () => false);
+    const cookies = (await onLan.context().cookies()).map((c) => c.name).join(",");
+    check(lanCheck, shown && (await onLan.locator("#ui-toast").isVisible()), `${lan} ${await onLan.locator("#ui-toast").textContent()}; cookies left: ${cookies || "none"}`);
+    await onLan.context().close();
+  } else skip(lanCheck, "no address other than loopback to reach the app on");
   // A post without the runtime (no data-patch): the whole page, the dialog drawn open.
   await page.getByRole("button", { name: "Rename draft" }).click();
   await Promise.all([

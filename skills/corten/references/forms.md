@@ -50,7 +50,9 @@ deleted.")`, read once there by `req.notice()` (the layout's `Toaster { toast: T
 req.notice() } }`; after a navigation the runtime dispatches `corten:notice` and the toaster takes
 it). Render it once, in the layout: a full load shows it only where the page renders it. `to` is a
 page of the app (`OnSite`: a route, `route.at(id)`, `Local`, a `#[derive(Href)]` enum of those).
-Never add a route field (`?deleted=3517`, `?done=saved`) only to carry a message.
+Never add a route field (`?deleted=3517`, `?done=saved`) only to carry a message. It works over a
+plain `http://` LAN origin too (Corten sees the write's `Origin` and drops `Secure`); do not keep
+query fields for that.
 
 ## Files
 

@@ -705,8 +705,16 @@ the runtime, which dispatches `corten:notice` on the document (`detail.message`)
 swapped in; corten-ui's `Toaster` shows it. A page that renders it itself (a status line in the
 form it sent the user back to) is not sent it twice. When the navigation has to load the page in
 full instead (its layout changed), the runtime keeps the notice for that load in session storage
-and dispatches the event once the page's modules have connected. Like any cookie set over HTTPS
-only, it does not reach a browser on plain `http://` that drops `Secure` cookies there.
+and dispatches the event once the page's modules have connected.
+
+A browser refuses a `Secure` cookie, and so a `__Host-` one, from a plain `http://` origin other
+than loopback: a tool served on the LAN as `http://automation.lan:3001` or `http://192.168.1.5`.
+Corten sees that in the write's `Origin` and sets the notice in a plain `corten-notice` cookie
+instead (`HttpOnly`, `SameSite=Lax`, a minute), with nothing for the app to do. A page reads that
+one only from a request without `Sec-Fetch-Site`, which a browser sends to every secure origin,
+so on HTTPS another site on the domain cannot plant a notice in it. `localhost` and `127.0.0.1`
+count as secure and keep `__Host-corten-notice`. A notice from a `GET` handler (no `Origin`)
+always rides in `__Host-corten-notice`.
 
 On a full load (the first page, or without JavaScript) the server draws the page, layout and all,
 so the notice shows only where the page renders `req.notice()`: render it in the layout, once. A

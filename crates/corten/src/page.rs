@@ -38,6 +38,11 @@ const SHELL_HEADER: HeaderName = HeaderName::from_static("corten-shell");
 const NOTICE_HEADER: HeaderName = HeaderName::from_static("corten-notice");
 /// The cookie a redirect's notice rides in: `__Host-`, so no other site on the domain can set it.
 pub(crate) const NOTICE_COOKIE: &str = "__Host-corten-notice";
+/// The notice's cookie for a write from a plain `http://` origin that is not loopback (a LAN
+/// tool), which refuses a `Secure` cookie and so a `__Host-` one: read only from a request without
+/// `Sec-Fetch-Site`, which a browser sends to every secure origin, so on HTTPS another site on the
+/// domain cannot plant one.
+pub(crate) const PLAIN_NOTICE_COOKIE: &str = "corten-notice";
 /// The longest notice kept, in bytes: a sentence, well inside a cookie's 4 KB once encoded.
 const NOTICE_MAX: usize = 500;
 
@@ -563,7 +568,7 @@ impl Asked {
     pub(crate) fn new(req: &Request, shared: Arc<Shared>, credentials: Credentials) -> Self {
         // The error page's own `Req` reads the notice; this one only answers what was asked.
         let head = req.method() == axum::http::Method::HEAD;
-        Asked { req: Req::new(req.headers(), req.extensions(), req.uri(), shared, false), credentials, head }
+        Asked { req: Req::new(req.headers(), req.extensions(), req.uri(), shared, req.method(), false), credentials, head }
     }
 
     fn path(&self) -> &str {
@@ -712,6 +717,9 @@ pub struct Req {
     uri: Uri,
     accept_language: Option<HeaderValue>,
     notice: Option<Notice>,
+    /// A write from a plain `http://` origin that is not loopback ([`plain_origin`]): its notice
+    /// rides in [`PLAIN_NOTICE_COOKIE`].
+    plain_write: bool,
     shared: Arc<Shared>,
     signal: crate::Signal,
 }
@@ -724,6 +732,8 @@ pub struct Req {
 pub struct Notice {
     text: Box<str>,
     signal: crate::Signal,
+    /// It came in [`PLAIN_NOTICE_COOKIE`], so the answer removes that one.
+    plain: bool,
 }
 
 impl Notice {
@@ -735,7 +745,7 @@ impl Notice {
 
     /// The request's notice: the cookie's, when it was written for this path.
     fn of(headers: &HeaderMap, path: &str, signal: &crate::Signal) -> Option<Notice> {
-        let value = crate::security::cookie::get(headers, NOTICE_COOKIE)?;
+        let (value, plain) = notice_cookie(headers)?;
         let (mut to, mut text) = (None, None);
         for (key, value) in form_urlencoded::parse(value.as_bytes()) {
             match &*key {
@@ -744,8 +754,42 @@ impl Notice {
                 _ => {}
             }
         }
-        (*to? == *path_key(path)).then(|| Notice { text: text.unwrap_or_default().into(), signal: signal.clone() })
+        (*to? == *path_key(path)).then(|| Notice { text: text.unwrap_or_default().into(), signal: signal.clone(), plain })
     }
+}
+
+/// The request's notice cookie, and whether it is [`PLAIN_NOTICE_COOKIE`]: in one pass over the
+/// cookies, the `__Host-` one first; the plain one only from a browser that does not count the
+/// page's origin as secure (no `Sec-Fetch-Site`).
+fn notice_cookie(headers: &HeaderMap) -> Option<(&str, bool)> {
+    let mut plain = None;
+    for pair in headers.get_all(header::COOKIE).iter().filter_map(|v| v.to_str().ok()).flat_map(|v| v.split(';')) {
+        let Some((name, value)) = pair.trim().split_once('=') else { continue };
+        if name == NOTICE_COOKIE {
+            return Some((value, false));
+        }
+        if name == PLAIN_NOTICE_COOKIE && plain.is_none() {
+            plain = Some(value);
+        }
+    }
+    plain.filter(|_| !headers.contains_key("sec-fetch-site")).map(|value| (value, true))
+}
+
+/// Whether a write's `Origin` is plain `http://` on a host that is not loopback (`localhost`, a
+/// name under it, `127.0.0.0/8`, `[::1]`): an origin a browser does not count as secure, so it
+/// refuses a `Secure` cookie from it.
+pub(crate) fn plain_origin(headers: &HeaderMap) -> bool {
+    let Some(origin) = headers.get(header::ORIGIN).map(HeaderValue::as_bytes) else { return false };
+    let Some(rest) = origin.strip_prefix(b"http://") else { return false };
+    let host = match rest.first() {
+        Some(b'[') => return !rest.starts_with(b"[::1]"),
+        _ => rest.split(|&b| b == b':').next().unwrap_or_default(),
+    };
+    let host = host.strip_suffix(b".").unwrap_or(host);
+    let loopback = host.eq_ignore_ascii_case(b"localhost")
+        || (host.len() > 10 && host[host.len() - 10..].eq_ignore_ascii_case(b".localhost"))
+        || std::str::from_utf8(host).ok().and_then(|h| h.parse::<std::net::Ipv4Addr>().ok()).is_some_and(|ip| ip.is_loopback());
+    !loopback
 }
 
 /// The page a notice is for, as its cookie names it: a hash of the path with its escapes decoded,
@@ -796,13 +840,28 @@ impl<St: Send + Sync> FromRequestParts<St> for Req {
         let shared = parts.extensions.get::<crate::Signal>().and_then(crate::Signal::shared).unwrap_or(&DEFAULT).clone();
         // A HEAD request (a link checker, a preview) gets no body, so it leaves the notice for the
         // page's GET.
-        Ok(Req::new(&parts.headers, &parts.extensions, &parts.uri, shared, parts.method != axum::http::Method::HEAD))
+        Ok(Req::new(
+            &parts.headers,
+            &parts.extensions,
+            &parts.uri,
+            shared,
+            &parts.method,
+            parts.method != axum::http::Method::HEAD,
+        ))
     }
 }
 
 impl Req {
-    /// `notice`: read the request's notice (its answer then removes it).
-    pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, uri: &Uri, shared: Arc<Shared>, notice: bool) -> Self {
+    /// `notice`: read the request's notice (its answer then removes it). Only a write's `Origin`
+    /// is looked at, so a page's request pays nothing for it.
+    pub(crate) fn new(
+        headers: &HeaderMap,
+        extensions: &Extensions,
+        uri: &Uri,
+        shared: Arc<Shared>,
+        method: &axum::http::Method,
+        notice: bool,
+    ) -> Self {
         let signal: crate::Signal = extensions.get::<crate::Signal>().cloned().unwrap_or_default();
         Req {
             mode: mode_of(headers),
@@ -810,6 +869,7 @@ impl Req {
             uri: uri.clone(),
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
             notice: if notice { Notice::of(headers, uri.path(), &signal) } else { None },
+            plain_write: !matches!(*method, axum::http::Method::GET | axum::http::Method::HEAD) && plain_origin(headers),
             shared,
             signal,
         }
@@ -1123,7 +1183,12 @@ impl Req {
         res.headers_mut().insert(header::VARY, self.vary());
         if let Some(notice) = &self.notice {
             // Shown once: this page is the one it was for, drawn here or by the runtime.
-            let gone = crate::security::cookie::SetCookie::remove(NOTICE_COOKIE).header();
+            let gone = if notice.plain {
+                crate::security::cookie::SetCookie::remove(PLAIN_NOTICE_COOKIE).insecure()
+            } else {
+                crate::security::cookie::SetCookie::remove(NOTICE_COOKIE)
+            };
+            let gone = gone.header();
             res.headers_mut().append(header::SET_COOKIE, gone);
             self.signal.mark_personal();
             let swap = matches!(self.mode, Mode::Navigation | Mode::Action);
@@ -1431,7 +1496,9 @@ impl Req {
     /// [`Req::redirect`] with what the write did, said once on the page it lands on ("Batch 3517
     /// deleted."), where [`Req::notice`] reads it: no field on the route carries it, so a reload,
     /// a copied link or Back to a page the browser asks for again does not say it again. It rides in a short-lived cookie for that
-    /// page's path (`__Host-corten-notice`, a minute), which the page's answer removes. A
+    /// page's path (`__Host-corten-notice`, a minute; `corten-notice` for a write from a plain
+    /// `http://` origin that is not loopback, which refuses a `Secure` cookie), which the page's
+    /// answer removes. A
     /// navigation's page that did not draw it hands it to the runtime, which dispatches
     /// `corten:notice` on the document for the app's toaster, since the layout around `<main>`
     /// does not run there. Text past 500 bytes is cut at a character's end.
@@ -1493,7 +1560,12 @@ impl Req {
         let cookie =
             form_urlencoded::Serializer::new(String::new()).append_pair("p", &path_key(path)).append_pair("m", &text).finish();
         // Form encoding writes only letters, digits, `*-._+%&=`: all a cookie can carry.
-        let cookie = crate::security::cookie::SetCookie::new(NOTICE_COOKIE, &cookie).max_age(60);
+        let cookie = if self.plain_write {
+            crate::security::cookie::SetCookie::new(PLAIN_NOTICE_COOKIE, &cookie).insecure()
+        } else {
+            crate::security::cookie::SetCookie::new(NOTICE_COOKIE, &cookie)
+        };
+        let cookie = cookie.max_age(60);
         Ok(HtmlResponse::new(redirect(self.mode, value)).with_cookie(cookie))
     }
 

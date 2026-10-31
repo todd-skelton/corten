@@ -2791,6 +2791,98 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
     assert_eq!(text, "é".repeat(250));
 }
 
+/// Which origins a browser refuses a `Secure` cookie from: plain `http://` but for loopback.
+#[test]
+fn a_plain_origin_is_http_off_loopback() {
+    let plain = |origin: &'static str| {
+        crate::page::plain_origin(&[(header::ORIGIN, HeaderValue::from_static(origin))].into_iter().collect())
+    };
+    for origin in
+        ["http://automation.lan:3001", "http://192.168.1.5", "http://localhost.lan", "http://[fe80::1]:80", "http://10.0.0.127"]
+    {
+        assert!(plain(origin), "{origin}");
+    }
+    for origin in [
+        "https://automation.lan",
+        "http://localhost",
+        "http://LOCALHOST:3000",
+        "http://app.localhost:3000",
+        "http://127.0.0.2:8080",
+        "http://[::1]:3000",
+        "null",
+    ] {
+        assert!(!plain(origin), "{origin}");
+    }
+    assert!(!crate::page::plain_origin(&HeaderMap::new()), "no Origin: not a browser's write");
+}
+
+/// A write from a plain `http://` origin on the LAN, which a browser does not count as secure and so
+/// refuses a `Secure` (and `__Host-`) cookie from, gets its notice in a plain `corten-notice`
+/// cookie; the page reads that one only from a request without `Sec-Fetch-Site` (which a browser
+/// sends to every secure origin, so on HTTPS another site on the domain cannot plant one) and
+/// removes it as it was set.
+#[tokio::test]
+async fn a_notice_written_over_plain_http_on_the_lan_reaches_its_page() {
+    let routes =
+        Router::new().route("/", axum::routing::post(|req: Req| async move { req.redirect_with_notice(&Done, "Saved.") })).route(
+            "/done",
+            get(|req: Req| async move {
+                let notice = req.notice();
+                req.test_page("Done", html! { <p>{notice}</p> })
+            }),
+        );
+    let router = app(routes, None);
+    let set = |res: &Response| {
+        res.headers().get_all(header::SET_COOKIE).iter().map(|c| c.to_str().unwrap().to_string()).collect::<Vec<_>>()
+    };
+    let value = format!("p={}&m=Saved.", crate::page::path_key("/done"));
+    let write = |origin: &str, host: &str| {
+        let req = Request::post("/").header("origin", origin).header("host", host);
+        router.clone().oneshot(req.body(Body::empty()).unwrap())
+    };
+    let res = write("http://192.168.1.5:3001", "192.168.1.5:3001").await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(set(&res), [format!("corten-notice={value}; Path=/; SameSite=Lax; Max-Age=60; HttpOnly")]);
+    // A secure origin, loopback over plain `http://` included, keeps the `__Host-` cookie.
+    for (origin, host) in [
+        ("https://192.168.1.5", "192.168.1.5"),
+        ("http://localhost:3000", "localhost:3000"),
+        ("http://127.0.0.1:3000", "127.0.0.1:3000"),
+    ] {
+        let res = write(origin, host).await.unwrap();
+        assert_eq!(
+            set(&res),
+            [format!("__Host-corten-notice={value}; Path=/; SameSite=Lax; Max-Age=60; HttpOnly; Secure")],
+            "{origin}"
+        );
+    }
+    let read = |cookie: &str, secure: bool| {
+        let mut req = Request::get("/done").header(header::COOKIE, cookie);
+        if secure {
+            req = req.header("sec-fetch-site", "same-origin");
+        }
+        router.clone().oneshot(req.body(Body::empty()).unwrap())
+    };
+    let plain = format!("a=1; corten-notice={value}");
+    let res = read(&plain, false).await.unwrap();
+    assert_eq!(set(&res), ["corten-notice=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly"]);
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "private, no-cache");
+    let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    assert!(body.contains("<p>Saved.</p>"), "{body}");
+    // From a secure origin the plain cookie is not the app's: another site on the domain could
+    // have set it. It is neither shown nor removed.
+    let res = read(&plain, true).await.unwrap();
+    assert!(set(&res).is_empty());
+    let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    assert!(body.contains("<p></p>"), "{body}");
+    // With both, the `__Host-` one is the notice.
+    let both = format!("corten-notice=p={}&m=Planted.; __Host-corten-notice={value}", crate::page::path_key("/done"));
+    let res = read(&both, false).await.unwrap();
+    assert_eq!(set(&res), ["__Host-corten-notice=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]);
+    let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    assert!(body.contains("<p>Saved.</p>"), "{body}");
+}
+
 /// Bytes as the app names their type: private by default, and a year in any cache when the URL
 /// names the content (`Public::immutable`), cookies or not, unless a caller was read.
 #[tokio::test]

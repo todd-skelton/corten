@@ -2337,6 +2337,14 @@ Corten is pre-1.0, so any minor version may change the API.
     parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
     and a form's body are still refused. Links write what they did
     ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
+83. `req.redirect_with_notice` from a write on a plain `http://` origin that is not loopback (a LAN
+    tool at `http://automation.lan:3001`) reaches its page: a browser refuses the `Secure`
+    `__Host-corten-notice` cookie there, so the notice was dropped without a trace. Corten reads
+    the write's `Origin` and sets a plain `corten-notice` cookie instead (`HttpOnly`,
+    `SameSite=Lax`, a minute), which a page reads only from a request without `Sec-Fetch-Site`,
+    so on HTTPS another site on the domain cannot plant one; `localhost` and `127.0.0.1` keep
+    `__Host-`. MEASURE_TBD
+    ([#498 redirect_with_notice is lost without a trace on a plain-HTTP LAN deployment: __Host- cookies need a secure origin](https://github.com/todd-skelton/corten/issues/498)).
 
 ### Documentation
 
