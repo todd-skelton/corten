@@ -992,41 +992,76 @@ impl Display for Formatted {
 }
 
 /// A date, a time or both in a locale: what `t.date`, `t.time` and `t.date_time` return. In UTC
-/// unless [`When::zone`] says otherwise. It renders in `html!` as text or an attribute value, and
-/// is a message argument ([`super::Arg`]).
+/// unless [`When::zone`] says otherwise, or, with the `zones` feature and
+/// [`crate::App::client_zone`], in the visitor's zone while Corten renders the request's answer
+/// ([`crate::Req::zone`]). It renders in `html!` as text or an attribute value, and is a message
+/// argument ([`super::Arg`]).
 #[derive(Clone, Copy)]
 pub struct When {
     data: &'static __private::LocaleData,
     at: SystemTime,
     offset: i32,
     style: u8,
+    /// [`When::zone`] chose its zone.
+    zoned: bool,
 }
 
 impl When {
     #[doc(hidden)]
     pub fn date(data: &'static __private::LocaleData, at: SystemTime, date: impl DateOnly) -> Self {
-        When { data, at, offset: 0, style: date.index() }
+        When { data, at, offset: 0, style: date.index(), zoned: false }
     }
 
     #[doc(hidden)]
     pub fn date_time(data: &'static __private::LocaleData, at: SystemTime, date: DateStyle, time: TimeStyle) -> Self {
-        When { data, at, offset: 0, style: 4 + date as u8 * 2 + time as u8 }
+        When { data, at, offset: 0, style: 4 + date as u8 * 2 + time as u8, zoned: false }
     }
 
     #[doc(hidden)]
     pub fn time(data: &'static __private::LocaleData, at: SystemTime, time: TimeStyle) -> Self {
-        When { data, at, offset: 0, style: 12 + time as u8 }
+        When { data, at, offset: 0, style: 12 + time as u8, zoned: false }
     }
     /// In `zone` instead of UTC: `t.date_time(at, ..).zone(&viewer.zone)`.
     pub fn zone(mut self, zone: impl Zone) -> Self {
         self.offset = zone.offset(self.at);
+        self.zoned = true;
         self
+    }
+
+    /// The instant as `<time datetime>` takes it, in UTC.
+    pub fn datetime(&self) -> Datetime {
+        Datetime(self.at)
+    }
+
+    /// Its format for a script (`t.js().date(..)`'s), in the zone it is written in when that has
+    /// one offset: a script writes another instant, or this one in the browser's zone
+    /// (`format(at, offset)`), as the server writes it.
+    pub fn format(&self) -> DateFormat {
+        DateFormat { data: self.data, style: self.style, offset: if self.zoned { self.offset } else { 0 } }
+    }
+
+    /// Written in UTC only because the visitor's zone is not known yet: the app learns it
+    /// ([`crate::App::client_zone`], the `zones` feature), [`When::zone`] did not choose one, and
+    /// the request is the browser's first (no zone cookie yet). A script can write it again in the
+    /// browser's zone (corten-ui's `LocalTime`).
+    pub fn zone_unknown(&self) -> bool {
+        !self.zoned && super::visitor::unknown()
+    }
+
+    /// The offset it is written at: its own, or the request's zone's.
+    fn offset(&self) -> i32 {
+        if self.zoned {
+            self.offset
+        } else {
+            super::visitor::offset(self.at)
+        }
     }
 
     fn write(&self, out: &mut dyn Write) -> fmt::Result {
         use __private::Field as F;
         let data = self.data;
-        let local = unix_seconds(self.at) + i64::from(self.offset);
+        let offset = self.offset();
+        let local = unix_seconds(self.at) + i64::from(offset);
         let days = local.div_euclid(86_400);
         let second_of_day = local.rem_euclid(86_400);
         let (year, month, day) = civil_from_days(days);
@@ -1068,13 +1103,13 @@ impl When {
                 F::Second2 => number(i64::from(second), true, out)?,
                 F::Period(at) => out.write_str(data.names[usize::from(at) + hour as usize])?,
                 F::Zone => {
-                    if self.offset == 0 {
+                    if offset == 0 {
                         out.write_str(data.utc)?;
                         continue;
                     }
-                    let east = self.offset.unsigned_abs();
+                    let east = offset.unsigned_abs();
                     let minutes = east % 3600 / 60;
-                    let template = data.gmt[usize::from(minutes != 0) * 2 + usize::from(self.offset < 0)];
+                    let template = data.gmt[usize::from(minutes != 0) * 2 + usize::from(offset < 0)];
                     let mut start = 0;
                     for (i, c) in template.char_indices() {
                         if c == '\u{1}' || c == '\u{3}' {

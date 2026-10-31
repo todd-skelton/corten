@@ -698,6 +698,9 @@ pub struct Req {
     nonce: Option<NonceSlot>,
     uri: Uri,
     accept_language: Option<HeaderValue>,
+    /// The zone the browser reported, with [`crate::App::client_zone`].
+    #[cfg(feature = "zones")]
+    zone: Option<Box<str>>,
     shared: Arc<Shared>,
     signal: crate::Signal,
 }
@@ -718,6 +721,8 @@ impl Req {
             nonce: extensions.get::<NonceSlot>().cloned(),
             uri: uri.clone(),
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
+            #[cfg(feature = "zones")]
+            zone: if shared.client_zone { crate::client::zone_of(headers).map(Box::from) } else { None },
             shared,
             signal: extensions.get::<crate::Signal>().cloned().unwrap_or_default(),
         }
@@ -748,6 +753,36 @@ impl Req {
     /// `Accept-Language`: `let t: Msg = req.t();`.
     pub fn t<M: crate::i18n::Messages>(&self) -> M {
         M::negotiate(self.accept_language())
+    }
+
+    /// The visitor's time zone (`zones` feature, [`crate::App::client_zone`]), with its rules: a
+    /// date the user picked (`<input type="date">`) becomes the instant it means where they are.
+    /// UTC until the browser has reported it (its first page) and for a name the tz database
+    /// lacks. A page needs it for nothing else: while Corten renders the answer, `t.date`,
+    /// `t.time` and `t.date_time` write in it unless `.zone(..)` chooses another. A known zone
+    /// makes the answer private.
+    #[cfg(feature = "zones")]
+    pub fn zone(&self) -> crate::i18n::Visitor {
+        let Some(name) = &self.zone else {
+            #[cfg(debug_assertions)]
+            if !self.shared.client_zone {
+                tracing::warn!(
+                    "corten: req.zone() is UTC: the app does not learn its visitors' time zones; add App::client_zone()"
+                );
+            }
+            return crate::i18n::Visitor::default();
+        };
+        let zone = crate::i18n::Visitor::named(name);
+        if zone.is_known() {
+            self.signal.mark_personal();
+        }
+        zone
+    }
+
+    /// While Corten renders this request's answer: dates in the visitor's zone.
+    #[cfg(feature = "zones")]
+    fn zone_scope(&self) -> Option<crate::i18n::ZoneScope> {
+        self.shared.client_zone.then(|| crate::i18n::ZoneScope::enter(self.zone.as_deref(), &self.signal))
     }
 
     fn accept_language(&self) -> Option<&str> {
@@ -949,6 +984,8 @@ impl Req {
     /// an error, since its script or stylesheet would not be served (debug builds of the app
     /// record what renders; release builds do not).
     fn render_into(&self, view: impl Render, out: &mut String) -> Result<Vec<&'static str>> {
+        #[cfg(feature = "zones")]
+        let _zone = self.zone_scope();
         if !self.shared.dev {
             let ((), modules) = crate::script::collect(|| {
                 // An empty buffer: to_html sizes it from earlier renders of the same view.

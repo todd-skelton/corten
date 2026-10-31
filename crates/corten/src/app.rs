@@ -506,8 +506,10 @@ impl<M: Middleware> App<M> {
 
     /// Learn each visitor's time zone, for [`ClientZone`](crate::ClientZone): the runtime keeps
     /// the browser's (`America/Chicago`) in a cookie, `corten-zone`, set on the first page that
-    /// loads it, so the requests after that (a form's post, the next page) carry it. Off unless
-    /// set: an app that writes every date in UTC or one zone of its own sets no cookie.
+    /// loads it, so the requests after that (a form's post, the next page) carry it. With the
+    /// `zones` feature, dates are then written in it while Corten renders an answer, and
+    /// [`crate::Req::zone`] gives it with its rules. Off unless set: an app that writes every date
+    /// in UTC or one zone of its own sets no cookie.
     pub fn client_zone(mut self) -> Self {
         self.client_zone = true;
         self

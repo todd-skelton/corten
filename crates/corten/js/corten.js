@@ -284,8 +284,10 @@ function closestRef(el, owner, name, event) {
 
 /**
  * A date's format: `format(at)` (a `Date`, milliseconds or ISO text) as the server's `t.date`,
- * `t.time` or `t.date_time` writes it, in the zone the markup chose (`t.js().date(DateStyle::Medium)`).
- * @typedef {(at: Date | number | string) => string} DateFormat
+ * `t.time` or `t.date_time` writes it, in the zone the markup chose (`t.js().date(DateStyle::Medium)`),
+ * or `format(at, offset)` at another offset, in seconds east (the browser's at that instant:
+ * `-new Date(at).getTimezoneOffset() * 60`).
+ * @typedef {(at: Date | number | string, offset?: number) => string} DateFormat
  */
 
 /**

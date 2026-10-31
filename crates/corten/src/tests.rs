@@ -2843,6 +2843,70 @@ async fn a_handler_reads_the_visitors_time_zone_once_the_app_asks_for_it() {
     }
 }
 
+/// With the `zones` feature, a date is written in the visitor's zone while Corten renders the
+/// request's answer, which is then private; the first page, before the browser has reported its
+/// zone, is in UTC and says so (`zone_unknown`); `.zone(..)` still chooses. `req.zone()` is the
+/// zone with its rules.
+#[cfg(feature = "zones")]
+#[tokio::test]
+async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer() {
+    use crate::i18n::{DateStyle, Messages as _, TimeStyle, Utc, Zone as _};
+    use std::time::{Duration, UNIX_EPOCH};
+    crate::i18n::messages! { struct ZoneMsg { "en" => "src/i18n/en.json" } }
+    // 2026-03-22T15:04:05Z: Chicago is on daylight time (UTC-5) since March 8.
+    let at = UNIX_EPOCH + Duration::from_secs(1_774_191_845);
+    let routes = move || {
+        Routes::from(
+            Router::new()
+                .route(
+                    "/",
+                    get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let when = t.date_time(at, DateStyle::Medium, TimeStyle::Short);
+                        // Asked while the answer renders, as LocalTime asks it.
+                        req.test_page(
+                            "Zone",
+                            html! {
+                                <p>{when}</p>
+                                <p>{if when.zone_unknown() { "unknown" } else { "known" }}</p>
+                                <p>{when.zone(Utc)}</p>
+                            },
+                        )
+                    }),
+                )
+                .route("/offset", get(move |req: Req| async move { req.zone().offset(at).to_string() })),
+        )
+    };
+    let get_with = |router: Router, uri: &'static str, cookie: Option<&'static str>| async move {
+        let mut req = Request::get(uri);
+        if let Some(cookie) = cookie {
+            req = req.header("cookie", cookie);
+        }
+        let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let cache = res.headers().get("cache-control").map(|v| v.to_str().unwrap().to_string()).unwrap_or_default();
+        (cache, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+    };
+    let utc = "<p>Mar 22, 2026, 3:04 PM UTC</p>";
+    let zoned = App::new(routes()).client_zone().router();
+    let (cache, page) = get_with(zoned.clone(), "/", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains(&format!("<p>Mar 22, 2026, 10:04 AM GMT-5</p><p>known</p>{utc}")), "{page}");
+    assert!(cache.contains("private"), "written for this visitor: {cache}");
+    for cookie in [None, Some("corten-zone=Mars/Olympus")] {
+        let (_, page) = get_with(zoned.clone(), "/", cookie).await;
+        assert!(page.contains(&format!("{utc}<p>unknown</p>{utc}")), "{cookie:?}: {page}");
+    }
+    assert_eq!(get_with(zoned.clone(), "/offset", Some("corten-zone=America/Chicago")).await.1, "-18000");
+    assert_eq!(get_with(zoned, "/offset", None).await.1, "0");
+    // An app that does not learn zones writes UTC and knows it is meant to.
+    let (_, page) = get_with(App::new(routes()).router(), "/", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains(&format!("{utc}<p>known</p>{utc}")), "{page}");
+    // Outside a request's render: UTC.
+    assert_eq!(
+        ZoneMsg::for_locale("en").date_time(at, DateStyle::Medium, TimeStyle::Short).to_string(),
+        "Mar 22, 2026, 3:04 PM UTC"
+    );
+}
+
 #[tokio::test]
 async fn only_a_swap_says_it_is_a_page_swap() {
     let (_, headers, _) = call(app(routes(), None), "GET", None).await;

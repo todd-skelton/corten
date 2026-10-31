@@ -322,14 +322,20 @@ neither has a time, so `t.date_time` takes neither. A date is in UTC unless `.zo
 of your own (`corten::i18n::Zone`, for one with daylight saving time) says otherwise, so a page
 reads the same wherever it is rendered; `parse_timestamp` reads the RFC 3339 text APIs send.
 For dates where the visitor is ("your listings come back on Nov 2"), the app sets
-`App::client_zone()` and a handler takes `Option<ClientZone>`: the browser's IANA name
-(`America/Chicago`), which the runtime keeps in a cookie from the first page it loads, so the
-form posts and pages after it carry it. `None` is a first load or a browser without
-JavaScript. The app's time zone library (`jiff`, `chrono-tz`) turns the name into its `Zone`
-(a newtype that implements `corten::i18n::Zone`) and a picked date into the instant it means
-there, with no script per form. A handler that takes it answers privately (`Cache-Control:
-private`), so a `Public` one cannot; the layout around `<main>` is the same in every zone, so
-reading it does not make the runtime load the next page in full.
+`App::client_zone()` and turns on Corten's `zones` feature (jiff and its bundled tz database).
+The runtime keeps the browser's zone (`America/Chicago`) in a cookie from the first page it
+loads, so the form posts and pages after it carry it, and while Corten renders a request's
+answer, `t.date`, `t.time` and `t.date_time` write in that zone, with its daylight saving
+rules: no handler takes the zone and no component is given it. `.zone(..)` still chooses
+another (a store's own zone). A page that writes a date in the visitor's zone answers privately
+(`Cache-Control: private`); the layout around `<main>` is the same in every zone, so it does
+not make the runtime load the next page in full. `req.zone()` is the zone itself (a
+`corten::i18n::Visitor`, a `Zone`), for turning a picked date into the instant it means there;
+`Option<ClientZone>` is its name. Both are UTC (`None`) on a browser's first page, before it
+has reported its zone, and without JavaScript; draw a date the first page shows in
+`corten_ui::LocalTime`, whose script writes it again in the browser's zone there, in the
+server's own format, so it is right on the first page too. A date in an attribute
+(`title={..}`) has no element to write again and stays in UTC on that page.
 
 A time relative to now ("resets in 10 hours", "updated 3 min. ago") is `t.relative(at, now,
 RelativeStyle::Long)` (or `Short`, `Narrow`): in the largest unit it has a whole one of, rounded

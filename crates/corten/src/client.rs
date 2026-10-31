@@ -140,16 +140,10 @@ impl<S: Send + Sync> OptionalFromRequestParts<S> for ClientIp {
 
 /// The visitor's time zone, as the browser names it (IANA: `America/Chicago`), with
 /// [`App::client_zone`](crate::App::client_zone): `async fn schedule(zone: Option<ClientZone>, ..)`.
-/// A date the user picked (`<input type="date">`) becomes the instant it means where they are,
-/// and a page writes times in their zone, with a time zone library of the app's own (`jiff`,
-/// `chrono-tz`) that implements [`Zone`](crate::i18n::Zone):
-///
-/// ```ignore
-/// struct Here(jiff::tz::TimeZone);
-/// impl corten::i18n::Zone for Here { /* its offset at an instant */ }
-///
-/// let here = zone.and_then(|ClientZone(name)| jiff::tz::TimeZone::get(&name).ok()).map(Here);
-/// ```
+/// Its name only: with Corten's `zones` feature, `req.zone()` is the zone with its rules (for a
+/// date the user picked, `<input type="date">`, as the instant it means where they are), and dates
+/// are written in it while Corten renders the answer, so a handler that only draws dates takes
+/// neither. This is for the name itself (a log line, "Alerts follow America/Chicago time").
 ///
 /// It is `None` until the runtime has run once on a page of the app (the first page a browser
 /// loads, or a browser without JavaScript), so it is only taken as an `Option`: a bare
@@ -197,6 +191,11 @@ fn zone_name(value: &str) -> bool {
         && value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'_' | b'+' | b'-'))
 }
 
+/// The zone the browser reported in the request's cookie, if it is a zone name.
+pub(crate) fn zone_of(headers: &axum::http::HeaderMap) -> Option<&str> {
+    crate::security::cookie::get(headers, ZONE_COOKIE).filter(|name| zone_name(name))
+}
+
 impl<S: Send + Sync> OptionalFromRequestParts<S> for ClientZone {
     type Rejection = Response;
 
@@ -210,7 +209,7 @@ impl<S: Send + Sync> OptionalFromRequestParts<S> for ClientZone {
             tracing::error!("{message}");
             return Ok(None);
         }
-        let zone = crate::security::cookie::get(&parts.headers, ZONE_COOKIE).filter(|name| zone_name(name)).map(str::to_string);
+        let zone = zone_of(&parts.headers).map(str::to_string);
         // The answer is for this zone: private. Not part of the page's key, as a caller is: the
         // layout does not change with it, and the cookie arrives after the first page, so keying
         // by it would load the next page in full, and the error page after a handler read it.
