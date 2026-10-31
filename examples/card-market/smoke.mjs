@@ -188,7 +188,11 @@ try {
   const sizes = await page.evaluate(async (shots) => Promise.all(shots.map(async (s) => {
     const img = new Image();
     img.src = s.src;
-    await img.decode();
+    try {
+      await img.decode();
+    } catch (error) {
+      return [s.sizes, String(error)];
+    }
     return [s.sizes, `${img.naturalWidth}x${img.naturalHeight}`];
   })), manifest.screenshots);
   check("each screenshot is the size the manifest says", sizes.length === 2 && sizes.every(([said, is]) => said === is), JSON.stringify(sizes));

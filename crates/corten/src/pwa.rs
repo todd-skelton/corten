@@ -878,6 +878,7 @@ mod tests {
             .categories(&["shopping", "productivity"])
             .screenshot(Screenshot::new(Uri::from_static("/s/wide.webp"), "1280x720").form_factor(FormFactor::Wide).label("Cart"))
             .screenshot(Screenshot::new(Uri::from_static("/s/narrow.png"), "720x1280").form_factor(FormFactor::Narrow))
+            .screenshot(Screenshot::new(Uri::from_static("/s/loop.gif"), "720x1280"))
             .shortcut(
                 Shortcut::new("Watchlist", &Watchlist)
                     .short_name("Watch")
@@ -892,7 +893,8 @@ mod tests {
                 r#""display_override":["window-controls-overlay","standalone"],"orientation":"portrait-primary","dir":"ltr","#,
                 r#""id":"/","lang":"en-US","categories":["shopping","productivity"],"icons":[],"#,
                 r#""screenshots":[{"src":"/s/wide.webp","sizes":"1280x720","type":"image/webp","form_factor":"wide","label":"Cart"},"#,
-                r#"{"src":"/s/narrow.png","sizes":"720x1280","type":"image/png","form_factor":"narrow"}],"#,
+                r#"{"src":"/s/narrow.png","sizes":"720x1280","type":"image/png","form_factor":"narrow"},"#,
+                r#"{"src":"/s/loop.gif","sizes":"720x1280","type":"image/gif"}],"#,
                 r#""shortcuts":[{"name":"Watchlist","url":"/watchlist","short_name":"Watch","description":"Cards you follow","#,
                 r#""icons":[{"src":"/i/w.png","sizes":"96x96","type":"image/png"},"#,
                 r#"{"src":"/i/m.png","sizes":"192x192","type":"image/png","purpose":"maskable"}]}]}"#
