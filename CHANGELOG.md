@@ -2539,11 +2539,11 @@ Corten is pre-1.0, so any minor version may change the API.
     (`no-cache="a, no-store"`) no longer splits a directive.
     Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
     requests over 1,000, median of three and the range of the nine pairs, against main at
-    a83452c9): a `NoStore` failure as an HTML error page runs 31,934 instructions a request
-    (31,932 to 32,282) against 30,924 (30,922 to 30,932), as it now keeps and reads the header; an
-    unknown URL's 404 26,622 (26,592 to 26,824) against 26,772 (26,565 to 26,906); a `Public`
-    answer, whose lines are now read through the one lookup `settle` already made, 23,177 (23,093
-    to 23,487) against 23,759 (23,477 to 23,794)
+    a83452c9): a `NoStore` failure as an HTML error page runs 31,990 instructions a request
+    (31,986 to 31,996) against 30,924 (30,916 to 30,933), as it now keeps and reads the header; an
+    unknown URL's 404 26,774 (26,592 to 26,804) against 26,772 (26,587 to 26,774); a `Public`
+    answer, whose lines are now read in one pass through the lookup `settle` already made,
+    23,618 (23,584 to 23,621) against 23,795 (23,757 to 23,868)
     ([#519 NoStore does not apply to a failure: the error page replaces its no-store with private, no-cache](https://github.com/todd-skelton/corten/issues/519)).
 
 ### Documentation
