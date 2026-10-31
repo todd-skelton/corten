@@ -1159,7 +1159,9 @@ Corten is pre-1.0, so any minor version may change the API.
     drawing the part's markup and passing it down as a prop. The page loads the owner's one script;
     the part adds none, and an owner without a script does not compile (a `compile_fail` doctest).
     A component's `js` module is now beside it (`__corten_js_{Name}`, hidden) instead of inside
-    its `render`, which is how a part reaches it; what renders is unchanged. RENDER_TBD
+    its `render`, which is how a part reaches it; what renders is unchanged. The item page's
+    `render_cost` (release, callgrind, 3 runs) is 35,602,516,052 instructions against
+    35,613,859,907 on main (-0.03%, layout: the page has no part)
     ([#492 A sub-component cannot bind its page's script: #[component] has css = Other but no js = Other](https://github.com/todd-skelton/corten/issues/492)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
