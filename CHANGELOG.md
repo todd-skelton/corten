@@ -2608,6 +2608,13 @@ Corten is pre-1.0, so any minor version may change the API.
     and no `every` helper: the queue is the app's storage, and a helper that raced the step would
     drop work mid-write
     ([#488 A worker for jobs that requests queue builds its own leased claim, heartbeat, requeue, progress and retry on App::task, once per worker](https://github.com/todd-skelton/corten/issues/488)).
+41. The app guide has a Testing an app section: a test asks `app().router()` as a browser would
+    (`router()` starts no tasks), and a test with a database takes the connection the code writes
+    on, with `#[sqlx::test]` (a fresh database per test) first and a rolled-back transaction for a
+    shared one, tests that need a database `#[ignore]`d, and a fixture recorder a binary or an
+    example rather than a test. Corten adds no test mode or rollback helper: the driver's are the one
+    way
+    ([#506 No story for tests that need a database or a live service: #[ignore] runs both, and a live recorder ran with the database tests](https://github.com/todd-skelton/corten/issues/506)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

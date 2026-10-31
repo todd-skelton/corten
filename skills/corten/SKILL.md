@@ -65,7 +65,7 @@ These are what the framework is built around. Code that breaks them fights the f
 | a static file (the stylesheet, the favicon, an image) | `req.asset(Static::STYLE_CSS)`, a constant `corten::assets::embed!(pub struct Static = "static")` makes, the app given `.assets(Static)`; a name from data is `req.find_asset(name)` (an `Option`). Never a path string | the app guide, Static files |
 | a page or JSON a CDN may share | return `Public<HtmlResult>` (`Public::new(max_age, page)`); its handler cannot take a `Caller` and its page cannot set a cookie | [pages-and-routes.md](references/pages-and-routes.md) |
 | a shared file with a header (`X-Robots-Tag`, `Content-Disposition`) | `Public::new(age, text_or_media).header::<XRobotsTag>(value)` (`corten::answer`); not a `Relay`, which is never compressed | the app guide, Caching |
-| a test | `app().router().oneshot(..)` with the `corten` mode header | [testing.md](references/testing.md) |
+| a test | `app().router().oneshot(..)` with the `corten` mode header; with a database, `#[sqlx::test]` and code that takes the connection it writes on | [testing.md](references/testing.md) |
 | deploying behind a domain | set `HOSTS=shop.example` (any other `Host` but `localhost` and IP addresses gets 421; never `HOSTS=*` to silence it) | the app guide, Host names |
 | the visitor's IP address (an API's per-client limit, a rate limit) | the handler takes `ClientIp`; behind a proxy set `PROXIES` to the proxy's addresses (never read `X-Forwarded-For` yourself) | the app guide, The client's address |
 | routes slower than pages (a slow upstream, a report, uploads) | `.deadline(Duration)` on their `Area` or `Api` (`None` for none), never raising `App::deadline` for every page | the cancellation guide |

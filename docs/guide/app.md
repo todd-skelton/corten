@@ -292,6 +292,50 @@ Limits, which are the app's to handle:
 
 Corten has no scheduler of its own: a task and tokio's intervals are the one way.
 
+## Testing an app
+
+A test asks the app as a browser would: `app().router().oneshot(request)` runs the request through
+every middleware, area and error page without a socket (`corten new`'s test does this), and
+`router()` starts no tasks, so a test of a task runs its function itself with `Signal::task()`.
+`corten check` runs `cargo test`, so it runs every test that is not `#[ignore]`d.
+
+### With a database
+
+Corten has no database layer; the app's driver (sqlx, say) owns the connection, and tests follow
+from how the app's code takes one. Code that writes takes the connection it writes on rather than
+the pool, so a test can hand it a transaction:
+
+```rust,ignore
+// The app's write: a transaction in a handler, a test's transaction in a test.
+pub async fn record_cost(db: &mut PgConnection, order: &Order) -> sqlx::Result<()> { .. }
+
+async fn save(State(db): State<PgPool>, Form(order): Form<Order>) -> corten::Result<..> {
+    let mut tx = db.begin().await?;
+    record_cost(&mut tx, &order).await?;
+    tx.commit().await?;
+    ..
+}
+```
+
+Then pick one of two ways to keep tests from leaving rows behind:
+
+1. **A fresh database per test**: `#[sqlx::test]` creates one, applies the migrations and gives
+   the test a pool (or a connection), and drops the database afterwards. Code that commits is
+   tested as it runs, and tests do not see each other's rows. This is the one to reach for.
+2. **A transaction per test, rolled back**: `let mut tx = pool.begin().await?;`, the code under
+   test given `&mut tx` (its own transactions become savepoints), the result read on `tx`, and
+   `tx` dropped or rolled back at the end. This works against a shared database (a dev copy) but
+   cannot test code that commits on its own connection.
+
+A handler test that needs the database builds `Shared` with the test's pool and asks the router as
+above. Tests that need a database the machine may not have are `#[ignore = "needs DATABASE_URL"]`
+and run with `cargo test -- --ignored`; a test target of their own (`tests/db.rs`, run with
+`cargo test --test db -- --ignored`) keeps them out of a run filtered by module name.
+
+Something that calls a live service and writes files (a fixture recorder) is not a test: make it a
+binary or an example (`examples/record_fixtures.rs`, run with `cargo run --example
+record_fixtures`), so no `cargo test` run, `--include-ignored` or not, can start it.
+
 ## Your own listeners
 
 `corten::serve(app)` is `corten::serve_on(corten::listeners(3000).await?, app)`: `listeners(3000)`

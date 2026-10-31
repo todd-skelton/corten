@@ -46,3 +46,10 @@ mod tests {
 3. A typed seam that must reject bad input gets a `compile_fail` doctest.
 4. Behavior that runs in the browser needs a browser check: load the page and use it, once with
    JavaScript and once without.
+5. A test that needs a database: code that writes takes the connection (`&mut PgConnection`),
+   not the pool, so a test can pass it a transaction. Prefer `#[sqlx::test]` (a fresh database per
+   test, migrations applied, dropped after); a transaction rolled back at the end works against a
+   shared database but cannot test code that commits on its own. Mark tests that need a database
+   the machine may not have `#[ignore = "needs DATABASE_URL"]` (`cargo test -- --ignored`). A
+   fixture recorder that calls a live service is a binary or an example, never a test. See the app
+   guide, Testing an app.
