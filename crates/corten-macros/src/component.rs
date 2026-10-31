@@ -26,12 +26,23 @@ pub enum CssArg {
     },
 }
 
-/// What `#[component(..)]` takes: `css` or `css = Owner`, and `js`.
+/// `js` (the component's own `{name}.js`) or `js = path::Owner` (another component's handlers).
+pub enum JsArg {
+    Own(Span),
+    /// `js = path::Owner`: the tokens before the owner, and the owner.
+    Of {
+        path: TokenStream,
+        owner: Ident,
+    },
+}
+
+/// What `#[component(..)]` takes: `css` or `css = Owner`, and `js` or `js = Owner`.
 #[derive(Default)]
 pub struct Args {
     pub css: Option<CssArg>,
-    /// `js`: the handlers are the script next to the component, `{name}.js`.
-    pub js: Option<Span>,
+    /// `js`: the handlers are the script next to the component, `{name}.js`; `js = Owner`:
+    /// another component's, for a part of it.
+    pub js: Option<JsArg>,
     /// `view`: scripts get a class with the component's holes, in `corten/views`.
     pub view: Option<Span>,
 }
@@ -39,7 +50,7 @@ pub struct Args {
 /// Parses `#[component]`, `#[component(css)]`, `#[component(css = Owner)]`, `#[component(js)]`,
 /// `#[component(view)]` or several, comma-separated.
 pub fn args(args: TokenStream) -> Result<Args, Error> {
-    let usage = "#[component] takes css (a stylesheet named after the component, next to it), css = OtherComponent or css = path::to::OtherComponent (its stylesheet, from another module of the crate), js (a script named after it) and view (a class scripts write its holes through)";
+    let usage = "#[component] takes css (a stylesheet named after the component, next to it), css = OtherComponent or css = path::to::OtherComponent (its stylesheet, from another module of the crate), js (a script named after it), js = OtherComponent or js = path::to::OtherComponent (its handlers, for a part of it) and view (a class scripts write its holes through)";
     let mut out = Args::default();
     let mut sheet = None;
     for (i, part) in split(args, ',').into_iter().enumerate() {
@@ -54,7 +65,12 @@ pub fn args(args: TokenStream) -> Result<Args, Error> {
             {
                 out.css = Some(CssArg::Of { path: stream(path.iter().cloned()), owner: owner.clone(), sheet: None })
             }
-            [TokenTree::Ident(js)] if js.to_string() == "js" && out.js.is_none() => out.js = Some(js.span()),
+            [TokenTree::Ident(js)] if js.to_string() == "js" && out.js.is_none() => out.js = Some(JsArg::Own(js.span())),
+            [TokenTree::Ident(js), TokenTree::Punct(eq), path @ .., TokenTree::Ident(owner)]
+                if js.to_string() == "js" && eq.as_char() == '=' && out.js.is_none() && owner_path(path) =>
+            {
+                out.js = Some(JsArg::Of { path: stream(path.iter().cloned()), owner: owner.clone() })
+            }
             [TokenTree::Ident(view)] if view.to_string() == "view" && out.view.is_none() => out.view = Some(view.span()),
             [first, ..] => return err(first.span(), usage),
             [] => {}
@@ -66,6 +82,11 @@ pub fn args(args: TokenStream) -> Result<Args, Error> {
         _ => {}
     }
     Ok(out)
+}
+
+/// `__corten_js_Sheet`: the handlers of `Sheet`'s script, beside it, which `js = Sheet` uses.
+fn js_module(owner: &Ident) -> Ident {
+    Ident::new(&format!("__corten_js_{owner}"), owner.span())
 }
 
 /// A path to a component, without the component: nothing, or `a::b::`, `super::`, `crate::`.
@@ -286,17 +307,25 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             &[TokenTree::Ident(Ident::new(field, Span::call_site())).into(), literal(field)],
         ));
     }
-    let script = match args.js {
-        Some(span) => {
+    let (script, js_owner) = match args.js {
+        Some(JsArg::Own(span)) => {
             let file = format!("{}.js", crate::names::snake(&name.to_string()));
             let path = crate::style::locate(&file, span)?;
-            Some(crate::script::Module::read(&path, span)?)
+            (Some(crate::script::Module::read(&path, span)?), None)
         }
-        None => None,
+        Some(JsArg::Of { path, owner }) => {
+            if owner.to_string() == name.to_string() {
+                return err(owner.span(), "js = names another component; for this component's own script write js");
+            }
+            (None, Some((path, owner)))
+        }
+        None => (None, None),
     };
     let (body, has_refs) = refs(&body, &scope_name)?;
     // A script that keeps state (`keep`) keeps it on the component's root, one per instance.
-    let scoped = has_refs || handlers_take_scope(&body.stream()) || script.as_ref().is_some_and(|s| s.keeps);
+    // A part's (`js = Owner`) `scope` is its owner's, whose handlers they are.
+    let scoped =
+        has_refs || (js_owner.is_none() && handlers_take_scope(&body.stream())) || script.as_ref().is_some_and(|s| s.keeps);
     let body = if scoped { mark_root(&body, &scope_name)? } else { body };
 
     let css = args.css;
@@ -354,16 +383,29 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     if let Some(module) = &script {
         // Two components whose scripts are served at one URL fail to build.
         items.extend(crate::id::one_per_program("two_scripts_are", &module.name, true));
-        // Inside `render`, so two components in one file each have their own `js`.
-        scope.extend(module.module(
-            TokenStream::new(),
-            Ident::new("js", Span::call_site()),
+        // Beside the component, named after it, so two components in one file each have their
+        // own, and a part of it (`js = Owner`) can use it; `js` inside `render`.
+        let module_name = js_module(&name);
+        items.extend(module.module(
+            q("#[doc(hidden)] pub(crate)", &[]),
+            module_name.clone(),
             q("::core::option::Option::None", &[]),
             // A scoped component's handlers are its own wherever they render, children a child
-            // renders included.
+            // renders included, and a part's.
             scoped.then_some(scope_name.as_str()),
             TokenStream::new(),
         ));
+        scope.extend(q("#[allow(unused_imports)] use __A0 as js;", &[TokenTree::Ident(module_name).into()]));
+    }
+    if let Some((path, owner)) = &js_owner {
+        // The owner's handlers, through its module: Rust's visibility of it decides which
+        // components can use them, and an owner without a script is an error at its name.
+        let mut module = path.clone();
+        module.extend([TokenTree::Ident(js_module(owner))]);
+        let mut owner_path = path.clone();
+        owner_path.extend([TokenTree::Ident(owner.clone())]);
+        scope
+            .extend(q("#[allow(unused_imports)] use __A0 as _; #[allow(unused_imports)] use __A1 as js;", &[owner_path, module]));
     }
     let owner = if has_constant {
         Some(TokenTree::Ident(name.clone()).into())

@@ -149,6 +149,51 @@
 //! # }
 //! ```
 //!
+//! A part of a component (a sheet, a row, a field drawn by a function of its own) calls its
+//! owner's handlers with `#[component(js = Owner)]` (`js = path::to::Owner` from another module
+//! that can see it): `js` there is the owner's module, so the page loads the owner's one script,
+//! and the part adds none. Its refs are its own, as any component's:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! pub fn CartLine<'a>(name: &'a str, quantity: u32) -> impl Render {
+//!     html! { <li>{name}<Quantity quantity={quantity} /></li> }
+//! }
+//!
+//! /// The line's quantity field, with the line's handlers.
+//! #[component(js = CartLine)]
+//! fn Quantity(quantity: u32) -> impl Render {
+//!     let save = refs();
+//!     html! {
+//!         <span>
+//!             <input value={quantity} on:input={js::enable(save)}>
+//!             <button ref={save} disabled>"Save"</button>
+//!         </span>
+//!     }
+//! }
+//!
+//! let html = CartLine { name: "Lamp", quantity: 2 }.to_html();
+//! assert!(html.contains(r#"<span data-scope="quantity"><input value="2" data-on="input:cart_line.enable(@save)">"#), "{html}");
+//! ```
+//!
+//! The owner has a script, or `js = Owner` does not compile:
+//!
+//! ```compile_fail,E0432
+//! use corten::prelude::*;
+//!
+//! #[component]
+//! fn Plain() -> impl Render {
+//!     html! { <li></li> }
+//! }
+//!
+//! #[component(js = Plain)]
+//! fn Part() -> impl Render {
+//!     html! { <span></span> }
+//! }
+//! ```
+//!
 //! A script is served by its name (`scripts/cart_line.js`), so two components with one name in
 //! different modules of one crate fail to compile, rather than the app when it starts; the error
 //! names the symbol `corten__two_scripts_are__cart_line`. In two crates, the linker refuses the

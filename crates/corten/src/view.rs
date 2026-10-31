@@ -99,7 +99,9 @@ pub use corten_macros::html;
 ///
 /// `#[component(css)]` gives the component the stylesheet named after it, next to it
 /// (`panel.css`), and `#[component(css = Panel)]` shares another component's; see
-/// [`crate::style`].
+/// [`crate::style`]. `#[component(js)]` gives it the script named after it, and
+/// `#[component(js = Panel)]` another component's handlers, for a part of it; see
+/// [`crate::script`].
 pub use corten_macros::component;
 
 /// Something that writes HTML. Strings and numbers escape themselves; views from `html!` write

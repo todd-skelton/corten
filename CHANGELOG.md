@@ -1129,6 +1129,14 @@ Corten is pre-1.0, so any minor version may change the API.
     keys its tabs differ in, so selecting a tab keeps a choice's key (it took the tab link's whole
     query)
     ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
+150. `#[component(js = Owner)]` (`js = path::to::Owner`): a part of a component, a function of its
+    own (a sheet, a row, a field), calls its owner's handlers through `js`, so a large page splits
+    into parts without a script per part (one more request for a one-line handler) or the owner
+    drawing the part's markup and passing it down as a prop. The page loads the owner's one script;
+    the part adds none, and an owner without a script does not compile (a `compile_fail` doctest).
+    A component's `js` module is now beside it (`__corten_js_{Name}`, hidden) instead of inside
+    its `render`, which is how a part reaches it; what renders is unchanged. RENDER_TBD
+    ([#492 A sub-component cannot bind its page's script: #[component] has css = Other but no js = Other](https://github.com/todd-skelton/corten/issues/492)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
