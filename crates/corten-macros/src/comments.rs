@@ -24,9 +24,24 @@ enum Open {
     Group,
 }
 
-/// Words after which a `/` starts a regular expression.
-const BEFORE_REGEX: &[&str] =
-    &["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"];
+/// Words after which a `/` starts a regular expression. Each is reserved, so none can be a
+/// variable that is divided (`of`, `let` and `async` can, and are left out).
+const BEFORE_REGEX: &[&str] = &[
+    "return",
+    "typeof",
+    "instanceof",
+    "in",
+    "new",
+    "delete",
+    "void",
+    "throw",
+    "case",
+    "default",
+    "do",
+    "else",
+    "yield",
+    "await",
+];
 
 /// `source` without its comments: a line comment is removed to its line's end, a block comment
 /// becomes the newlines it held, or a space when it held none. Strings, template literals and
@@ -46,8 +61,11 @@ pub fn without_comments(source: &str) -> String {
     let mut in_template = false;
     while at < bytes.len() {
         if in_template {
-            at = template(bytes, at, &mut opens, &mut in_template);
-            before = Before::Value;
+            let closed;
+            (at, closed) = template(bytes, at, &mut opens);
+            in_template = false;
+            // After the closing backtick the template is a value; after `${` an expression starts.
+            before = if closed { Before::Value } else { Before::Operator };
             continue;
         }
         let b = bytes[at];
@@ -208,27 +226,22 @@ fn string(bytes: &[u8], at: usize) -> usize {
     bytes.len()
 }
 
-/// Copies a template literal's text from `at` to its closing backtick (past it) or to a `${`,
-/// which opens a substitution its `}` returns from.
-fn template(bytes: &[u8], at: usize, opens: &mut Vec<Open>, in_template: &mut bool) -> usize {
+/// Skips a template literal's text from `at` to its closing backtick (past it, and `true`) or to a
+/// `${` (past it, and `false`), which opens a substitution whose `}` comes back here.
+fn template(bytes: &[u8], at: usize, opens: &mut Vec<Open>) -> (usize, bool) {
     let mut i = at;
     while i < bytes.len() {
         match bytes[i] {
             b'\\' => i += 2,
-            b'`' => {
-                *in_template = false;
-                return i + 1;
-            }
+            b'`' => return (i + 1, true),
             b'$' if bytes.get(i + 1) == Some(&b'{') => {
                 opens.push(Open::Substitution);
-                *in_template = false;
-                return i + 2;
+                return (i + 2, false);
             }
             _ => i += 1,
         }
     }
-    *in_template = false;
-    bytes.len()
+    (bytes.len(), true)
 }
 
 /// The end of the regular expression that starts at `at` (its flags included), or `None` when
@@ -287,6 +300,16 @@ mod tests {
             "x = a[0] / 2 / b;",
             "x = obj.return / 2 / b;",
             "x = 1.5 / 2 / b;",
+        ] {
+            assert_eq!(strip(kept), kept);
+        }
+        for kept in [
+            r#"x = `${/"/.test(s)}`; const u = "//kept";"#,
+            r#"x = `${/'/.test(s)}`; const u = '//kept';"#,
+            r#"x = `a${b}${/"/.source}`; const u = "//kept";"#,
+            r#"export default /"/; const s = "a//b";"#,
+            r#"let of = 4; x = of / 2 + "/" + "//kept";"#,
+            r#"let async = 4; x = async / 2 + "/" + "//kept";"#,
         ] {
             assert_eq!(strip(kept), kept);
         }

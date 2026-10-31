@@ -1942,10 +1942,12 @@ Corten is pre-1.0, so any minor version may change the API.
     comments: the macro removes them when the crate compiles and keeps every line where it was, so
     DevTools and stack traces still show the author's line numbers, and it still reads the JSDoc
     to check the calls. A licence comment (`/*! .. */`, `@license`, `@preserve`) stays.
-    Measured on the repo's 21 component scripts, served compressed as Corten serves them: brotli
-    18,803 to 9,831 bytes (−47.7%), gzip 22,510 to 11,820 (−47.5%); a seller-desk page's two
-    scripts 3,523 to 1,829 bytes. Nothing a request does changes: the stripped text is what
-    `include_str!` held before
+    Measured on the 24 scripts it strips (corten-ui's, the examples' and the template's), brotli
+    11 as Corten stores them: 30,779 to 15,855 bytes (-48.5%); gzip 9 36,371 to 18,651 (-48.7%).
+    The item page (`bench/fullstack/bytes.mjs`, card-market images of main and this change): its
+    two component scripts 1,690 to 874 bytes, every script it loads 29,336 to 28,520 raw and 11,101
+    to 10,697 gzipped. Nothing a request does changes: the stripped text is what `include_str!`
+    held before
     ([#513 Explore removing comments from component scripts as they are served, if it cuts bytes shipped enough to matter](https://github.com/todd-skelton/corten/issues/513)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
