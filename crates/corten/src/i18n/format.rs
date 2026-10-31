@@ -397,6 +397,11 @@ mod sealed {
     impl Sealed for super::DateStyle {}
     impl Sealed for super::MonthStyle {}
     impl Sealed for super::DayStyle {}
+
+    /// [`super::DateValue`]'s: an instant or a [`super::Day`], nothing else.
+    pub trait Value {}
+    impl<T: Into<std::time::SystemTime>> Value for T {}
+    impl Value for super::Day {}
 }
 
 impl DateOnly for DateStyle {
@@ -1064,73 +1069,77 @@ impl When {
     }
 
     fn write(&self, out: &mut dyn Write) -> fmt::Result {
-        use __private::Field as F;
-        let data = self.data;
         let offset = self.offset();
-        let local = unix_seconds(self.at) + i64::from(offset);
-        let days = local.div_euclid(86_400);
-        let second_of_day = local.rem_euclid(86_400);
-        let (year, month, day) = civil_from_days(days);
-        let weekday = (days + 4).rem_euclid(7) as usize;
-        let hour = (second_of_day / 3600) as u32;
-        let minute = (second_of_day / 60 % 60) as u32;
-        let second = (second_of_day % 60) as u32;
-        let mut buf = [0u8; 24];
-        let mut number = |n: i64, two: bool, out: &mut dyn Write| -> fmt::Result {
-            let text = itoa(n.unsigned_abs(), two, &mut buf);
-            if n < 0 {
-                out.write_char('-')?;
+        write_date(self.data, self.style, unix_seconds(self.at) + i64::from(offset), offset, out)
+    }
+}
+
+/// Writes a date's fields in `style`: `local` is seconds since 1970-01-01 at `offset` seconds
+/// east of UTC (the offset is only shown, for a pattern with a zone).
+fn write_date(data: &'static __private::LocaleData, style: u8, local: i64, offset: i32, out: &mut dyn Write) -> fmt::Result {
+    use __private::Field as F;
+    let days = local.div_euclid(86_400);
+    let second_of_day = local.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    let weekday = (days + 4).rem_euclid(7) as usize;
+    let hour = (second_of_day / 3600) as u32;
+    let minute = (second_of_day / 60 % 60) as u32;
+    let second = (second_of_day % 60) as u32;
+    let mut buf = [0u8; 24];
+    let mut number = |n: i64, two: bool, out: &mut dyn Write| -> fmt::Result {
+        let text = itoa(n.unsigned_abs(), two, &mut buf);
+        if n < 0 {
+            out.write_char('-')?;
+        }
+        write_digits(data, text, out)
+    };
+    for field in data.dates[usize::from(style)] {
+        match *field {
+            F::Text(text) => out.write_str(text)?,
+            F::Year => number(year, false, out)?,
+            F::Year2 => number(year.rem_euclid(100), true, out)?,
+            F::Month => number(i64::from(month), false, out)?,
+            F::Month2 => number(i64::from(month), true, out)?,
+            F::MonthName(at) => out.write_str(data.names[usize::from(at) + month as usize - 1])?,
+            F::Day => number(i64::from(day), false, out)?,
+            F::Day2 => number(i64::from(day), true, out)?,
+            F::Weekday(at) => out.write_str(data.names[usize::from(at) + weekday])?,
+            F::Hour(cycle, two) => {
+                let h = match cycle {
+                    12 if hour.is_multiple_of(12) => 12,
+                    12 | 11 => hour % 12,
+                    24 if hour == 0 => 24,
+                    _ => hour,
+                };
+                number(i64::from(h), two, out)?
             }
-            write_digits(data, text, out)
-        };
-        for field in data.dates[usize::from(self.style)] {
-            match *field {
-                F::Text(text) => out.write_str(text)?,
-                F::Year => number(year, false, out)?,
-                F::Year2 => number(year.rem_euclid(100), true, out)?,
-                F::Month => number(i64::from(month), false, out)?,
-                F::Month2 => number(i64::from(month), true, out)?,
-                F::MonthName(at) => out.write_str(data.names[usize::from(at) + month as usize - 1])?,
-                F::Day => number(i64::from(day), false, out)?,
-                F::Day2 => number(i64::from(day), true, out)?,
-                F::Weekday(at) => out.write_str(data.names[usize::from(at) + weekday])?,
-                F::Hour(cycle, two) => {
-                    let h = match cycle {
-                        12 if hour.is_multiple_of(12) => 12,
-                        12 | 11 => hour % 12,
-                        24 if hour == 0 => 24,
-                        _ => hour,
-                    };
-                    number(i64::from(h), two, out)?
+            F::Minute => number(i64::from(minute), false, out)?,
+            F::Minute2 => number(i64::from(minute), true, out)?,
+            F::Second => number(i64::from(second), false, out)?,
+            F::Second2 => number(i64::from(second), true, out)?,
+            F::Period(at) => out.write_str(data.names[usize::from(at) + hour as usize])?,
+            F::Zone => {
+                if offset == 0 {
+                    out.write_str(data.utc)?;
+                    continue;
                 }
-                F::Minute => number(i64::from(minute), false, out)?,
-                F::Minute2 => number(i64::from(minute), true, out)?,
-                F::Second => number(i64::from(second), false, out)?,
-                F::Second2 => number(i64::from(second), true, out)?,
-                F::Period(at) => out.write_str(data.names[usize::from(at) + hour as usize])?,
-                F::Zone => {
-                    if offset == 0 {
-                        out.write_str(data.utc)?;
-                        continue;
+                let east = offset.unsigned_abs();
+                let minutes = east % 3600 / 60;
+                let template = data.gmt[usize::from(minutes != 0) * 2 + usize::from(offset < 0)];
+                let mut start = 0;
+                for (i, c) in template.char_indices() {
+                    if c == '\u{1}' || c == '\u{3}' {
+                        out.write_str(&template[start..i])?;
+                        start = i + 1;
+                        let (n, two) = if c == '\u{1}' { (east / 3600, false) } else { (minutes, true) };
+                        number(i64::from(n), two, out)?;
                     }
-                    let east = offset.unsigned_abs();
-                    let minutes = east % 3600 / 60;
-                    let template = data.gmt[usize::from(minutes != 0) * 2 + usize::from(offset < 0)];
-                    let mut start = 0;
-                    for (i, c) in template.char_indices() {
-                        if c == '\u{1}' || c == '\u{3}' {
-                            out.write_str(&template[start..i])?;
-                            start = i + 1;
-                            let (n, two) = if c == '\u{1}' { (east / 3600, false) } else { (minutes, true) };
-                            number(i64::from(n), two, out)?;
-                        }
-                    }
-                    out.write_str(&template[start..])?;
                 }
+                out.write_str(&template[start..])?;
             }
         }
-        Ok(())
     }
+    Ok(())
 }
 
 /// How [`Relative`] writes a time: `in 10 hours`, `in 10 hr.` or `in 10h` in en (`Long`,
@@ -1358,6 +1367,7 @@ impl Day {
         valid.then(|| Day { days: days_from_civil(i64::from(year), month, day) as i32 })
     }
 
+    /// 0 to 9999.
     pub fn year(self) -> i32 {
         civil_from_days(i64::from(self.days)).0 as i32
     }
@@ -1381,12 +1391,13 @@ impl Day {
     }
 
     /// Midnight UTC of the day, for something that needs an instant (a query's bound); writing
-    /// it is `t.date(day, ..)`, not this.
-    pub fn midnight_utc(self) -> SystemTime {
+    /// it is `t.date(day, ..)`, not this. `None` for a day before the earliest `SystemTime` the
+    /// platform has (1601-01-01 on Windows); `t.date` writes every day.
+    pub fn midnight_utc(self) -> Option<SystemTime> {
         let seconds = i64::from(self.days) * 86_400;
         match u64::try_from(seconds) {
-            Ok(after) => UNIX_EPOCH + Duration::from_secs(after),
-            Err(_) => UNIX_EPOCH - Duration::from_secs(seconds.unsigned_abs()),
+            Ok(after) => UNIX_EPOCH.checked_add(Duration::from_secs(after)),
+            Err(_) => UNIX_EPOCH.checked_sub(Duration::from_secs(seconds.unsigned_abs())),
         }
     }
 }
@@ -1465,6 +1476,22 @@ impl<'de> serde::Deserialize<'de> for Day {
     }
 }
 
+/// `YYYY-MM-DD` text: a `string` in the declarations `corten::types` writes (`types` feature).
+#[cfg(feature = "types")]
+impl schemars::JsonSchema for Day {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Day".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({ "type": "string", "format": "date" })
+    }
+}
+
 impl Render for Day {
     fn render(&self, out: &mut String) {
         let _ = write!(out, "{self}");
@@ -1482,7 +1509,7 @@ impl AttrValue for Day {
 
 /// What [`t.date`](super) takes: an instant (a `SystemTime`, or what converts into one), written
 /// as a [`When`] in a zone, or a [`Day`], written as an [`OnDay`] in none.
-pub trait DateValue: Sized {
+pub trait DateValue: Sized + sealed::Value {
     /// What `t.date` gives for it.
     type Text;
     #[doc(hidden)]
@@ -1501,8 +1528,7 @@ impl DateValue for Day {
     type Text = OnDay;
     #[inline]
     fn date_text(self, data: &'static __private::LocaleData, style: impl DateOnly) -> OnDay {
-        // Its midnight in UTC, written at offset 0 whatever zone the answer is written in.
-        OnDay { when: When { data, at: self.midnight_utc(), offset: 0, style: style.index(), zoned: true }, day: self }
+        OnDay { data, style: style.index(), day: self }
     }
 }
 
@@ -1510,7 +1536,8 @@ impl DateValue for Day {
 /// renders in `html!` as text or an attribute value, and is a message argument.
 #[derive(Clone, Copy)]
 pub struct OnDay {
-    when: When,
+    data: &'static __private::LocaleData,
+    style: u8,
     day: Day,
 }
 
@@ -1521,27 +1548,36 @@ impl OnDay {
     }
 
     /// Its locale and style as a script's format (`t.js().date(..)`'s): `format("2026-09-02")`
-    /// with no `offset` writes the same day.
+    /// with no `offset` writes the same day. A script that passes an offset writes the day at
+    /// that offset from its UTC midnight, the day before west of UTC, so a day takes none.
     pub fn format(&self) -> DateFormat {
-        self.when.format()
+        DateFormat { data: self.data, style: self.style, offset: 0 }
+    }
+
+    /// Written from its calendar date, never through an instant: every day `Day::new` takes.
+    fn write(&self, out: &mut dyn Write) -> fmt::Result {
+        write_date(self.data, self.style, i64::from(self.day.days) * 86_400, 0, out)
     }
 }
 
 impl Render for OnDay {
     fn render(&self, out: &mut String) {
-        self.when.render(out)
+        let _ = self.write(out);
     }
 }
 
 impl AttrValue for OnDay {
     fn write_attr(&self, name: &str, out: &mut String) {
-        self.when.write_attr(name, out)
+        out.push_str(name);
+        out.push_str("=\"");
+        self.render(out);
+        out.push('"');
     }
 }
 
 impl Display for OnDay {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.when, f)
+        self.write(f)
     }
 }
 

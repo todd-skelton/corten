@@ -343,7 +343,9 @@ than an instant (a report's window, a week's start, a due date, an API's `"2026-
 `corten::i18n::Day`, which `t.date(day, style)` writes as that day in every zone; it has no
 `.zone(..)` and no time, so the compiler keeps it from being written as an instant. `Day` parses
 `YYYY-MM-DD` (what `<input type="date">` sends), reads and writes JSON and serde as that text,
-and `day.midnight_utc()` is the instant where a query needs one. A day already kept as an
+and `day.midnight_utc()` is the instant where a query needs one (an `Option`: `None` before the
+earliest instant the platform has, 1601 on Windows; `t.date` writes every day). A script writes
+a day with `format("2026-09-02")` and no offset. A day already kept as an
 instant at UTC midnight takes `.zone(Utc)`, or it reads a day early west of UTC. A script's `t.js().date(..)` writes UTC unless
 it is given an offset (`format(at, { offset })`, the browser's at that instant), and `to_string()`
 or `format!` in a handler is UTC: only Corten's render knows the zone, and a `req.screen`'s data

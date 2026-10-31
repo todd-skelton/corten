@@ -897,7 +897,7 @@ mod tests {
         assert_eq!(Day::new(9999, 12, 31).unwrap().plus(1), None);
         assert_eq!(
             Day::new(1969, 12, 31).unwrap().midnight_utc(),
-            std::time::UNIX_EPOCH - std::time::Duration::from_secs(86_400)
+            Some(std::time::UNIX_EPOCH - std::time::Duration::from_secs(86_400))
         );
         assert!(Day::new(2026, 9, 1).unwrap() < day);
         let en = Msg::for_locale("en");
@@ -906,7 +906,12 @@ mod tests {
         assert_eq!(en.date(day, MonthStyle::Long).to_string(), "September 2026");
         assert_eq!(en.date(day, DateStyle::Medium).datetime().to_string(), "2026-09-02");
         // An instant at the same midnight is still an instant, in the zone it is given.
-        assert_eq!(en.date(day.midnight_utc(), DateStyle::Medium).zone(Offset::hours(-5)).to_string(), "Sep 1, 2026");
+        assert_eq!(en.date(day.midnight_utc().unwrap(), DateStyle::Medium).zone(Offset::hours(-5)).to_string(), "Sep 1, 2026");
+        // Every day is written from its calendar date, before the earliest instant a platform has
+        // too (1601 on Windows).
+        for (text, written) in [("0000-01-01", "Jan 1, 0"), ("1600-12-31", "Dec 31, 1600"), ("9999-12-31", "Dec 31, 9999")] {
+            assert_eq!(en.date(text.parse::<Day>().unwrap(), DateStyle::Medium).to_string(), written, "{text}");
+        }
     }
 
     #[cfg(feature = "json")]

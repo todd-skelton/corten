@@ -1196,8 +1196,11 @@ Corten is pre-1.0, so any minor version may change the API.
     instant), so a day cannot be written as an instant by mistake (`compile_fail` doctests). With
     `App::zoned_dates` a day kept as midnight UTC read a day early west of UTC. `Day` parses
     `YYYY-MM-DD` only (what `<input type="date">` sends), reads and writes JSON and serde as that
-    text, renders as it in `html!` (`<time datetime={on_day.datetime()}>`), and has `plus(n)` and
-    `midnight_utc()`. `t.date` takes a `DateValue`: an instant as before, or a `Day`. A script's
+    text, renders as it in `html!` (`<time datetime={on_day.datetime()}>`), is a `string` in
+    `corten::types` declarations, and has `plus(n)` and `midnight_utc()` (an `Option`: a
+    `SystemTime` does not reach year 0 on every platform; a day is written from its calendar date,
+    so `t.date` writes every one). `t.date` takes a `DateValue`: an instant as before, or a `Day`;
+    a closure that passes its untyped parameter to `t.date` needs the parameter's type. A script's
     `format("2026-09-02")` with no offset writes the same day (checked by `npm run check`).
     RENDER_TBD
     ([#502 i18n: no way to write a calendar date (no instant behind it) that never shifts with the zone](https://github.com/todd-skelton/corten/issues/502)).
