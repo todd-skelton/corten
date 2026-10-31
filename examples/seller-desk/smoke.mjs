@@ -330,6 +330,27 @@ try {
     return getComputedStyle(/** @type {Element} */ (document.getElementById("vars-probe"))).getPropertyValue(name).trim();
   });
   check("a patch's values are set by the runtime", patched === "61.5%", patched);
+  // A row rows() copies from a <template> gets the template row's values through the CSSOM too,
+  // after a client navigation (the page's style block is from the first load and has none for it).
+  await page.click('header a[href="/"]');
+  await page.click('header a[href="/statement"]');
+  await page.waitForSelector("tbody [data-vars]");
+  const cloned = await page.evaluate(async () => {
+    const views = await import("corten/views").catch(() => null);
+    if (!views?.rows) return "no corten/views";
+    const name = /** @type {string} */ (document.querySelector("tbody [data-vars]")?.getAttribute("data-vars")).split(":")[0];
+    const parent = document.createElement("ul");
+    const template = document.createElement("template");
+    template.innerHTML = `<li><span data-vars="${name}:12.5%"></span></li>`;
+    document.querySelector("main")?.append(parent);
+    class Row { constructor(/** @type {Element} */ el) { this.el = el; } static key() { return ""; } static keyOf() { return ""; } static fill() {} }
+    views.rows(parent, /** @type {any} */ (Row), template).push([{}]);
+    const span = /** @type {Element} */ (parent.querySelector("span"));
+    const got = getComputedStyle(span).getPropertyValue(name).trim();
+    parent.remove();
+    return got;
+  });
+  check("a row rows() copies from a <template> gets the template row's values", cloned === "12.5%", cloned);
 
   // Memory with the page settled.
   const heap = await page.evaluate(() => {

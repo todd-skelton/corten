@@ -295,12 +295,29 @@
 //! }
 //! ```
 //!
-//! `data-vars` is Corten's to write:
+//! `data-vars` is Corten's to write, in any case (HTML names are case-insensitive):
 //!
 //! ```compile_fail
 //! use corten::prelude::*;
 //!
 //! let view = html! { <div data-vars="--fill:4px"></div> };
+//! ```
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! let view = html! { <div data-Vars="--fill:4px"></div> };
+//! ```
+//!
+//! and only Corten's types are values, so no type of the app's writes CSS text there:
+//!
+//! ```compile_fail,E0277
+//! struct Css(String);
+//! impl corten::style::Vars for Css {
+//!     fn write_vars(&self, out: &mut String) {
+//!         out.push_str(&self.0)
+//!     }
+//! }
 //! ```
 
 use std::cell::RefCell;

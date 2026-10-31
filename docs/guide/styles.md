@@ -93,8 +93,8 @@ attribute is allowed anywhere, and a cached page is still the same bytes (no non
 a client navigation or a `<corten-live>` fragment brings is under the policy the document loaded
 with, which allows neither, so the runtime sets those values through the CSSOM
 (`el.style.setProperty`), which the policy does not govern, before the browser paints them. A row
-a script copies out of a `<template>` holds the server's values for the template's row, not its
-own: a script that fills rows draws their sizes itself. A property registered with another syntax
+`rows()` copies out of a `<template>` gets the server's values for the template's row the same
+way, not its own: a script that fills rows draws their sizes itself. A property registered with another syntax
 (`<color>`, to animate it) is scoped the same way and has no constant.
 
 The block costs a page that uses it the hash of its text: measured with callgrind (release

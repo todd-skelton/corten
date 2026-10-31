@@ -699,7 +699,8 @@ function setVars(root) {
     if (!vars || !(el instanceof HTMLElement || el instanceof SVGElement)) continue;
     for (const one of vars.split(";")) {
       const at = one.indexOf(":");
-      el.style.setProperty(one.slice(0, at), one.slice(at + 1));
+      // Custom properties only: the server writes nothing else here.
+      if (one.startsWith("--") && at > 2) el.style.setProperty(one.slice(0, at), one.slice(at + 1));
     }
   }
 }

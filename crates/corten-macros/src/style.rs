@@ -54,6 +54,45 @@ pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
     Ok(Sheet { css, classes: s.classes, properties: s.properties })
 }
 
+/// Whether `value`, an `initial-value`, is one of `kind` (a type of `SYNTAXES`): a number with a
+/// unit the syntax allows (`0` alone for a length). The browser ignores a rule whose initial
+/// value does not parse as its syntax, so markup would set a property nothing registered.
+fn initial_fits(kind: &str, value: &str) -> bool {
+    // The number: a sign, digits and a point, and an exponent only when digits follow its `e`
+    // (`1em` is one em, `2e3` two thousand).
+    let b = value.as_bytes();
+    let digits = |mut i: usize| {
+        while b.get(i).is_some_and(|c| c.is_ascii_digit() || *c == b'.') {
+            i += 1;
+        }
+        i
+    };
+    let mut at = digits(usize::from(matches!(b.first(), Some(b'+' | b'-'))));
+    if matches!(b.get(at), Some(b'e' | b'E')) {
+        let sign = usize::from(matches!(b.get(at + 1), Some(b'+' | b'-')));
+        if b.get(at + 1 + sign).is_some_and(u8::is_ascii_digit) {
+            at = digits(at + 1 + sign);
+        }
+    }
+    let (number, unit) = value.split_at(at);
+    let Ok(number) = number.parse::<f64>() else { return false };
+    if !number.is_finite() {
+        return false;
+    }
+    let unit = unit.to_ascii_lowercase();
+    const LENGTHS: &[&str] = &["px", "rem", "em", "ch", "vw", "vh", "ex", "lh", "rlh", "vmin", "vmax", "cm", "mm", "in", "pt", "pc", "q", "svw", "svh", "lvw", "lvh", "dvw", "dvh", "cqw", "cqh", "cqi", "cqb"];
+    match kind {
+        "Number" => unit.is_empty(),
+        "Integer" => unit.is_empty() && number.fract() == 0.0 && !value.contains(['.', 'e', 'E']),
+        "Percentage" => unit == "%",
+        "Length" => LENGTHS.contains(&unit.as_str()) || (unit.is_empty() && number == 0.0),
+        "LengthPercentage" => unit == "%" || LENGTHS.contains(&unit.as_str()) || (unit.is_empty() && number == 0.0),
+        "Angle" => matches!(unit.as_str(), "deg" | "grad" | "rad" | "turn"),
+        "Time" => matches!(unit.as_str(), "s" | "ms"),
+        _ => true,
+    }
+}
+
 /// `css` with each of `names` (a custom property its `@property` rules register, `fill`)
 /// written `--{prefix}__fill` wherever it is a whole name outside strings: the property is the
 /// component's, as its classes are, so two components can both register a `--fill`.
@@ -73,6 +112,12 @@ fn rename_properties(css: &str, names: &[&str], prefix: &str) -> String {
                     i += if b[i] == b'\\' { 2 } else { 1 };
                 }
                 i += 1;
+            }
+            // An unquoted `url(..)` is a URL, `url(--fill.svg)` a file's name.
+            b'(' if i >= 3 && css[i - 3..i].eq_ignore_ascii_case("url") && (i == 3 || !ident(b[i - 4])) => {
+                while i < b.len() && b[i] != b')' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
             }
             b'-' if b.get(i + 1) == Some(&b'-') && (i == 0 || !ident(b[i - 1])) => {
                 let mut end = i + 2;
@@ -240,14 +285,14 @@ impl Scoper<'_> {
         if self.properties.iter().any(|(other, _)| other == name) {
             return Err(self.error(at, format!("@property --{name} is registered twice")));
         }
-        let (mut syntax, mut inherits, mut initial) = (None, false, false);
+        let (mut syntax, mut inherits, mut initial) = (None, false, None);
         for declaration in self.out[body..].split(';') {
             match split_declaration(declaration) {
                 Some(("syntax", value)) => syntax = Some(value.trim_matches(|c| c == '"' || c == '\'').trim().to_string()),
                 Some(("inherits", value)) if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false") => {
                     inherits = true
                 }
-                Some(("initial-value", _)) => initial = true,
+                Some(("initial-value", value)) => initial = Some(value.trim().to_string()),
                 _ => {}
             }
         }
@@ -265,10 +310,18 @@ impl Scoper<'_> {
                 format!("@property --{name} needs inherits: true or inherits: false; the browser ignores it without one"),
             ));
         }
-        if !initial && syntax != "*" {
+        if initial.is_none() && syntax != "*" {
             return Err(self.error(at, format!("@property --{name} needs an initial-value; the browser ignores it without one")));
         }
         let kind = SYNTAXES.iter().find(|(written, _)| *written == syntax).map(|(_, kind)| *kind);
+        if let (Some(kind), Some(value)) = (kind, &initial) {
+            if !initial_fits(kind, value) {
+                return Err(self.error(
+                    at,
+                    format!("@property --{name}: initial-value {value} is not a {syntax}; the browser ignores the rule"),
+                ));
+            }
+        }
         self.properties.push((name.to_string(), kind));
         Ok(())
     }
@@ -904,6 +957,14 @@ mod tests {
         assert!(error("@property fill { syntax: '*'; inherits: false }").contains("starts with --"));
         assert!(error("@property --a { syntax: '*'; inherits: false }\n@property --a { syntax: '*'; inherits: false }")
             .contains("twice"));
+        assert!(error("@property --a { syntax: '<percentage>'; inherits: false; initial-value: 0px }").contains("is not a <percentage>"));
+        assert!(error("@property --a { syntax: '<integer>'; inherits: false; initial-value: 1.5 }").contains("is not a <integer>"));
+        assert!(error("@property --a { syntax: '<angle>'; inherits: false; initial-value: 0 }").contains("is not a <angle>"));
+        for ok in ["'<length>'; initial-value: 0", "'<length>'; initial-value: 1.5em", "'<number>'; initial-value: -2e3", "'<time>'; initial-value: 150ms", "'<color>'; initial-value: red"] {
+            assert!(scope(&format!("@property --a {{ syntax: {ok}; inherits: TRUE }}"), "m").is_ok(), "{ok}");
+        }
+        let url = scope("@property --fill { syntax: '*'; inherits: false }\n.a { background: url(--fill.svg); width: var(--fill) }", "m").unwrap();
+        assert!(url.css.contains("url(--fill.svg)") && url.css.contains("var(--m__fill)"), "a URL is not a property: {}", url.css);
     }
 
     #[test]

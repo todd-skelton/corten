@@ -11,6 +11,24 @@
 // data. Corten serves this file inside `corten/views` (scripts/build-js.mjs builds it).
 
 /**
+ * Gives a row cloned from a `<template>` the custom properties the server wrote for the
+ * template's row (`style={..}`, `data-vars`): set through the CSSOM, as the runtime sets a
+ * patch's, since a clone is under the document's policy. A script that fills rows draws their own
+ * sizes itself.
+ * @param {Element} root
+ */
+function vars(root) {
+  for (const el of [root, ...Array.from(root.querySelectorAll("[data-vars]"))]) {
+    const list = el.getAttribute("data-vars");
+    if (!list || !(el instanceof HTMLElement || el instanceof SVGElement)) continue;
+    for (const one of list.split(";")) {
+      const at = one.indexOf(":");
+      if (one.startsWith("--") && at > 2) el.style.setProperty(one.slice(0, at), one.slice(at + 1));
+    }
+  }
+}
+
+/**
  * Makes `value` the text of `el`, which holds only that text.
  * @param {Element} el @param {string} value
  */
@@ -133,6 +151,7 @@ export function rows(parent, View, template) {
   const make = (data) => {
     if (!proto) throw new Error("corten: rows() makes new rows from a <template> with one row in it", { cause: parent });
     const el = /** @type {Element} */ (proto.cloneNode(true));
+    vars(el);
     View.fill(el, data);
     return el;
   };

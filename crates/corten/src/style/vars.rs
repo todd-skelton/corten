@@ -132,7 +132,7 @@ enum Value {
     label = "not a custom property's value",
     note = "register the property with @property in the component's stylesheet; its constant is its name in capitals"
 )]
-pub trait Vars {
+pub trait Vars: sealed::Sealed {
     /// Writes each declaration followed by `;`.
     fn write_vars(&self, out: &mut String);
 }
@@ -186,6 +186,21 @@ impl<T: Vars, const N: usize> Vars for [T; N] {
     fn write_vars(&self, out: &mut String) {
         self.as_slice().write_vars(out)
     }
+}
+
+/// Only Corten's types are values: a type of the app's could write CSS text into the attribute
+/// and the page's style block.
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for super::Declaration {}
+    impl<T: Sealed + ?Sized> Sealed for &T {}
+    impl<T: Sealed> Sealed for Option<T> {}
+    impl<T: Sealed> Sealed for [T] {}
+    impl<T: Sealed, const N: usize> Sealed for [T; N] {}
+    macro_rules! tuples {
+        ($(($($name:ident),+)),*) => {$(impl<$($name: Sealed),+> Sealed for ($($name,)+) {})*};
+    }
+    tuples!((A, B), (A, B, C), (A, B, C, D), (A, B, C, D, E), (A, B, C, D, E, F), (A, B, C, D, E, F, G), (A, B, C, D, E, F, G, H));
 }
 
 macro_rules! tuples {

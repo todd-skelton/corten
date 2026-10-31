@@ -828,13 +828,15 @@ impl Cursor {
                     if name == "key" {
                         name = "data-key".into();
                     }
-                    if name == "data-nav" || name == "data-nav-group" {
+                    // HTML attribute names are case-insensitive: `data-Vars` is `data-vars`.
+                    let lower = name.to_ascii_lowercase();
+                    if lower == "data-nav" || lower == "data-nav-group" {
                         return err(span, format!("{name} is printed by Corten: write <a {{..req.nav(&url::News)}}> (or req.nav_section, or a link of req.nav_of), which writes href, data-nav, data-nav-group and aria-current from one mention of the route"));
                     }
-                    if name == "data-ref" || name == "data-on" || name == "data-scope" {
+                    if lower == "data-ref" || lower == "data-on" || lower == "data-scope" {
                         return err(span, "data-ref, data-on and data-scope are printed by Corten: write ref={rows} (with let (rows) = refs();) or on:click={js::show(rows)}");
                     }
-                    if name == "data-vars" {
+                    if lower == "data-vars" {
                         return err(span, "data-vars is printed by Corten: write style={FILL.pct(42.0)}, with --fill registered by an @property in the component's stylesheet");
                     }
                     if name == "ref" || name.starts_with("on:") {
