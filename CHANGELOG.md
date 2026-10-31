@@ -2390,6 +2390,13 @@ Corten is pre-1.0, so any minor version may change the API.
     35,603,094,486 on main (+0.03%, within the runs' spread: a page's GET only compares the
     method and looks at its cookies once, as before)
     ([#498 redirect_with_notice is lost without a trace on a plain-HTTP LAN deployment: __Host- cookies need a secure origin](https://github.com/todd-skelton/corten/issues/498)).
+86. A task (`App::task`) that returns before shutdown began is logged with its name, as one that
+    panics is (`corten: task "pricing worker" returned before shutdown began`): a task that could
+    not start or gave up ended without a trace, so a log could not tell it from one that runs. A
+    task that did its work once and returned is now logged as well: the app guide has it wait for
+    the signal when done, and a task the configuration turns off not registered (a `match` on the
+    configuration in the builder chain). Nothing a request does changes
+    ([#503 A task that returns before shutdown is silent: a task the configuration turns off, or one that cannot start, ends without a trace](https://github.com/todd-skelton/corten/issues/503)).
 87. A release build of an app no longer warns that `Assets::module_tag` is never used: its only
     caller is the debug-build check that a page's handlers call a module the app serves, so it is
     built in debug builds only. Nothing a page renders changes
