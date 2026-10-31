@@ -872,6 +872,9 @@ impl Cursor {
                     if lower == "data-ref" || lower == "data-on" || lower == "data-scope" {
                         return err(span, "data-ref, data-on and data-scope are printed by Corten: write ref={rows} (with let (rows) = refs();) or on:click={js::show(rows)}");
                     }
+                    if lower == "style" && name != "style" {
+                        return err(span, format!("write style, not {name}: style={{FILL.pct(42.0)}} is checked only as style"));
+                    }
                     if lower == "data-vars" {
                         return err(span, "data-vars is printed by Corten: write style={FILL.pct(42.0)}, with --fill registered by an @property in the component's stylesheet");
                     }

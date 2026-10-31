@@ -216,7 +216,10 @@ impl Scoper<'_> {
             if end == Some(b'{') {
                 self.i += 1;
                 let inner = if let Some(rule) = text.strip_prefix('@') {
-                    let name = rule.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-')).next().unwrap_or("");
+                    // At-rule names are case-insensitive in CSS: `@MEDIA` is `@media`.
+                    let name =
+                        rule.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-')).next().unwrap_or("").to_ascii_lowercase();
+                    let name = name.as_str();
                     if name == "page" && ctx != Ctx::Raw {
                         self.check_page(rule["page".len()..].trim(), start)?;
                     }
@@ -247,7 +250,7 @@ impl Scoper<'_> {
                 self.out.push('{');
                 let body = self.out.len();
                 self.block(inner, false)?;
-                if ctx != Ctx::Raw && text.starts_with("@property") {
+                if ctx != Ctx::Raw && text.get(..9).is_some_and(|at| at.eq_ignore_ascii_case("@property")) {
                     self.property(&text["@property".len()..], body, start)?;
                 }
                 self.close();
@@ -312,7 +315,8 @@ impl Scoper<'_> {
         }
         let (mut syntax, mut inherits, mut initial) = (None, false, None);
         for declaration in self.out[body..].split(';') {
-            match split_declaration(declaration) {
+            let declaration = split_declaration(declaration).map(|(name, value)| (name.to_ascii_lowercase(), value));
+            match declaration.as_ref().map(|(name, value)| (name.as_str(), *value)) {
                 Some(("syntax", value)) => {
                     let quoted = value.len() >= 2
                         && matches!(value.as_bytes()[0], b'"' | b'\'')
@@ -1002,6 +1006,11 @@ mod tests {
         );
         assert!(error("@property --a { syntax: '<angle>'; inherits: false; initial-value: 0 }").contains("is not a <angle>"));
         assert!(error("@property --a { syntax: <number>; inherits: false; initial-value: 0 }").contains("syntax is a string"));
+        assert_eq!(
+            scope("@PROPERTY --x { SYNTAX: \"<number>\"; INHERITS: false; INITIAL-VALUE: 0 }", "m").unwrap().properties,
+            [("x".to_string(), Some("Number"))],
+            "at-rule and descriptor names are case-insensitive"
+        );
         assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: 1. }").contains("is not a <number>"));
         assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: . }").contains("is not a <number>"));
         assert!(
