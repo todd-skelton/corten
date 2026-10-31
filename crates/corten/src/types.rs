@@ -413,12 +413,12 @@ export {};
 
     #[test]
     fn sync_rewrites_a_stale_file_and_fails_then_passes() {
-        let path = std::env::temp_dir().join(format!("corten-types-{}/app.d.ts", std::process::id()));
+        let dir = crate::tests::Scratch::new("types");
+        let path = dir.join("app.d.ts");
         let types = Types::new().add::<Card>();
         let stale = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| types.sync(&path)));
         assert!(stale.is_err(), "a missing file fails once");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), types.typescript());
         types.sync(&path);
-        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }

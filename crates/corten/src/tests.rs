@@ -16,6 +16,38 @@ fn demo(text: &str) -> impl Render + '_ {
     }
 }
 
+/// A directory of the test's own under the system's temp directory (`corten-{name}-{pid}`), empty
+/// when made and removed when dropped, a failing test's included, so a test run leaves nothing
+/// behind.
+pub(crate) struct Scratch(std::path::PathBuf);
+
+impl Scratch {
+    pub(crate) fn new(name: &str) -> Self {
+        let path = std::env::temp_dir().join(format!("corten-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        Scratch(path)
+    }
+}
+
+impl std::ops::Deref for Scratch {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::path::Path> for Scratch {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// Typed routes with no parameters, for the tests' areas and APIs: `paths! { Api = "/api" }`.
 macro_rules! paths {
     ($($name:ident = $path:tt),* $(,)?) => {$(

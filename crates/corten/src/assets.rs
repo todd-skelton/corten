@@ -839,35 +839,13 @@ fn content_type(path: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::Scratch;
     use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt;
 
-    /// A directory under the system's temp directory, removed when it is dropped (by a failing
-    /// test too), so a test run leaves nothing behind.
-    struct Scratch(PathBuf);
-
-    impl std::ops::Deref for Scratch {
-        type Target = Path;
-        fn deref(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl AsRef<Path> for Scratch {
-        fn as_ref(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
     fn dir(name: &str, files: &[(&str, &str)]) -> Scratch {
-        let root = Scratch(std::env::temp_dir().join(format!("corten-assets-{name}-{}", std::process::id())));
+        let root = Scratch::new(&format!("assets-{name}"));
         for (path, body) in files {
             let path = root.join(path);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
