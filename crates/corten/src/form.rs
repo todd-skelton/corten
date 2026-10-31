@@ -593,7 +593,7 @@ impl<P: Place, T> AttrValue for FieldName<T, P> {
 /// let f = Choice::FIELDS;
 /// let form = html! {
 ///     <form method="get" action={&at}>
-///         {keep_query(&at, html! { <input name={f.grade} value="10"> <button>"Price"</button> })}
+///         {keep_query(&at, &html! { <input name={f.grade} value="10"> <button>"Price"</button> })}
 ///     </form>
 /// };
 /// assert_eq!(
@@ -608,6 +608,11 @@ impl<P: Place, T> AttrValue for FieldName<T, P> {
 /// );
 /// ```
 ///
+/// Lent (`&html! { .. }`), the controls borrow what they use, so the rest of the page reads the
+/// same locals. A form that starts a new search (a new grade drops the page of results it was on)
+/// passes the route with those fields cleared, `&Choice { after: None, ..at.clone() }`; they are
+/// then not kept.
+///
 /// Every control the form sends goes inside, a named submit button included: one outside it is
 /// not seen, so its key would be sent twice. It takes a link (a typed route, or the `&dyn Href` a
 /// form several pages share is given), so a URL as text does not compile:
@@ -616,7 +621,7 @@ impl<P: Place, T> AttrValue for FieldName<T, P> {
 /// use corten::prelude::*;
 /// use corten::form::keep_query;
 ///
-/// let _ = html! { <form method="get">{keep_query(&"/slab-pricing?grade=9", html! { <input name="grade"> })}</form> };
+/// let _ = html! { <form method="get">{keep_query(&"/slab-pricing?grade=9", &html! { <input name="grade"> })}</form> };
 /// ```
 pub fn keep_query<'a, R: crate::Href + ?Sized, C: Render>(route: &'a R, controls: C) -> KeepQuery<'a, R, C> {
     KeepQuery { route, controls }
