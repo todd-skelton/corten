@@ -2377,7 +2377,7 @@ Corten is pre-1.0, so any minor version may change the API.
     still fails. One helper, `scripts/steady.mjs`, wraps each smoke's browser at launch. Test code
     only
     ([#497 Browser CI fails at random on net::ERR_NETWORK_CHANGED during a smoke navigation, blocking merges until a rerun](https://github.com/todd-skelton/corten/issues/497)).
-85. A release build of an app no longer warns that `Assets::module_tag` is never used: its only
+87. A release build of an app no longer warns that `Assets::module_tag` is never used: its only
     caller is the debug-build check that a page's handlers call a module the app serves, so it is
     built in debug builds only. Nothing a page renders changes
     ([#500 A release build warns that Assets::module_tag is never used: its only caller is a debug-build check](https://github.com/todd-skelton/corten/issues/500)).
