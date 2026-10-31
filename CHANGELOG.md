@@ -1217,20 +1217,20 @@ Corten is pre-1.0, so any minor version may change the API.
     response's `style-src`, so it paints with the sizes, needs no script or nonce and allows no
     style attribute; the runtime sets the values a patch, navigation or live fragment brings through
     the CSSOM. Both are `!important`, so a value from markup wins over the component's rules,
-    and an `!important` declaration of a property markup sets does not compile. `examples/seller-desk`'s statement draws each set's share as a bar. The minified
-    runtime grows by 454 bytes (27,428 to 27,882), 144 gzipped, 132 with brotli (a navigation to a
+    and an `!important` declaration of a property markup sets does not compile.
+    `examples/seller-desk`'s statement draws each set's share as a bar. The minified runtime grows by 454 bytes (27,428 to 27,882), 144 gzipped, 132 with brotli (a navigation to a
     page that sets no value searches its text, not the DOM; markup in a `<template>` gets its values
     too, so they move with it), and `corten/views`
     (loaded only by a page whose handlers use views) by 395 (2,852 to 3,247), 201 gzipped, 166 with
     brotli, for rows copied from a `<template>` (a copy looks for values only when the template's
     row has some, so a row with none costs one boolean test). Measured with callgrind (release
     build, in-process `oneshot`, the difference between 1,200 and 200 requests over 1,000, median of
-    three): a page that sets no value runs 23,256 instructions a request against 23,113 on its base
-    (base runs 23,110 to 23,126, branch 23,253 to 23,268), the empty collection around the render
-    and the look in the security headers; a page of four meters with two distinct values and one
-    that is not finite runs 42,688 (runs 42,688 to 42,699) against 23,345 (runs 23,344 to 23,346)
-    for the same markup without them, about 10,500 of it the SHA-256 of its 124-byte block (three
-    compressions)
+    three, against main at 5a7520bc): a page that sets no value runs 23,304 instructions a request
+    against 23,176 on main (main runs 23,164 to 23,178, branch 23,301 to 23,314), the empty
+    collection around the render and the look in the security headers; a page of four meters with
+    two distinct values and one that is not finite runs 42,736 (runs 42,736 to 42,739) against
+    23,393 (runs 23,393 to 23,394) for the same markup without them, about 10,500 of it the SHA-256
+    of its 124-byte block (three compressions)
     ([#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
