@@ -207,12 +207,8 @@ fn escaped(chars: &[char], at: usize) -> (char, usize) {
 /// Whether `value`, an `initial-value`, is one of `kind` (a type of `SYNTAXES`): a number with a
 /// unit the syntax allows (`0` alone for a length), and for a length one of `LENGTHS`, as an initial
 /// value must not depend on a font or a container. The browser ignores a rule whose initial
-/// value does not parse as its syntax, so markup would set a property nothing registered. A math
-/// function (`calc(2px * 3)`) is checked by `math_fits`.
+/// value does not parse as its syntax, so markup would set a property nothing registered.
 fn initial_fits(kind: &str, value: &str) -> bool {
-    if value.contains('(') {
-        return math_fits(kind, value);
-    }
     // The number: a sign, digits and a point, and an exponent only when digits follow its `e`
     // (`1em` is one em, `2e3` two thousand).
     // CSS's number token: digits, or digits around a point with at least one after it (`.5`, not `1.`).
@@ -266,110 +262,6 @@ const LENGTHS: &[&str] = &[
     "px", "cm", "mm", "q", "in", "pt", "pc", "vw", "vh", "vi", "vb", "vmin", "vmax", "svw", "svh", "svi", "svb", "svmin",
     "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax", "dvw", "dvh", "dvi", "dvb", "dvmin", "dvmax",
 ];
-
-/// Whether `value`, an `initial-value` that is a math function (`calc(1 + 2)`, `max(2px, 1mm)`),
-/// can be one of `kind`: it starts with a math function, its parentheses balance, and it has only
-/// math functions, their keywords and constants, operators and numbers, each with no unit or one
-/// `kind` allows (`LENGTHS` for a length, as for a plain value). Whether its types combine
-/// (`calc(1px * 2px)`) is left to the browser, as another syntax's `initial-value` is.
-fn math_fits(kind: &str, value: &str) -> bool {
-    const FUNCTIONS: &[&str] = &[
-        "calc", "min", "max", "clamp", "round", "mod", "rem", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "pow",
-        "sqrt", "hypot", "log", "exp", "abs", "sign",
-    ];
-    const WORDS: &[&str] = &["pi", "e", "infinity", "nan", "nearest", "up", "down", "to-zero"];
-    let units: &[&str] = match kind {
-        "Length" | "LengthPercentage" => LENGTHS,
-        "Angle" => &["deg", "grad", "rad", "turn"],
-        "Time" => &["s", "ms"],
-        _ => &[],
-    };
-    let b = value.as_bytes();
-    let word = |i: usize| {
-        let mut end = i;
-        while b.get(end).is_some_and(|c| c.is_ascii_alphabetic() || *c == b'-' || (end > i && c.is_ascii_digit())) {
-            end += 1;
-        }
-        end
-    };
-    let first = word(0);
-    if b.get(first) != Some(&b'(') || !FUNCTIONS.iter().any(|f| value[..first].eq_ignore_ascii_case(f)) {
-        return false;
-    }
-    let (mut i, mut depth) = (0, 0usize);
-    while i < b.len() {
-        match b[i] {
-            b' ' | b'\t' | b'\n' | b'+' | b'-' | b'*' | b'/' | b',' => i += 1,
-            b'(' => {
-                depth += 1;
-                i += 1;
-            }
-            b')' => {
-                let Some(less) = depth.checked_sub(1) else { return false };
-                depth = less;
-                i += 1;
-            }
-            c if c.is_ascii_digit() || c == b'.' => {
-                while b.get(i).is_some_and(u8::is_ascii_digit) {
-                    i += 1;
-                }
-                if b.get(i) == Some(&b'.') {
-                    if !b.get(i + 1).is_some_and(u8::is_ascii_digit) {
-                        return false;
-                    }
-                    i += 1;
-                    while b.get(i).is_some_and(u8::is_ascii_digit) {
-                        i += 1;
-                    }
-                }
-                if matches!(b.get(i), Some(b'e' | b'E')) {
-                    let sign = usize::from(matches!(b.get(i + 1), Some(b'+' | b'-')));
-                    if b.get(i + 1 + sign).is_some_and(u8::is_ascii_digit) {
-                        i += 1 + sign;
-                        while b.get(i).is_some_and(u8::is_ascii_digit) {
-                            i += 1;
-                        }
-                    }
-                }
-                // The unit: `%`, or an identifier, which runs on through `-` and digits (`2px-1px` is
-                // one token, not a subtraction).
-                let start = i;
-                if b.get(i) == Some(&b'%') {
-                    i += 1;
-                } else {
-                    while b.get(i).is_some_and(|c| c.is_ascii_alphabetic() || (i > start && (*c == b'-' || c.is_ascii_digit()))) {
-                        i += 1;
-                    }
-                }
-                let unit = &value[start..i];
-                let fits = unit.is_empty()
-                    || if unit == "%" {
-                        matches!(kind, "Percentage" | "LengthPercentage")
-                    } else {
-                        units.iter().any(|u| unit.eq_ignore_ascii_case(u))
-                    };
-                if !fits {
-                    return false;
-                }
-            }
-            c if c.is_ascii_alphabetic() => {
-                let end = word(i);
-                let name = &value[i..end];
-                let known = if b.get(end) == Some(&b'(') {
-                    FUNCTIONS.iter().any(|f| name.eq_ignore_ascii_case(f))
-                } else {
-                    WORDS.iter().any(|w| name.eq_ignore_ascii_case(w))
-                };
-                if !known {
-                    return false;
-                }
-                i = end;
-            }
-            _ => return false,
-        }
-    }
-    depth == 0
-}
 
 /// `css` with each of `names` (a custom property its `@property` rules register, `fill`)
 /// written `--{prefix}__fill` wherever it is a whole name outside strings: the property is the
@@ -652,6 +544,19 @@ impl Scoper<'_> {
             return Err(self.error(at, format!("@property --{name} needs an initial-value; the browser ignores it without one")));
         }
         let kind = SYNTAXES.iter().find(|(written, _)| *written == syntax).map(|(_, kind)| *kind);
+        if let (Some(_), Some(value)) = (kind, &initial) {
+            // A math function's grammar and types are the browser's, and it drops the rule when one
+            // does not fit (`calc(1px 2px)`, `calc(1px * 2px)`); checking them is a CSS math parser
+            // per syntax, so the initial value is written as one value, which the macro can check.
+            if value.contains('(') {
+                return Err(self.error(
+                    at,
+                    format!(
+                        "@property --{name}: initial-value {value}: write one value, such as 6px for calc(2px * 3), which can be checked; the browser drops the rule when a math function does not fit its syntax"
+                    ),
+                ));
+            }
+        }
         if let (Some(kind), Some(value)) = (kind, &initial) {
             if !initial_fits(kind, value) {
                 return Err(self.error(
@@ -1370,46 +1275,28 @@ mod tests {
         assert!(
             error("@property --a { syntax: '<length>'; inherits: false; initial-value: 1.5em }").contains("is not a <length>")
         );
-        // A math function, its units checked as a plain value's are; and the viewport's units, which
-        // CSS cannot change (each case as Chromium, Firefox and WebKit read it).
-        for (syntax, good) in [
-            ("<number>", "calc(1 + 2)"),
-            ("<number>", "CALC(1)"),
-            ("<length>", "calc(2px * 3)"),
-            ("<length>", "max(2px, 1mm)"),
-            ("<length>", "round(up, 3px, 2px)"),
-            ("<length>", "calc(-infinity * 1px)"),
-            ("<length>", "2vw"),
-            ("<length>", "calc(1dvh)"),
-            ("<percentage>", "clamp(0%, 50%, 100%)"),
-            ("<length-percentage>", "calc(10px + 5%)"),
-            ("<integer>", "calc(1.5)"),
-            ("<angle>", "calc(pi * 1rad)"),
-            ("<time>", "calc(1s + 5ms)"),
-        ] {
+        // The viewport's units, which CSS cannot change (as Chromium, Firefox and WebKit read them).
+        for good in ["2vw", "1dvh", "3svmin"] {
             assert!(
-                scope(&format!("@property --a {{ syntax: '{syntax}'; inherits: false; initial-value: {good} }}"), "m").is_ok(),
-                "{syntax} {good}"
+                scope(&format!("@property --a {{ syntax: '<length>'; inherits: false; initial-value: {good} }}"), "m").is_ok(),
+                "{good}"
             );
         }
-        for (syntax, bad) in [
-            ("<length>", "calc(1em)"),
-            ("<length>", "calc(2cqw)"),
-            ("<length>", "calc(2px-1px)"),
-            ("<number>", "calc(1 + 2))"),
-            ("<number>", "calc(1px)"),
-            ("<number>", "calc(1 + var(--b))"),
-            ("<percentage>", "calc(5px)"),
-            ("<length>", "2cqw"),
-            ("<number>", "url(x)"),
-        ] {
+        assert!(error("@property --a { syntax: '<length>'; inherits: false; initial-value: 2cqw }").contains("is not a <length>"));
+        // A math function is the browser's to check (`calc(1px 2px)` drops the rule), so a number
+        // syntax's initial value is written as one value.
+        for bad in ["calc(2px * 3)", "calc()", "calc(1px 2px)", "min(1px, 2px)", "CALC(1px)", "calc(1 + 2"] {
             assert!(
-                error(&format!("@property --a {{ syntax: '{syntax}'; inherits: false; initial-value: {bad} }}"))
-                    .contains("is not a"),
-                "{syntax} {bad}"
+                scope(&format!("@property --a {{ syntax: '<length>'; inherits: false; initial-value: {bad} }}"), "m").is_err(),
+                "{bad}"
             );
         }
-        assert!(scope("@property --a { syntax: '<number>'; inherits: false; initial-value: calc(1 + 2 }", "m").is_err());
+        assert!(error("@property --a { syntax: '<length>'; inherits: false; initial-value: calc(2px * 3) }")
+            .contains("write one value"));
+        assert!(
+            scope("@property --a { syntax: '<color>'; inherits: false; initial-value: rgb(0 0 0) }", "m").is_ok(),
+            "another syntax's initial value is the browser's"
+        );
         for ok in [
             "'<length>'; initial-value: 0",
             "'<length>'; initial-value: 1.5pt",

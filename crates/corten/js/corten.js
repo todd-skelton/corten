@@ -1109,7 +1109,8 @@ async function swapPage(html, signal, stay, notice = null) {
   serve(content);
   const [x, y] = [scrollX, scrollY];
   main.replaceChildren(content);
-  setVars(main);
+  // A page that sets no value skips the walk: a search of the text costs less than one of the DOM.
+  if (html.includes("data-vars")) setVars(main);
   scrolledIn.clear();
   view?.();
   if (stay) scrollTo(x, y);
