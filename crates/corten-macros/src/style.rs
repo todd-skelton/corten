@@ -56,8 +56,8 @@ pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
 
 /// Whether `syntax` (the text of an `@property`'s `syntax`, its escapes decoded) is one the
 /// browser reads, by the algorithm of CSS Properties and Values API Level 1 (5.4, consume a syntax
-/// definition): `*`, or components joined by `|`, each a supported data type name (`<length>`,
-/// no `<string>`) or a keyword, either followed by `+` (a list) or `#` (a comma list), but
+/// definition): `*`, or components joined by `|`, each a supported data type name (`<length>`)
+/// or a keyword, either followed by `+` (a list) or `#` (a comma list), but
 /// `<transform-list>`, which is a list already. A keyword is an identifier that starts with a
 /// letter, `_`, a non-ASCII character or an escape (not `-`) and is not a CSS-wide keyword or
 /// `default`. The browser ignores a rule with another syntax.
@@ -73,6 +73,7 @@ fn syntax_valid(syntax: &str) -> bool {
         "number",
         "percentage",
         "resolution",
+        "string",
         "time",
         "transform-function",
         "transform-list",
@@ -1309,12 +1310,12 @@ mod tests {
         for bad in [
             "''",
             "'<not-a-type>'",
+            "'<text>'",
             "'<length'",
             "'<transform-list>+'",
             "'inherit'",
             "'<length> |'",
             "'- | <length>'",
-            "'<string>'",
             // A keyword starts like an identifier but not with `-` (Chromium drops `-foo` and `--foo`).
             "'--foo | compact'",
             "'-foo | compact'",
@@ -1340,6 +1341,7 @@ mod tests {
             "'\\\\61 b | compact'",
             "'\\61 b | compact'",
             "'\\3c color>'",
+            "'<string>+'",
             "'x\\\\2d y'",
             "' auto\t|  <length> '",
         ] {
