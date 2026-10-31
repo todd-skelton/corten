@@ -6,6 +6,7 @@ use crate::option;
 
 const FILES: &[(&str, &str)] = &[
     ("Cargo.toml", include_str!("../template/Cargo.toml.txt")),
+    ("src/lib.rs", include_str!("../template/src/lib.rs")),
     ("src/main.rs", include_str!("../template/src/main.rs")),
     ("src/views.rs", include_str!("../template/src/views.rs")),
     ("static/style.css", include_str!("../template/static/style.css")),
@@ -39,7 +40,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
         return Err(format!("{} exists and is not empty", dir.display()));
     }
     for (path, text) in FILES {
-        let text = text.replace("{{name}}", &name).replace("{{corten}}", &dependency);
+        let text =
+            text.replace("{{name}}", &name).replace("{{crate}}", &name.replace('-', "_")).replace("{{corten}}", &dependency);
         write(&dir.join(path), &text)?;
     }
     println!("Created {name} in {}.\n\n  cd {}\n  corten dev\n\nthen open http://localhost:3000.", dir.display(), dir.display());

@@ -347,20 +347,24 @@ Then pick one of two ways to keep tests from leaving rows behind:
 2. **A transaction per test, rolled back**: `let mut tx = pool.begin().await?;`, the code under
    test given `&mut tx` (its own transactions become savepoints), the result read on `tx`, and
    `tx` dropped or rolled back at the end. This works against a shared database (a dev copy) but
-   cannot test code that commits on its own connection.
+   cannot test code that commits on its own connection, and tests that write the same rows wait
+   on each other's locks under cargo's parallel threads, or deadlock (Postgres `40P01`). Tests
+   that write the same rows take one lock first, `SELECT pg_advisory_xact_lock(hashtext('stock'))`
+   on `tx`, released with the transaction.
 
 `corten check` runs `cargo test` alone, so a test that needs a database the machine may not have is
 `#[ignore = "needs DATABASE_URL"]`, and the app's CI runs `cargo test -- --ignored` with a
 database. Such a test reads `DATABASE_URL` and fails with that name when it is missing rather than
 panicking somewhere later.
 
-Code outside `src/main.rs` (a test target of its own, `tests/db.rs`, an example, a second
-binary) can reach the app only through a library: `corten new` writes `src/main.rs` alone, so move
-`app()` and the modules into `src/lib.rs` and keep `main` calling it. Then `cargo test --test db
--- --ignored` runs the database tests and nothing else. Something that calls a live service and
-writes files (a fixture recorder) is not a test: make it an example (`examples/record_fixtures.rs`,
-run with `cargo run --example record_fixtures`) or a binary, so no `cargo test` run,
-`--include-ignored` or not, starts it.
+The app is a library (`corten new` writes the routes, handlers and `app()` in `src/lib.rs`, and a
+`main.rs` that only serves it), so a test target of its own, `tests/db.rs`, an example and a
+second binary all reach the app's code. `cargo test --test db -- --ignored` runs the database tests
+and nothing else. Something that calls a live service and writes files (a fixture recorder) is not
+a test: make it an example (`examples/record_fixtures.rs`, run with `cargo run --example
+record_fixtures`) or a binary, so no `cargo test` run, `--include-ignored` or not, starts it. An
+app made before `corten new` wrote `src/lib.rs` (its modules declared in `main.rs`) moves them and
+`app()` there; a module declared in both files would be compiled twice.
 
 ## Your own listeners
 
