@@ -902,15 +902,29 @@ async function run(browser) {
           /** @type {HTMLInputElement} */ (document.querySelector("#briefing [name=email]")).value = "ada@example.com";
           /** @type {HTMLButtonElement} */ (document.querySelector("#briefing button")).click();
         });
+      await page.evaluate(() => {
+        (/** @type {any} */ (window)).__notices = 0;
+        document.addEventListener("corten:notice", () => (/** @type {any} */ (window)).__notices++);
+      });
       await thank();
       const first = await back();
       check("a redirect to a place keeps its #id and scrolls to it", first && loads === 1, `${await page.evaluate(() => [location.href, scrollY])} loads ${loads}`);
+      // The write's notice (`req.redirect_with_notice`): the page draws it, so the runtime does
+      // not hand it on too, the address carries nothing for it, and it is gone once read.
+      const notices = ["the page it redirected to says what the write did", "a notice the page drew is not dispatched as well", "the notice is said once"];
+      if (engine !== "webkit") {
+        const said = await page.evaluate(() => document.querySelector("#briefing [role=status]")?.textContent ?? "");
+        check(notices[0], said === "You're on the list for the morning briefing." && new URL(page.url()).search === "", `${said} ${page.url()}`);
+        check(notices[1], (await page.evaluate(() => (/** @type {any} */ (window)).__notices)) === 0);
+      } else for (const name of notices) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
       await page.evaluate(() => scrollTo(0, 0));
       await thank();
       const second = await back();
       check("the same place again fetches the page again", second && loads === 2, `loads ${loads}`);
       check("both kept the document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
       page.off("request", onNews);
+      // After the loads are counted: the page that drew the notice removed it.
+      if (engine !== "webkit") check("the notice is said once", !(await page.evaluate(async () => (await (await fetch("/news")).text()).includes("on the list"))));
     }
     if (size) await page.setViewportSize(size);
     // Back over the four entries this added (checked, unchecked, the link, the place) to the

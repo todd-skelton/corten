@@ -1,7 +1,11 @@
 /* The app's own stylesheet: element defaults and the shell. Each component's styles are next to
-   it (src/views/*.css) and the tokens are tokens.json; Corten serves both as components.css. */
+   it (src/views/*.css) and the tokens are tokens/*.tokens.json; Corten serves both as
+   components.css. Form controls follow the theme the tokens apply: the system's when the page
+   chose none, else the chosen one. */
 :root { color-scheme: light; }
-:root:not([data-theme="light"]) { color-scheme: light dark; }
+:root:not([data-theme]) { color-scheme: light dark; }
+[data-theme="dark"] { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }
 :root { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--color-ink); background: var(--color-bg); }
 * { box-sizing: border-box; }
 body { margin: 0; }

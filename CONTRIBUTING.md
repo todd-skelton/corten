@@ -63,7 +63,7 @@ is shared. When you remove a checkout, remove its two volumes too.
 ```powershell
 $checkout = Split-Path -Leaf $PWD
 docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v "corten-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo fmt --all --check && cargo run -q -p corten-cli -- fmt --check crates examples bench && cargo clippy --workspace --all-features --all-targets -- -D warnings && cargo test --workspace --all-features"
-docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry --tmpfs /usr/local/cargo/registry/src:exec -v "corten-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo test -p corten --no-default-features && cargo build -q -p corten-cli && /target/debug/corten new /tmp/app --corten-path /src/crates/corten && cd /tmp/app && /target/debug/corten check && cd /src && cargo publish --workspace --dry-run --locked --allow-dirty"
+docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry --tmpfs /usr/local/cargo/registry/src:exec -v "corten-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo test -p corten --no-default-features && cargo build -q -p corten-cli && /target/debug/corten new /tmp/app --corten-path /src/crates/corten && cd /tmp/app && /target/debug/corten check && cd /src && CARGO_TARGET_DIR=/tmp/publish cargo publish --workspace --dry-run --locked --allow-dirty"
 docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v "corten-msrv-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -w /src rust:1.88-bookworm cargo check --locked --workspace --all-features --all-targets
 npm run check
 docker build -f examples/watchlist/Dockerfile -t corten-watchlist .
@@ -109,7 +109,9 @@ that serves forever `rust,no_run`. The second ends by packaging every published 
 building each from its `.crate` file, as crates.io will (`cargo publish --dry-run`). It unpacks
 sources into a throwaway `--tmpfs` over the registry's `src`: the dry run unpacks Corten's own
 crates there too, and since their version never changes, a shared copy would be the first one
-any checkout unpacked. The third
+any checkout unpacked. It builds them in a target directory of its own for the same reason:
+cargo treats a registry crate as unchanged as long as its version stays the same, so the
+checkout's target volume would hand the dry run an earlier run's build of `corten`. The third
 builds on the oldest supported Rust, `rust-version` in the root `Cargo.toml`. The `CI` workflow
 (`.github/workflows/ci.yml`) runs the same checks on every pull request and push to `main`.
 A browser smoke that goes five minutes without finishing a check stops itself (`scripts/stall.mjs`),

@@ -1,0 +1,7 @@
+{
+  "color": {
+    "$type": "number",
+    "font-size": { "$value": 1 },
+    "FONT-SIZE": { "$value": 2 }
+  }
+}

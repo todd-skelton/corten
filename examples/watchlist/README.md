@@ -36,7 +36,7 @@ Each route, the file it is in and the piece of Corten it shows are in the table 
 |---|---|
 | The routes, the app and its error page | [`src/app.rs`](src/app.rs) |
 | The document around every page, the viewer in the header | [`src/layout.rs`](src/layout.rs) |
-| Design tokens and the utility classes made from them | [`tokens.json`](tokens.json), [`src/theme.rs`](src/theme.rs), [`static/style.css`](static/style.css) |
+| Design tokens (W3C format) and the utility classes made from them | [`tokens/`](tokens/base.tokens.json), [`src/theme.rs`](src/theme.rs), [`static/style.css`](static/style.css) |
 | Live prices: the simulated market, the feed, and the component whose script follows it | [`src/market.rs`](src/market.rs), [`src/home.rs`](src/home.rs), [`src/live_prices.js`](src/live_prices.js) |
 | Who the browser is (a cookie), and the lists kept for it | [`src/visitor.rs`](src/visitor.rs), [`src/lists.rs`](src/lists.rs) |
 | Text, in one locale (`messages!`) | [`locales/`](locales) |

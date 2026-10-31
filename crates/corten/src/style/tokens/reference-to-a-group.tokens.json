@@ -1,0 +1,7 @@
+{
+  "brand": {
+    "$type": "number",
+    "ratio": { "$root": { "$value": 1.5 }, "tight": { "$value": 1.2 } },
+    "line": { "$value": "{brand.ratio}" }
+  }
+}

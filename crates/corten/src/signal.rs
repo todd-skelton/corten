@@ -81,6 +81,9 @@ struct Inner {
     callers: AtomicU64,
     /// The app's error page is answering it.
     error_page: AtomicBool,
+    /// The page rendered the request's notice ([`crate::Req::notice`]), so a navigation's answer
+    /// does not send it to the runtime as well.
+    notice_drawn: AtomicBool,
     /// The first callers marked, so the error page, which looks them up again, does not mark one
     /// twice (the key mixes them by XOR, so a second mark would take it out).
     marked: [AtomicU64; 4],
@@ -249,6 +252,15 @@ impl Signal {
     /// around `<main>` (their time zone): private, but not part of the page's key.
     pub(crate) fn mark_personal(&self) {
         self.0.personal.store(true, Ordering::Relaxed);
+    }
+
+    /// The page drew the request's notice.
+    pub(crate) fn mark_notice_drawn(&self) {
+        self.0.notice_drawn.store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn notice_drawn(&self) -> bool {
+        self.0.notice_drawn.load(Ordering::Relaxed)
     }
 
     /// The app's error page is answering the request.

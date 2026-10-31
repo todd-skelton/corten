@@ -1,0 +1,8 @@
+{
+  "space": { "$type": "number", "1": { "$value": 4 } },
+  "$extensions": {
+    "run.corten": {
+      "breakpoints": { "lg": { "value": 64, "unit": "rem" }, "md": { "value": 48, "unit": "rem" } }
+    }
+  }
+}
