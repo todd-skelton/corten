@@ -942,7 +942,16 @@ impl Cursor {
                         self.next();
                         match self.value(false)? {
                             (Some(text), _) => attrs.push(Attr::Static(name, text)),
-                            (None, expr) => attrs.push(Attr::Expr(name, expr)),
+                            (None, expr) => {
+                                // One `data-vars` per element: a browser keeps the first of two.
+                                if name == "style" && attrs.iter().any(|a| matches!(a, Attr::Expr(n, _) if n == "style")) {
+                                    return err(
+                                        span,
+                                        "one style={..} per element: give it a tuple, style={(FILL.pct(42.0), GAP.px(4.0))}",
+                                    );
+                                }
+                                attrs.push(Attr::Expr(name, expr))
+                            }
                         }
                     } else {
                         attrs.push(Attr::Bare(name));

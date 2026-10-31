@@ -298,6 +298,17 @@
 //! }
 //! ```
 //!
+//! One `style={..}` per element (a browser keeps the first of two attributes); a tuple sets several:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn Meter(used: f64) -> impl Render {
+//!     html! { <div class={Meter} style={FILL.pct(used)} style={NUDGE.px(2.0)}></div> }
+//! }
+//! ```
+//!
 //! `style` is checked only as written in lowercase, so `STYLE` does not compile either:
 //!
 //! ```compile_fail

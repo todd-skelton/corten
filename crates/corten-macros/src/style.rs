@@ -55,8 +55,8 @@ pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
 }
 
 /// Whether `syntax` (the text of an `@property`'s `syntax`) is one the browser reads: `*`, or
-/// components joined by `|`, each a data type (`<length>`) or a keyword, a data type followed by
-/// `+` (a list) or `#` (a comma list), but `<transform-list>`, which is a list already
+/// components joined by `|`, each a data type (`<length>`) or a keyword, either followed by `+`
+/// (a list) or `#` (a comma list), but `<transform-list>`, which is a list already
 /// (CSS Properties and Values API Level 1, its supported names: no `<string>`). A rule with another is ignored.
 fn syntax_valid(syntax: &str) -> bool {
     const TYPES: &[&str] = &[
@@ -88,7 +88,9 @@ fn syntax_valid(syntax: &str) -> bool {
             let Some(name) = name.strip_suffix('>') else { return false };
             TYPES.contains(&name) && !(multiplier && name == "transform-list")
         } else {
-            // A keyword: an identifier, not one of the CSS-wide keywords.
+            // A keyword: an identifier, not one of the CSS-wide keywords, which may take a
+            // multiplier too (`open+`).
+            let component = component.strip_suffix(['+', '#']).unwrap_or(component);
             let mut chars = component.chars();
             // An identifier starts with a letter or `_`, or `-` and then one of those or `-`.
             let starts = match chars.next() {
@@ -1088,7 +1090,7 @@ mod tests {
                 "{bad}"
             );
         }
-        for good in ["'*'", "'<color>+'", "'<length>#'", "'auto | <length>'", "'small | medium'"] {
+        for good in ["'*'", "'<color>+'", "'<length>#'", "'auto | <length>'", "'small | medium'", "'open+'"] {
             assert!(
                 scope(&format!("@property --a {{ syntax: {good}; inherits: false; initial-value: x }}"), "m").is_ok(),
                 "{good}"
