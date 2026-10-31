@@ -54,6 +54,53 @@ pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
     Ok(Sheet { css, classes: s.classes, properties: s.properties })
 }
 
+/// Whether `syntax` (the text of an `@property`'s `syntax`) is one the browser reads: `*`, or
+/// components joined by `|`, each a data type (`<length>`) or a keyword, a data type followed by
+/// `+` (a list) or `#` (a comma list), but `<transform-list>`, which is a list already
+/// (CSS Properties and Values API, the syntax string). A rule with another is ignored.
+fn syntax_valid(syntax: &str) -> bool {
+    const TYPES: &[&str] = &[
+        "angle",
+        "color",
+        "custom-ident",
+        "image",
+        "integer",
+        "length",
+        "length-percentage",
+        "number",
+        "percentage",
+        "resolution",
+        "string",
+        "time",
+        "transform-function",
+        "transform-list",
+        "url",
+    ];
+    if syntax.trim() == "*" {
+        return true;
+    }
+    syntax.split('|').all(|component| {
+        let component = component.trim();
+        if let Some(rest) = component.strip_prefix('<') {
+            let (name, multiplier) = match rest.strip_suffix(['+', '#']) {
+                Some(name) => (name, true),
+                None => (rest, false),
+            };
+            let Some(name) = name.strip_suffix('>') else { return false };
+            TYPES.contains(&name) && !(multiplier && name == "transform-list")
+        } else {
+            // A keyword: an identifier, not one of the CSS-wide keywords.
+            let mut chars = component.chars();
+            let starts = chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '-');
+            starts
+                && component.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                && !["initial", "inherit", "unset", "revert", "revert-layer", "default"]
+                    .iter()
+                    .any(|k| component.eq_ignore_ascii_case(k))
+        }
+    })
+}
+
 /// Whether `value`, an `initial-value`, is one of `kind` (a type of `SYNTAXES`): a number with a
 /// unit the syntax allows (`0` alone for a length), and for a length an absolute one, as an initial
 /// value must not depend on a font or the viewport. The browser ignores a rule whose initial
@@ -336,6 +383,11 @@ impl Scoper<'_> {
                 }
                 Some(("initial-value", value)) => initial = Some(value.trim().to_string()),
                 _ => {}
+            }
+        }
+        if let Some(written) = &syntax {
+            if !syntax_valid(written) {
+                return Err(self.error(at, format!("@property --{name}: syntax: \"{written}\" is not a syntax the browser reads (\"*\", \"<length>\", \"<color>+\", \"auto | <length>\")")));
             }
         }
         let Some(syntax) = syntax else {
@@ -1006,6 +1058,19 @@ mod tests {
         );
         assert!(error("@property --a { syntax: '<angle>'; inherits: false; initial-value: 0 }").contains("is not a <angle>"));
         assert!(error("@property --a { syntax: <number>; inherits: false; initial-value: 0 }").contains("syntax is a string"));
+        for bad in ["''", "'<not-a-type>'", "'<length'", "'<transform-list>+'", "'inherit'", "'<length> |'"] {
+            assert!(
+                error(&format!("@property --a {{ syntax: {bad}; inherits: false; initial-value: 0 }}"))
+                    .contains("is not a syntax"),
+                "{bad}"
+            );
+        }
+        for good in ["'*'", "'<color>+'", "'<length>#'", "'auto | <length>'", "'small | medium'"] {
+            assert!(
+                scope(&format!("@property --a {{ syntax: {good}; inherits: false; initial-value: x }}"), "m").is_ok(),
+                "{good}"
+            );
+        }
         assert_eq!(
             scope("@PROPERTY --x { SYNTAX: \"<number>\"; INHERITS: false; INITIAL-VALUE: 0 }", "m").unwrap().properties,
             [("x".to_string(), Some("Number"))],
