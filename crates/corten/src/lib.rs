@@ -578,7 +578,7 @@ where
 ///     Ok(text.parse::<u32>()?)
 /// }
 ///
-/// fn parse(text: &str, field: FieldName, errors: &mut Errors) -> Result<u32, ()> {
+/// fn parse(text: &str, field: FieldName<u32>, errors: &mut Errors) -> Result<u32, ()> {
 ///     text.parse().map_err(|_| errors.add(field, "Enter a whole number."))
 /// }
 /// ```

@@ -1095,7 +1095,6 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 146. A route costly to draw says `#[route("/reports/suggested", get = suggested, prefetch = false)]` (`Route::PREFETCH`), and every link to it, `href={..}` with the route or a `&dyn Href` holding it, is written with `data-no-prefetch`, so hovering it starts no work and only a click does; the route says it once instead of each link. The runtime now aborts a prefetch it drops (the 8-newest limit, a stale entry, a form post, a visit left before the prefetched answer is used), so the server sees the client go instead of drawing the page to the end, and the views guide describes prefetch, `data-no-prefetch` and `data-reload`. The minified runtime grows by 83 bytes (26,536 to 26,619), 29 gzipped (9,642 to 9,671), 33 with brotli (8,709 to 8,742). The item page's render runs 0.11% more instructions (median of 3, callgrind, release build: 35,623,327,994 against 35,584,847,328 on its base), the check each link makes of its route's `PREFETCH`.
     ([#421 Hover prefetch starts a costly GET page's work; the data-no-prefetch opt-out is undocumented, per link, and a discarded prefetch never aborts](https://github.com/todd-skelton/corten/issues/421)).
-
 147. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
     answer (a carrier, a payment provider, another app), answered by `req.invalid` and
     `req.invalid_with` with 502 in every mode: the form drawn again with the message, the page
@@ -1108,6 +1107,28 @@ Corten is pre-1.0, so any minor version may change the API.
     not as a refusal of a stale state. Still a closed set: no other 5xx, and no `StatusCode`. An
     app's exhaustive `match` on `Refusal` or `ToolError` gains an arm
     ([#480 A post refused because a service it calls failed has no Refusal (502/503), so it cannot use req.invalid_with and a JSON client gets the HTML page](https://github.com/todd-skelton/corten/issues/480)).
+148. `corten::form::keep_query(&at, html! { controls })`: a GET form's controls, then the
+    rest of a typed route's query as hidden inputs, for a form that changes some of its fields (a
+    GET form sends only its own controls and drops its action's query). Every key of the route's
+    query that no control names (a field, a `#[route(query)]` set's key, a `#[route(prefix)]`
+    entry) is kept, written as the route's links write it, so there is no list of names: a key is
+    neither dropped nor sent twice, and a field the route gains is kept by every such form, where a
+    hand-written list silently dropped it. It costs a form about 3.5 µs where hidden inputs
+    written by hand cost about 0.5 µs (release build, 200,000 renders, 3 rounds: it writes the
+    route's address again and reads it back); nothing else renders differently
+    ([#439 A GET form that changes some of a typed route's query fields must write every other field as a hidden input by hand, and a missed or doubled one compiles](https://github.com/todd-skelton/corten/issues/439)).
+149. corten-ui's `ChoiceGroup` and `ShownFor`: one choice (a radio group) whose value shows and
+    hides parts anywhere on the page, the figures and, below a chart, the list worded from them.
+    Both take a `Chosen { id, value }`, the choice's `#[derive(Id)]` id and the value the handler
+    read, so a part's values are the choice's type (another enum's word does not compile) and its
+    group cannot be text. The server checks the value and draws every part for another `hidden`;
+    without JavaScript each option is a typed link to the page with that choice; with it, the arrow
+    keys and Space choose in place, the address follows in the keys the options differ in (another
+    control's, a tab's, stay), and every part, also one a patch adds later, follows the choice. No
+    stylesheet repeats the server's values. `TabGroup`'s address now follows the same way, in the
+    keys its tabs differ in, so selecting a tab keeps a choice's key (it took the tab link's whole
+    query)
+    ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1762,6 +1783,28 @@ Corten is pre-1.0, so any minor version may change the API.
     generated declaration and type the value with it, alone
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
+93. Breaking: a form's `FieldName` carries the type its control sends, `FieldName<T = Untyped, P = Root>`
+    (`condition: Option<Condition>` is a `FieldName<Condition>`, an `Option` and a `Vec` taken off;
+    `&'a str` and `Cow<'a, str>` are `String`), so a control given another field's name does not
+    compile: corten-ui's `Picker::new` takes only a field that reads its choices' type,
+    `Number::new` only a field that reads a number (`Numeric`), `RequiredWhen` only values of its
+    control's type (`ValueOf`: the field's own type, or text for a text field or a checkbox; now
+    any `Display`, so a number field's values are numbers), and `SubmitKey::field` and
+    `SubmitKey::again` only a `SubmitKey` field. `name={..}`, `Errors` and `Within` take a name
+    of any type as before, and a name is still the size of a `&str`, so nothing renders
+    differently: the item page's render ran 35,591,033,717 instructions against 35,611,790,177 on
+    its base (median of 3, callgrind, release build), within the typed build's own range of 22.5
+    million, so no difference. To migrate:
+    1. An app's own helper typed `FieldName` (now `FieldName<Untyped>`) takes a type parameter,
+       `fn hint<T>(f: FieldName<T>)`, and one typed `FieldName<Group>` for a group's names is now
+       `FieldName<T, Group>`: the place moved to the second parameter.
+    2. Names of fields of different types are different types: a list of them, or a comparison of
+       two, takes `.untyped()` (`[f.email.untyped(), f.price.untyped()]`).
+    3. A typed control takes no field whose type it cannot see through: one using its struct's
+       generics or a lifetime other than borrowed text, a `Box`, a type alias or a path through
+       `$crate` is `Untyped` or its own type, so a `Picker` or `NumberField` on it is written by
+       hand or the field's type spelled out
+    ([#358 A form's FieldName carries no type, so a Picker<Condition> can name another field](https://github.com/todd-skelton/corten/issues/358)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

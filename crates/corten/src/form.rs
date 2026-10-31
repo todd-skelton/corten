@@ -411,22 +411,89 @@ deref!(Form);
 /// prints it (`name={f.email}`) and [`Errors`] is keyed by it, so renaming or misspelling a field
 /// of the form struct is a compile error in both.
 ///
+/// `T` is the value the field's control sends: the field's type, without an `Option` or a `Vec`
+/// around it (`condition: Option<Condition>` is a `FieldName<Condition>`), so a control that takes
+/// a typed name (a picker of conditions, a submit key) cannot be given another field's. Text
+/// borrowed from the request (`&'a str`, `Cow<'a, str>`) is a `String`'s. A field whose type uses
+/// the struct's own generics or another lifetime is [`Untyped`]; [`FieldName::untyped`] drops the
+/// type of any name, for a list of several fields' names.
+///
 /// `P` is where the field is: the form itself ([`Root`], the default), a group
 /// (`f.ship_to.street`, posted `ship_to.street`) or a row of [`Rows`]
 /// (`f.domains.at(&Domain::SellerPortal).max_concurrent`, posted
 /// `domains[seller-portal].max_concurrent`). A form's own field is its name alone, so it costs
 /// what a `&'static str` does.
-#[derive(Clone, Copy)]
-pub struct FieldName<P = Root> {
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
+/// enum Condition { Mint, Played }
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Sell { condition: Option<Condition>, #[serde(default)] tags: Vec<String> }
+///
+/// let condition: FieldName<Condition> = Sell::FIELDS.condition;
+/// let tags: FieldName<String> = Sell::FIELDS.tags;
+/// assert_eq!((condition.as_str(), tags.as_str()), ("condition", "tags"));
+/// assert_eq!(std::mem::size_of_val(&condition), std::mem::size_of::<&str>());
+/// ```
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Search<'a> {
+///     q: &'a str,
+///     #[serde(borrow)]
+///     note: std::borrow::Cow<'a, str>,
+///     sizes: Option<Vec<u8>>,
+///     #[serde(default)]
+///     picks: Vec<Option<u8>>,
+/// }
+///
+/// let f = Search::FIELDS;
+/// let _: (FieldName<String>, FieldName<String>) = (f.q, f.note);
+/// let _: (FieldName<u8>, FieldName<u8>) = (f.sizes, f.picks);
+/// let names = [f.q.untyped(), f.sizes.untyped()];
+/// assert_eq!(names.map(|n| n.as_str()), ["q", "sizes"]);
+/// ```
+///
+/// A name of one field's type is not another's:
+///
+/// ```compile_fail,E0308
+/// use corten::prelude::*;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Sell { price: u32, note: String }
+///
+/// let _: FieldName<u32> = Sell::FIELDS.note;
+/// ```
+pub struct FieldName<T = Untyped, P = Root> {
     at: P,
     name: &'static str,
+    value: std::marker::PhantomData<fn() -> T>,
 }
 
-impl FieldName<Root> {
+/// The value type of a [`FieldName`] that names none: a hand-written name, or a field whose type
+/// uses its struct's generics.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Untyped {}
+
+impl<P: Copy, T> Clone for FieldName<T, P> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P: Copy, T> Copy for FieldName<T, P> {}
+
+impl<T> FieldName<T, Root> {
     /// Used by the code `#[derive(Fields)]` generates.
     #[doc(hidden)]
     pub const fn __new(name: &'static str) -> Self {
-        FieldName { at: Root, name }
+        FieldName { at: Root, name, value: std::marker::PhantomData }
     }
 
     /// The name as posted: `"email"`. A field of a group or a row is written, not stored: print
@@ -436,65 +503,162 @@ impl FieldName<Root> {
     }
 }
 
-impl<P: Place> FieldName<P> {
+impl<P: Place, T> FieldName<T, P> {
     /// Used by the code `#[derive(Fields)]` generates.
     #[doc(hidden)]
     pub const fn __at(at: P, name: &'static str) -> Self {
-        FieldName { at, name }
+        FieldName { at, name, value: std::marker::PhantomData }
+    }
+
+    /// The same name without its value type: for the app's own helper that keeps names of several
+    /// types in one list (`[f.email.untyped(), f.price.untyped()]`), or a control of its own that
+    /// sends text whatever the field reads. A typed control does not take it back.
+    pub const fn untyped(self) -> FieldName<Untyped, P> {
+        FieldName { at: self.at, name: self.name, value: std::marker::PhantomData }
     }
 }
 
 /// Whether this name is the field `text` names, as a form posts it: `f.email == "email"`.
-impl<P: Place> PartialEq<str> for FieldName<P> {
+impl<P: Place, T> PartialEq<str> for FieldName<T, P> {
     fn eq(&self, text: &str) -> bool {
         self.at.is_text(self.name, text)
     }
 }
 
-impl<P: Place> PartialEq<&str> for FieldName<P> {
+impl<P: Place, T> PartialEq<&str> for FieldName<T, P> {
     fn eq(&self, text: &&str) -> bool {
         self.at.is_text(self.name, text)
     }
 }
 
-impl<P: Place> PartialEq for FieldName<P> {
+impl<P: Place, T> PartialEq for FieldName<T, P> {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.at == other.at
     }
 }
 
-impl<P: Place> Eq for FieldName<P> {}
+impl<P: Place, T> Eq for FieldName<T, P> {}
 
-impl<P: Place> std::hash::Hash for FieldName<P> {
+impl<P: Place, T> std::hash::Hash for FieldName<T, P> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.at.hash(state);
         self.name.hash(state);
     }
 }
 
-impl<P: Place> fmt::Debug for FieldName<P> {
+impl<P: Place, T> fmt::Debug for FieldName<T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "FieldName({self})")
     }
 }
 
-impl<P: Place> fmt::Display for FieldName<P> {
+impl<P: Place, T> fmt::Display for FieldName<T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.at.display(self.name, f)
     }
 }
 
-impl<P: Place> Render for FieldName<P> {
+impl<P: Place, T> Render for FieldName<T, P> {
     #[inline]
     fn render(&self, out: &mut String) {
         self.at.render(self.name, out)
     }
 }
 
-impl<P: Place> AttrValue for FieldName<P> {
+impl<P: Place, T> AttrValue for FieldName<T, P> {
     #[inline]
     fn write_attr(&self, name: &str, out: &mut String) {
         quoted(name, self, out)
+    }
+}
+
+/// A GET form's controls, and the rest of a typed route's query as hidden inputs: a GET form
+/// sends only its own controls (and drops its `action`'s query), so a form that changes the
+/// research on a screen whose address also holds the seller and the page would lose them.
+/// `controls` is drawn first; every key of the route's query that no control in it names
+/// (`name="grade"`, a set's `sortBy`, a prefixed `dim.color`) is then kept as a hidden input, in
+/// the encoding the route's links use (an `Option` only when set, a list once per item, an enum
+/// by its word). A field added to the route is kept by every such form without a change to it,
+/// and a control's key is never sent twice, so there is no list of names to keep in step.
+///
+/// ```
+/// use corten::prelude::*;
+/// use corten::form::keep_query;
+///
+/// #[derive(Clone, Default, serde::Deserialize, Route, Fields)]
+/// #[route("/slab-pricing")]
+/// struct Choice { cert: Option<String>, seller: Option<String>, #[serde(default)] trail: Vec<String>, grade: Option<u8> }
+///
+/// let at = Choice { cert: Some("a&b".into()), seller: None, trail: vec!["p1".into(), "p2".into()], grade: Some(9) };
+/// let f = Choice::FIELDS;
+/// let form = html! {
+///     <form method="get" action={&at}>
+///         {keep_query(&at, html! { <input name={f.grade} value="10"> <button>"Price"</button> })}
+///     </form>
+/// };
+/// assert_eq!(
+///     form.to_html(),
+///     concat!(
+///         r#"<form method="get" action="/slab-pricing?cert=a%26b&amp;trail=p1&amp;trail=p2&amp;grade=9">"#,
+///         r#"<input name="grade" value="10"><button>Price</button>"#,
+///         r#"<input type="hidden" name="cert" value="a&amp;b">"#,
+///         r#"<input type="hidden" name="trail" value="p1"><input type="hidden" name="trail" value="p2">"#,
+///         r#"</form>"#,
+///     )
+/// );
+/// ```
+///
+/// Every control the form sends goes inside, a named submit button included: one outside it is
+/// not seen, so its key would be sent twice. It takes a link (a typed route, or the `&dyn Href` a
+/// form several pages share is given), so a URL as text does not compile:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+/// use corten::form::keep_query;
+///
+/// let _ = html! { <form method="get">{keep_query(&"/slab-pricing?grade=9", html! { <input name="grade"> })}</form> };
+/// ```
+pub fn keep_query<'a, R: crate::Href + ?Sized, C: Render>(route: &'a R, controls: C) -> KeepQuery<'a, R, C> {
+    KeepQuery { route, controls }
+}
+
+/// What [`keep_query`] returns: the controls, then hidden inputs for the route's query keys they
+/// do not name.
+pub struct KeepQuery<'a, R: ?Sized, C> {
+    route: &'a R,
+    controls: C,
+}
+
+impl<R: crate::Href + ?Sized, C: Render> Render for KeepQuery<'_, R, C> {
+    fn render(&self, out: &mut String) {
+        let start = out.len();
+        self.controls.render(out);
+        // The route's own encoding, read back: what its links send is what the form keeps.
+        let mut href = String::new();
+        self.route.write_link(&mut href, false);
+        let query = href.split_once('?').map_or("", |(_, q)| q);
+        let query = query.split_once('#').map_or(query, |(q, _)| q);
+        if query.is_empty() {
+            return;
+        }
+        let mut named = String::new();
+        let mut kept = String::new();
+        for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+            // The names the controls wrote, as they wrote them: escaped, in ` name="..."`.
+            named.clear();
+            named.push_str(" name=\"");
+            escape_into(&key, &mut named);
+            named.push('"');
+            if out[start..].contains(named.as_str()) {
+                continue;
+            }
+            kept.push_str(r#"<input type="hidden""#);
+            kept.push_str(&named);
+            kept.push_str(r#" value=""#);
+            escape_into(&value, &mut kept);
+            kept.push_str(r#"">"#);
+        }
+        out.push_str(&kept);
     }
 }
 
@@ -973,11 +1137,11 @@ impl<K> Keyed<K> {
 
     /// The field of the key `key`: `f.counts.at(&sku)` is `counts[sku]`. It takes a reference to
     /// the map's key type, so a key of another type does not compile.
-    pub fn at<'k>(&self, key: &'k K) -> FieldName<Row<'k>>
+    pub fn at<'k>(&self, key: &'k K) -> FieldName<Untyped, Row<'k>>
     where
         K: RowKey + Sync,
     {
-        FieldName { at: Row { rows: self.name, key }, name: "" }
+        FieldName { at: Row { rows: self.name, key }, name: "", value: std::marker::PhantomData }
     }
 }
 
@@ -1005,13 +1169,13 @@ struct Kept {
 }
 
 impl Kept {
-    fn new<P: Place>(field: FieldName<P>) -> Self {
+    fn new<P: Place>(field: FieldName<Untyped, P>) -> Self {
         Kept { at: field.at.kept(), name: field.name }
     }
 
     /// Whether this is `field`: for a form's own field, a comparison of two names.
     #[inline]
-    fn is<P: Place>(&self, field: &FieldName<P>) -> bool {
+    fn is<P: Place>(&self, field: &FieldName<Untyped, P>) -> bool {
         self.name == field.name && field.at.is_kept(&self.at)
     }
 }
@@ -1040,9 +1204,9 @@ impl PartialEq<&str> for Named<'_> {
     }
 }
 
-impl<P: Place> PartialEq<FieldName<P>> for Named<'_> {
-    fn eq(&self, field: &FieldName<P>) -> bool {
-        self.0.is(field)
+impl<P: Place, T> PartialEq<FieldName<T, P>> for Named<'_> {
+    fn eq(&self, field: &FieldName<T, P>) -> bool {
+        self.0.is(&field.untyped())
     }
 }
 
@@ -1096,7 +1260,12 @@ impl Errors {
     }
 
     /// Records `message` for `field`, unless the field already has one.
-    pub fn add<P: Place>(&mut self, field: FieldName<P>, message: impl Into<String>) {
+    pub fn add<P: Place, T>(&mut self, field: FieldName<T, P>, message: impl Into<String>) {
+        // The type is for the caller: one copy of the work per place, not per field type.
+        self.add_untyped(field.untyped(), message.into())
+    }
+
+    fn add_untyped<P: Place>(&mut self, field: FieldName<Untyped, P>, message: String) {
         if self.find(&field).is_some() {
             return;
         }
@@ -1112,12 +1281,12 @@ impl Errors {
                 }
             }
         }
-        self.fields.push((Kept::new(field), message.into()));
+        self.fields.push((Kept::new(field), message));
     }
 
     /// Where `field`'s message is: a row's by the index, any other by reading the list of messages
     /// (one per field given one, rows' included).
-    fn find<P: Place>(&self, field: &FieldName<P>) -> Option<usize> {
+    fn find<P: Place>(&self, field: &FieldName<Untyped, P>) -> Option<usize> {
         match field.at.row() {
             None => self.fields.iter().position(|(f, _)| f.is(field)),
             Some((rows, key)) => {
@@ -1166,12 +1335,12 @@ impl Errors {
         self.refusal
     }
 
-    pub fn get<P: Place>(&self, field: FieldName<P>) -> Option<&str> {
-        self.find(&field).map(|i| self.fields[i].1.as_str())
+    pub fn get<P: Place, T>(&self, field: FieldName<T, P>) -> Option<&str> {
+        self.find(&field.untyped()).map(|i| self.fields[i].1.as_str())
     }
 
-    pub fn has<P: Place>(&self, field: FieldName<P>) -> bool {
-        self.find(&field).is_some()
+    pub fn has<P: Place, T>(&self, field: FieldName<T, P>) -> bool {
+        self.find(&field.untyped()).is_some()
     }
 
     /// The message about the whole form, from [`Errors::add_form`].
@@ -1232,19 +1401,21 @@ impl<I: Id> Within<'_, I> {
     /// else nothing: `<input name={f.email} {..e.aria(f.email)}>`. A field with a hint of its own
     /// gives it here, `{..e.aria(f.email).hint(&EmailHintId)}`, and is described by the hint and
     /// then the error; a tag that writes `aria-describedby` itself as well does not compile.
-    pub fn aria<P: Place>(&self, field: FieldName<P>) -> Aria<'_, I, P> {
+    pub fn aria<P: Place, T>(&self, field: FieldName<T, P>) -> Aria<'_, I, P> {
+        let field = field.untyped();
         Aria { form: &self.form, field, invalid: self.errors.has(field), hint: None }
     }
 
     /// `<p class="field-error" id="{form}-{field}-error">message</p>` when `field` has an error,
     /// else nothing: the element [`Within::aria`] points at.
-    pub fn message<P: Place>(&self, field: FieldName<P>) -> FieldMessage<'_, I, P> {
+    pub fn message<P: Place, T>(&self, field: FieldName<T, P>) -> FieldMessage<'_, I, P> {
+        let field = field.untyped();
         FieldMessage { form: &self.form, field, message: self.errors.get(field) }
     }
 }
 
 /// `{form}-{field}-error`, escaped for an attribute.
-fn message_id<P: Place>(form: &impl Id, field: FieldName<P>, out: &mut String) {
+fn message_id<P: Place>(form: &impl Id, field: FieldName<Untyped, P>, out: &mut String) {
     form.write_id(out);
     out.push('-');
     field.render(out);
@@ -1254,7 +1425,7 @@ fn message_id<P: Place>(form: &impl Id, field: FieldName<P>, out: &mut String) {
 /// The ARIA attributes of a form field, from [`Within::aria`].
 pub struct Aria<'a, I, P = Root> {
     form: &'a I,
-    field: FieldName<P>,
+    field: FieldName<Untyped, P>,
     invalid: bool,
     hint: Option<&'a dyn WriteId>,
 }
@@ -1306,7 +1477,7 @@ impl<I: Id, P: Place> Attrs for Aria<'_, I, P> {
 /// A field's error message, from [`Within::message`].
 pub struct FieldMessage<'a, I, P = Root> {
     form: &'a I,
-    field: FieldName<P>,
+    field: FieldName<Untyped, P>,
     message: Option<&'a str>,
 }
 
@@ -1368,13 +1539,24 @@ impl<I: Id, P: Place> Render for FieldMessage<'_, I, P> {
 /// idempotency key.
 ///
 /// [`corten_cluster`]: https://docs.rs/corten-cluster
+///
+/// It takes the name of a `SubmitKey` field, so another field's does not compile:
+///
+/// ```compile_fail,E0308
+/// use corten::prelude::*;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Alert { email: String, submit: SubmitKey }
+///
+/// let _ = SubmitKey::field(Alert::FIELDS.email);
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SubmitKey(Box<str>);
 
 impl SubmitKey {
     /// The hidden input that carries a new key: `<input type="hidden" name=".." data-submit value="..">`.
-    pub fn field(name: FieldName) -> SubmitField {
-        SubmitField { name, key: uuid_v4(crate::security::random_hex()) }
+    pub fn field(name: FieldName<SubmitKey>) -> SubmitField {
+        SubmitField { name: name.untyped(), key: uuid_v4(crate::security::random_hex()) }
     }
 
     /// The hidden input that carries this key again, for a form drawn again from the post that
@@ -1392,11 +1574,23 @@ impl SubmitKey {
     /// let html = posted.submit.again(Pay::FIELDS.submit).to_html();
     /// assert_eq!(html, r#"<input type="hidden" name="submit" data-submit value="3f2504e0-4f89-41d3-9a0c-0305e82c3301">"#);
     /// ```
-    pub fn again(&self, name: FieldName) -> SubmitField {
+    ///
+    /// Like [`SubmitKey::field`], it takes only a `SubmitKey` field's name:
+    ///
+    /// ```compile_fail,E0308
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(serde::Deserialize, Fields)]
+    /// struct Pay { amount: u32, submit: SubmitKey }
+    ///
+    /// let posted: Pay = corten::form::from_bytes(b"amount=5&submit=3f2504e0-4f89-41d3-9a0c-0305e82c3301").unwrap();
+    /// let _ = posted.submit.again(Pay::FIELDS.amount);
+    /// ```
+    pub fn again(&self, name: FieldName<SubmitKey>) -> SubmitField {
         // Read only as a UUID (`Deserialize`), so it is 36 ASCII bytes.
         let mut key = [0u8; 36];
         key.copy_from_slice(self.0.as_bytes());
-        SubmitField { name, key }
+        SubmitField { name: name.untyped(), key }
     }
 
     /// The UUID, lowercase and hyphenated: `3f2504e0-4f89-41d3-9a0c-0305e82c3301`.
@@ -1696,8 +1890,8 @@ mod tests {
     #[test]
     fn serializes_as_an_object() {
         let mut e = Errors::new();
-        e.add(FieldName::__new("b"), "2");
-        e.add(FieldName::__new("a"), "1");
+        e.add(FieldName::<Untyped>::__new("b"), "2");
+        e.add(FieldName::<Untyped>::__new("a"), "1");
         assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"b":"2","a":"1"}"#);
     }
 }

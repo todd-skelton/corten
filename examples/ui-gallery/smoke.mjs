@@ -119,7 +119,7 @@ async function run(browser) {
   page.off("requestfailed", lost);
   page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the twelve scripts load and connect", loaded === 12, `${loaded} script(s)`);
+  check("the thirteen scripts load and connect", loaded === 13, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -319,6 +319,27 @@ async function run(browser) {
   check("only the selected tab is in the tab order", (await page.$$eval('[role="tab"]', (t) => t.map((x) => /** @type {HTMLElement} */ (x).tabIndex).join())) === "0,-1,-1");
   await page.keyboard.press("End");
   check("End selects the last", (await tab("Sales").getAttribute("aria-selected")) === "true");
+
+  // ChoiceGroup and ShownFor: one choice, parts in two cards.
+  const period = (name) => page.getByRole("radio", { name });
+  const showing = () => page.$$eval('[data-on^="connect:ui.choice.part"]', (parts) => parts.filter((p) => !(/** @type {HTMLElement} */ (p).hidden)).map((p) => p.textContent).join("|"));
+  check("the server draws the default choice and only its parts", (await period("Month").getAttribute("aria-checked")) === "true" && (await showing()) === "Average $11.95 this month.|Sold 14 this month.", await showing());
+  check("only the chosen option is in the tab order", (await page.$$eval('[role="radio"]', (r) => r.map((x) => /** @type {HTMLElement} */ (x).tabIndex).join())) === "-1,0");
+  await period("Week").click();
+  check("a click chooses in place, and every part of the group follows", (await period("Week").getAttribute("aria-checked")) === "true" && (await showing()) === "Average $12.10 this week.|Sold 3 this week.", await showing());
+  check("the address follows the choice", new URL(page.url()).searchParams.get("period") === "week", page.url());
+  await page.keyboard.press("ArrowRight");
+  check("Arrow Right moves and chooses", (await page.evaluate(() => document.activeElement?.textContent)) === "Month" && (await showing()) === "Average $11.95 this month.|Sold 14 this month." && !new URL(page.url()).searchParams.has("period"), page.url());
+  await page.keyboard.press("ArrowUp");
+  check("Arrow Up moves back", (await period("Week").getAttribute("aria-checked")) === "true");
+  await page.goto(`${base}/?tab=sales`);
+  await period("Week").click();
+  check("choosing keeps another control's key in the address", new URL(page.url()).search === "?tab=sales&period=week", page.url());
+  await tab("Offers").click();
+  check("and a tab keeps the choice", new URL(page.url()).search === "?tab=offers&period=week", page.url());
+  await page.goto(`${base}/?period=week`);
+  check("the address draws the choice on a load", (await period("Week").getAttribute("aria-checked")) === "true" && (await showing()) === "Average $12.10 this week.|Sold 3 this week.", await showing());
+  await page.goto(`${base}/`);
 
   // MenuButton
   // The popover's toggle event comes a task after it opens or closes: wait for what it sets.
