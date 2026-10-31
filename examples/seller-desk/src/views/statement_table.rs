@@ -14,7 +14,8 @@ pub fn StatementTable<'a>(t: Msg, sets: &'a [(&'a str, usize, u64)]) -> impl Ren
     let items: usize = sets.iter().map(|(_, items, _)| items).sum();
     let cents: u64 = sets.iter().map(|(_, _, cents)| cents).sum();
     // A set's share of the total in thousandths: the text shows one decimal of a percent.
-    let share = move |part: u64| (part * 1000).checked_div(cents).unwrap_or(0);
+    // In u128, where a value in cents times 1,000 cannot overflow.
+    let share = move |part: u64| (u128::from(part) * 1000).checked_div(u128::from(cents)).unwrap_or(0);
     html! {
         <table class={Table}>
             <thead>
@@ -34,7 +35,7 @@ pub fn StatementTable<'a>(t: Msg, sets: &'a [(&'a str, usize, u64)]) -> impl Ren
                         <td>{t.money(Minor(*part), USD)}</td>
                         <td>
                             <span class={Bar} style={SHARE.pct(share as f64 / 10.0)}></span>
-                            {t.percent(Decimal::new(i128::from(share), 3), 1)}
+                            {t.percent(Decimal::new(share as i128, 3), 1)}
                         </td>
                     </tr>
                 }

@@ -49,8 +49,21 @@ pub struct Var<K> {
 }
 
 impl<K> Var<K> {
+    /// Used by `#[component(css)]`. The name is written into markup and CSS as it is, so it must
+    /// be `--` and letters, digits, `-` and `_`: checked here, and since the macro's constants are
+    /// evaluated when the crate compiles, another name does not compile.
     #[doc(hidden)]
     pub const fn __new(name: &'static str) -> Self {
+        let b = name.as_bytes();
+        assert!(b.len() > 2 && b[0] == b'-' && b[1] == b'-', "a custom property's name starts with --");
+        let mut i = 2;
+        while i < b.len() {
+            assert!(
+                b[i].is_ascii_alphanumeric() || b[i] == b'-' || b[i] == b'_',
+                "a custom property's name is letters, digits, - and _"
+            );
+            i += 1;
+        }
         Var { name, kind: PhantomData }
     }
 
@@ -236,7 +249,7 @@ thread_local! {
     static WRITTEN: RefCell<Option<Written>> = const { RefCell::new(None) };
 }
 
-/// Runs `render` and returns the page's style block for the values it wrote: `[data-vars="X"]{X}`
+/// Runs `render` and returns the page's style block for the values it wrote: `[data-vars="X"]{X!important}`
 /// for each distinct one, sorted, so a page whose values are the same is the same bytes (and the
 /// same CSP hash). Empty when it wrote none.
 pub(crate) fn collect<T>(render: impl FnOnce() -> T) -> (T, String) {
@@ -254,12 +267,20 @@ pub(crate) fn collect<T>(render: impl FnOnce() -> T) -> (T, String) {
     }
     all.sort_unstable();
     all.dedup();
-    let mut rules = String::with_capacity(all.iter().map(|v| v.len() * 2 + 16).sum());
+    let mut rules = String::with_capacity(all.iter().map(|v| v.len() * 2 + 32).sum());
     for vars in all {
         rules.push_str("[data-vars=\"");
         rules.push_str(vars);
         rules.push_str("\"]{");
-        rules.push_str(vars);
+        // `!important`: the runtime sets a patch's values inline, which wins over every normal
+        // rule whatever its specificity, so a full load's values win the same way.
+        for (i, one) in vars.split(';').enumerate() {
+            if i > 0 {
+                rules.push(';');
+            }
+            rules.push_str(one);
+            rules.push_str("!important");
+        }
         rules.push('}');
     }
     (value, rules)

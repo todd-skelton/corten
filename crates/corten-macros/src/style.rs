@@ -1,4 +1,7 @@
-//! Component stylesheets. `#[component(css)]` reads `{name}.css` next to the component, scopes
+//! Component stylesheets. `#[
+        assert!(error("@property --a { syntax: <number>; inherits: false; initial-value: 0 }").contains("syntax is a string"));
+        assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: 1. }").contains("is not a <number>"));
+        assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: . }").contains("is not a <number>"));component(css)]` reads `{name}.css` next to the component, scopes
 //! every class in it to the component (`.title` becomes `.offer-list__title`), and gives the
 //! markup one constant per class, so `class={Title}` is checked and printed as static markup.
 //!
@@ -61,14 +64,26 @@ pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
 fn initial_fits(kind: &str, value: &str) -> bool {
     // The number: a sign, digits and a point, and an exponent only when digits follow its `e`
     // (`1em` is one em, `2e3` two thousand).
+    // CSS's number token: digits, or digits around a point with at least one after it (`.5`, not `1.`).
     let b = value.as_bytes();
     let digits = |mut i: usize| {
-        while b.get(i).is_some_and(|c| c.is_ascii_digit() || *c == b'.') {
+        while b.get(i).is_some_and(u8::is_ascii_digit) {
             i += 1;
         }
         i
     };
-    let mut at = digits(usize::from(matches!(b.first(), Some(b'+' | b'-'))));
+    let start = usize::from(matches!(b.first(), Some(b'+' | b'-')));
+    let mut at = digits(start);
+    if b.get(at) == Some(&b'.') {
+        let after = digits(at + 1);
+        if after == at + 1 {
+            return false;
+        }
+        at = after;
+    }
+    if at == start {
+        return false;
+    }
     if matches!(b.get(at), Some(b'e' | b'E')) {
         let sign = usize::from(matches!(b.get(at + 1), Some(b'+' | b'-')));
         if b.get(at + 1 + sign).is_some_and(u8::is_ascii_digit) {
@@ -301,7 +316,15 @@ impl Scoper<'_> {
         let (mut syntax, mut inherits, mut initial) = (None, false, None);
         for declaration in self.out[body..].split(';') {
             match split_declaration(declaration) {
-                Some(("syntax", value)) => syntax = Some(value.trim_matches(|c| c == '"' || c == '\'').trim().to_string()),
+                Some(("syntax", value)) => {
+                    let quoted = value.len() >= 2
+                        && matches!(value.as_bytes()[0], b'"' | b'\'')
+                        && value.as_bytes()[value.len() - 1] == value.as_bytes()[0];
+                    if !quoted {
+                        return Err(self.error(at, format!("@property --{name}: syntax is a string, syntax: \"{value}\"; the browser ignores it unquoted")));
+                    }
+                    syntax = Some(value[1..value.len() - 1].trim().to_string());
+                }
                 Some(("inherits", value)) if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false") => {
                     inherits = true
                 }
@@ -976,6 +999,9 @@ mod tests {
             error("@property --a { syntax: '<integer>'; inherits: false; initial-value: 1.5 }").contains("is not a <integer>")
         );
         assert!(error("@property --a { syntax: '<angle>'; inherits: false; initial-value: 0 }").contains("is not a <angle>"));
+        assert!(error("@property --a { syntax: <number>; inherits: false; initial-value: 0 }").contains("syntax is a string"));
+        assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: 1. }").contains("is not a <number>"));
+        assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: . }").contains("is not a <number>"));
         assert!(
             error("@property --a { syntax: '<length>'; inherits: false; initial-value: 1.5em }").contains("is not a <length>")
         );

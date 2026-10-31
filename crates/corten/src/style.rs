@@ -251,7 +251,8 @@
 //!   is not one, or depends on the font or viewport, `1em`) does not compile.
 //! - `style={..}` takes one value, an `Option` (`None` sets nothing) or a tuple or array of them,
 //!   and writes `data-vars`. A full page gets one `<style>` at `<Corten />` with a rule for each
-//!   distinct value (`[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%}`), allowed by its
+//!   distinct value (`[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%!important}`, which wins as
+//!   the runtime's inline values do), allowed by its
 //!   hash in that response's CSP, so it paints with the sizes and no script, and no style
 //!   attribute is allowed anywhere. A patch, a client navigation and a `<corten-live>` fragment
 //!   arrive under the policy the document loaded with, so the runtime sets their values through

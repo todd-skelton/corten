@@ -607,7 +607,7 @@ fn meters() -> Router {
 #[tokio::test]
 async fn a_page_s_custom_properties_are_one_style_block_its_csp_allows_by_hash() {
     let (_, headers, body) = call(app(meters(), None), "GET", None).await;
-    let rules = r#"[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%}[data-vars="--meter__fill:7%"]{--meter__fill:7%}"#;
+    let rules = r#"[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%!important}[data-vars="--meter__fill:7%"]{--meter__fill:7%!important}"#;
     assert!(body.contains(&format!("<style>{rules}</style></head>")), "each value once, after the page's stylesheets: {body}");
     assert!(body.contains(r#"<div class="meter__meter" data-vars="--meter__fill:7%"></div><div class="meter__meter" data-vars="--meter__fill:42.5%"></div><div class="meter__meter"></div>"#), "a value that is not finite sets nothing: {body}");
     let csp = headers["content-security-policy"].to_str().unwrap();
