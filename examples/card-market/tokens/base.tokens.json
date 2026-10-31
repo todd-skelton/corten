@@ -1,0 +1,82 @@
+{
+  "color": {
+    "$type": "color",
+    "ink": {
+      "$value": { "colorSpace": "srgb", "components": [0.1137, 0.1059, 0.149], "hex": "#1d1b26" }
+    },
+    "muted": {
+      "$value": { "colorSpace": "srgb", "components": [0.3725, 0.3569, 0.4196], "hex": "#5f5b6b" }
+    },
+    "line": {
+      "$value": { "colorSpace": "srgb", "components": [0.8902, 0.8784, 0.9176], "hex": "#e3e0ea" }
+    },
+    "accent": {
+      "$value": { "colorSpace": "srgb", "components": [0.4196, 0.2471, 0.8314], "hex": "#6b3fd4" }
+    },
+    "bg": {
+      "$value": { "colorSpace": "srgb", "components": [0.9843, 0.9804, 0.9686], "hex": "#fbfaf7" }
+    },
+    "surface": { "$value": { "colorSpace": "srgb", "components": [1, 1, 1], "hex": "#ffffff" } },
+    "danger": {
+      "$value": { "colorSpace": "srgb", "components": [0.7059, 0.1373, 0.0941], "hex": "#b42318" }
+    },
+    "tint": {
+      "$value": { "colorSpace": "srgb", "components": [0.9451, 0.9255, 0.9922], "hex": "#f1ecfd" }
+    }
+  },
+  "space": {
+    "$type": "dimension",
+    "1": { "$value": { "value": 4, "unit": "px" } },
+    "2": { "$value": { "value": 8, "unit": "px" } },
+    "3": { "$value": { "value": 12, "unit": "px" } },
+    "4": { "$value": { "value": 16, "unit": "px" } },
+    "5": { "$value": { "value": 24, "unit": "px" } },
+    "6": { "$value": { "value": 32, "unit": "px" } }
+  },
+  "radius": {
+    "$type": "dimension",
+    "sm": { "$value": { "value": 8, "unit": "px" } },
+    "md": { "$value": { "value": 12, "unit": "px" } },
+    "pill": { "$value": { "value": 999, "unit": "px" } }
+  },
+  "font-size": {
+    "$type": "dimension",
+    "sm": { "$value": { "value": 13, "unit": "px" } },
+    "md": { "$value": { "value": 14, "unit": "px" } },
+    "lg": { "$value": { "value": 15, "unit": "px" } },
+    "xl": { "$value": { "value": 20, "unit": "px" } }
+  },
+  "shadow": {
+    "$type": "shadow",
+    "sm": {
+      "$value": {
+        "color": {
+          "colorSpace": "srgb",
+          "components": [0.1137, 0.1059, 0.149],
+          "alpha": 0.05,
+          "hex": "#1d1b26"
+        },
+        "offsetX": { "value": 0, "unit": "px" },
+        "offsetY": { "value": 1, "unit": "px" },
+        "blur": { "value": 2, "unit": "px" },
+        "spread": { "value": 0, "unit": "px" }
+      }
+    }
+  },
+  "$extensions": {
+    "run.corten": {
+      "breakpoints": {
+        "sm": { "value": 40, "unit": "rem" },
+        "md": { "value": 48, "unit": "rem" },
+        "lg": { "value": 64, "unit": "rem" }
+      },
+      "utilities": {
+        "gap": { "property": "gap", "group": "space" },
+        "direction": {
+          "property": "flex-direction",
+          "values": { "row": "row", "column": "column" }
+        }
+      }
+    }
+  }
+}

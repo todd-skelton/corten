@@ -175,8 +175,15 @@ framework's shape, and what it does not do yet.
    does not grow a flag per page.
 10. A header, wire format or file format that leaves Corten (read by another client, another
     tool, or a person writing the file) follows the standard for it where one exists: Problem
-    Details for JSON failures, CLDR for number and date formats. Where Corten defines its own
-    instead, a Choice above names the standard it considered, why it does not fit, and what
+    Details for JSON failures, CLDR for number and date formats, the W3C Design Tokens format
+    (2025.10) for token files, with Corten's own settings under its `$extensions` key,
+    `run.corten`. `tokens!` reads that format with these limits, each a compile error that says
+    so (and the guide lists the bounds on nesting, work, chains and combinations of contexts, which
+    keep a hostile file from stalling or overflowing the compiler): a resolver modifier needs a `default` (the stylesheet has no input to ask for, and a page
+    that chooses no context needs values), a `$root` token at the top of a file has no name to be
+    a custom property, a file is a path relative to the one naming it (no URL, scheme, drive or absolute path; a
+    workspace's shared tokens in `../` are allowed, as `include_str!` allows them), and a
+    gradient or typography token has no one CSS value. Where Corten defines its own instead, a Choice above names the standard it considered, why it does not fit, and what
     would let Corten move to it (Choices 11 to 15). A format only Corten's own
     server and runtime read (the `data-on` wire format) needs no standard, but stays internal:
     nothing outside the framework may depend on it.

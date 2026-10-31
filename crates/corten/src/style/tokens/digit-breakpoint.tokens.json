@@ -1,0 +1,9 @@
+{
+  "space": { "$type": "dimension", "1": { "$value": { "value": 4, "unit": "px" } } },
+  "$extensions": {
+    "run.corten": {
+      "breakpoints": { "2xl": { "value": 96, "unit": "rem" } },
+      "utilities": { "gap": { "property": "gap", "group": "space" } }
+    }
+  }
+}

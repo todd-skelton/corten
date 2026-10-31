@@ -1,0 +1,22 @@
+{
+  "color": {
+    "ink": {
+      "$value": { "colorSpace": "srgb", "components": [0.9255, 0.9216, 0.949], "hex": "#ecebf2" }
+    },
+    "muted": {
+      "$value": { "colorSpace": "srgb", "components": [0.6627, 0.6471, 0.7216], "hex": "#a9a5b8" }
+    },
+    "line": {
+      "$value": { "colorSpace": "srgb", "components": [0.2039, 0.1922, 0.2471], "hex": "#34313f" }
+    },
+    "bg": {
+      "$value": { "colorSpace": "srgb", "components": [0.0824, 0.0784, 0.1059], "hex": "#15141b" }
+    },
+    "surface": {
+      "$value": { "colorSpace": "srgb", "components": [0.1176, 0.1098, 0.149], "hex": "#1e1c26" }
+    },
+    "tint": {
+      "$value": { "colorSpace": "srgb", "components": [0.1647, 0.1373, 0.251], "hex": "#2a2340" }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "version": "2025.10",
+  "sets": {
+    "s0": { "sources": [{ "$ref": "#/sets/s1" }, { "$ref": "#/sets/s1" }] },
+    "s1": { "sources": [{ "$ref": "#/sets/s2" }, { "$ref": "#/sets/s2" }] },
+    "s2": { "sources": [{ "$ref": "#/sets/s3" }, { "$ref": "#/sets/s3" }] },
+    "s3": { "sources": [{ "$ref": "#/sets/s4" }, { "$ref": "#/sets/s4" }] },
+    "s4": { "sources": [{ "$ref": "#/sets/s5" }, { "$ref": "#/sets/s5" }] },
+    "s5": { "sources": [{ "$ref": "#/sets/s6" }, { "$ref": "#/sets/s6" }] },
+    "s6": { "sources": [{ "$ref": "#/sets/s7" }, { "$ref": "#/sets/s7" }] },
+    "s7": { "sources": [{ "$ref": "#/sets/s8" }, { "$ref": "#/sets/s8" }] },
+    "s8": { "sources": [{ "$ref": "#/sets/s9" }, { "$ref": "#/sets/s9" }] },
+    "s9": { "sources": [{ "$ref": "#/sets/s10" }, { "$ref": "#/sets/s10" }] },
+    "s10": { "sources": [{ "$ref": "#/sets/s11" }, { "$ref": "#/sets/s11" }] },
+    "s11": { "sources": [{ "$ref": "#/sets/s12" }, { "$ref": "#/sets/s12" }] },
+    "s12": { "sources": [{ "$ref": "#/sets/s13" }, { "$ref": "#/sets/s13" }] },
+    "s13": { "sources": [{ "$ref": "#/sets/s14" }, { "$ref": "#/sets/s14" }] },
+    "s14": { "sources": [{ "$ref": "#/sets/s15" }, { "$ref": "#/sets/s15" }] },
+    "s15": { "sources": [{ "$ref": "#/sets/s16" }, { "$ref": "#/sets/s16" }] },
+    "s16": { "sources": [{ "$ref": "#/sets/s17" }, { "$ref": "#/sets/s17" }] },
+    "s17": { "sources": [{ "$ref": "#/sets/s18" }, { "$ref": "#/sets/s18" }] },
+    "s18": { "sources": [{ "$ref": "#/sets/s19" }, { "$ref": "#/sets/s19" }] },
+    "s19": { "sources": [{ "$ref": "#/sets/s20" }, { "$ref": "#/sets/s20" }] },
+    "s20": { "sources": [{ "g": { "$type": "number", "a": { "$value": 1 } } }] }
+  },
+  "resolutionOrder": [{ "$ref": "#/sets/s0" }]
+}

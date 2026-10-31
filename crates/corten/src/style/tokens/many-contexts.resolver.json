@@ -1,0 +1,8 @@
+{
+  "version": "2025.10",
+  "resolutionOrder": [
+    { "type": "set", "name": "base", "sources": [{ "n": { "$type": "number", "$value": 1 } }] },
+    { "type": "modifier", "name": "a", "default": "c0", "contexts": { "c0": [], "c1": [], "c2": [], "c3": [], "c4": [], "c5": [], "c6": [], "c7": [], "c8": [], "c9": [], "c10": [], "c11": [], "c12": [], "c13": [], "c14": [], "c15": [] } },
+    { "type": "modifier", "name": "b", "default": "c0", "contexts": { "c0": [], "c1": [], "c2": [], "c3": [], "c4": [], "c5": [], "c6": [], "c7": [], "c8": [], "c9": [], "c10": [], "c11": [], "c12": [], "c13": [], "c14": [], "c15": [] } }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "fill": {
+    "$type": "gradient",
+    "hero": {
+      "$value": [
+        { "color": { "colorSpace": "srgb", "components": [0, 0, 0] }, "position": 0 },
+        { "color": { "colorSpace": "srgb", "components": [1, 1, 1] }, "position": 1 }
+      ]
+    }
+  }
+}
