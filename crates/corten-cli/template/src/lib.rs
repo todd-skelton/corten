@@ -1,8 +1,10 @@
 //! The app: its routes, handlers and `App`. It is a library, so `src/main.rs`, a test target
 //! in `tests/` and an example in `examples/` all use the same code (`{{crate}}::app()`).
-//! Declare modules here only: one declared in `main.rs` too would be compiled twice.
+//! Declare modules here only: one declared in `main.rs` too is a second copy of its components,
+//! which fails to build. A module stays private unless a test target needs it, so an unused view
+//! is still a warning.
 
-pub mod views;
+mod views;
 
 use corten::prelude::*;
 use serde::Deserialize;

@@ -347,8 +347,8 @@ Then pick one of two ways to keep tests from leaving rows behind:
 2. **A transaction per test, rolled back**: `let mut tx = pool.begin().await?;`, the code under
    test given `&mut tx` (its own transactions become savepoints), the result read on `tx`, and
    `tx` dropped or rolled back at the end. This works against a shared database (a dev copy) but
-   cannot test code that commits on its own connection, and tests that write the same rows wait
-   on each other's locks under cargo's parallel threads, or deadlock (Postgres `40P01`). Tests
+   cannot test code that commits on its own connection, and tests that write the same rows can
+   deadlock under cargo's parallel threads (Postgres `40P01`). Tests
    that write the same rows take one lock first, `SELECT pg_advisory_xact_lock(hashtext('stock'))`
    on `tx`, released with the transaction.
 
@@ -364,7 +364,8 @@ and nothing else. Something that calls a live service and writes files (a fixtur
 a test: make it an example (`examples/record_fixtures.rs`, run with `cargo run --example
 record_fixtures`) or a binary, so no `cargo test` run, `--include-ignored` or not, starts it. An
 app made before `corten new` wrote `src/lib.rs` (its modules declared in `main.rs`) moves them and
-`app()` there; a module declared in both files would be compiled twice.
+`app()` there; a module declared in both files is a second copy of its components, which fails
+to build.
 
 ## Your own listeners
 

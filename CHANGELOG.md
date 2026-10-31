@@ -1891,8 +1891,9 @@ Corten is pre-1.0, so any minor version may change the API.
 96. `corten new` writes the app as a library, `src/lib.rs` (the routes, handlers, `pub fn app()` and
     its tests), and a `src/main.rs` that only serves `my_app::app()`, so a test target in `tests/`,
     an example and a second binary reach the app's code; in a binary-only app none could. Modules
-    are declared in `lib.rs` alone (one declared in both files would be compiled twice), which the
-    template's comments, README and AGENTS.md say. An app made before keeps working; the app guide
+    are declared in `lib.rs` alone (one declared in both files is a second copy of its components,
+    which fails to build), which the template's comments, README and AGENTS.md say. A name the app
+    could not be reached by (a keyword, `std`, `test`, a dependency such as `tokio`) is refused. An app made before keeps working; the app guide
     says how to move it
     ([#508 corten new makes a bin-only app: tests/, examples/ and a second bin cannot reach its code, so #506's advice cannot be followed](https://github.com/todd-skelton/corten/issues/508)).
 ### Fixed
@@ -2638,7 +2639,7 @@ Corten is pre-1.0, so any minor version may change the API.
 41. The app guide has a Testing an app section: a test asks `app().router()` as a browser would
     (`router()` starts no tasks), and a test with a database takes the connection the code writes
     on, with `#[sqlx::test]` (a fresh database per test) first and a rolled-back transaction for a
-    shared one (tests writing the same rows take an advisory lock, or they deadlock), tests that
+    shared one (tests writing the same rows take an advisory lock, or they can deadlock), tests that
     need a database `#[ignore]`d in a `tests/` target of their own, and a fixture recorder an
     example rather than a test. Corten adds no test mode or rollback helper: the driver's are the one
     way

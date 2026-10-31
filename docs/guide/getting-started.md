@@ -40,7 +40,7 @@ corten) is not compared.
 | Path | What |
 |---|---|
 | `src/lib.rs` | the app: the routes (`#[corten::routes] mod url`), their handlers, `app()` and the tests. A library, so a test target (`tests/`), an example and `main.rs` all reach it; modules are declared here only |
-| `src/main.rs` | `main`, which serves `my_app::app()` (the crate's name); it declares no modules, since one declared in both would be compiled twice |
+| `src/main.rs` | `main`, which serves `my_app::app()` (the crate's name); it declares no modules, since one declared in both is a second copy of its components, which fails to build |
 | `src/views.rs` | the layout (the whole document), the error page and the pages, in `html!` |
 | `src/click_counter.js`, `.css` | the `ClickCounter` component's handlers and stylesheet, next to it |
 | `static/` | the app's own CSS (element defaults, the layout), its favicon (`favicon.svg`, Corten's mark until you replace it), images; compiled into the program (`embed!`, a constant per file) and served at versioned URLs |

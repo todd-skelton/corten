@@ -27,14 +27,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         Some(name) => name.to_string(),
         None => crate_name(&dir)?,
     };
-    if name.is_empty()
-        || !name.starts_with(|c: char| c.is_ascii_lowercase())
-        || !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
-    {
-        return Err(format!(
-            "{name:?} is not a crate name: lowercase letters, digits, - and _, starting with a letter (use --name)"
-        ));
-    }
+    check_name(&name)?;
     let dependency = dependency(option(args, "--corten-path")?)?;
     if dir.exists() && std::fs::read_dir(&dir).map_err(|e| e.to_string())?.next().is_some() {
         return Err(format!("{} exists and is not empty", dir.display()));
@@ -45,6 +38,37 @@ pub fn run(args: &[String]) -> Result<(), String> {
         write(&dir.join(path), &text)?;
     }
     println!("Created {name} in {}.\n\n  cd {}\n  corten dev\n\nthen open http://localhost:3000.", dir.display(), dir.display());
+    Ok(())
+}
+
+/// The app is a library its `main.rs` names (`my_app::app()`), so its name with `-` as `_` must
+/// be a path that reaches it: not a keyword, a crate the compiler provides, or one of the
+/// template's dependencies.
+fn check_name(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || !name.starts_with(|c: char| c.is_ascii_lowercase())
+        || !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+    {
+        return Err(format!(
+            "{name:?} is not a crate name: lowercase letters, digits, - and _, starting with a letter (use --name)"
+        ));
+    }
+    const KEYWORDS: &[&str] = &[
+        "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "crate", "do", "dyn", "else", "enum",
+        "extern", "false", "final", "fn", "for", "gen", "if", "impl", "in", "let", "loop", "macro", "match", "mod", "move",
+        "mut", "override", "priv", "pub", "ref", "return", "self", "static", "struct", "super", "trait", "true", "try", "type",
+        "typeof", "unsafe", "unsized", "use", "virtual", "where", "while", "yield",
+    ];
+    const TAKEN: &[&str] = &["std", "core", "alloc", "test", "proc_macro", "corten", "serde", "tokio", "tower", "http_body_util"];
+    let path = name.replace('-', "_");
+    if KEYWORDS.contains(&path.as_str()) {
+        return Err(format!("{name:?} is a Rust keyword, and the app's main.rs names it as a path (use --name)"));
+    }
+    if TAKEN.contains(&path.as_str()) {
+        return Err(format!(
+            "{name:?} is the name of a crate the app already uses, and its main.rs names the app by it (use --name)"
+        ));
+    }
     Ok(())
 }
 
@@ -74,7 +98,32 @@ fn write(path: &Path, text: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::dependency;
+    use super::{check_name, dependency};
+
+    #[test]
+    fn a_name_the_app_cannot_be_reached_by_is_refused() {
+        for name in ["shop", "demo-app", "a_b-c", "views", "main", "app2"] {
+            assert_eq!(check_name(name), Ok(()), "{name}");
+        }
+        for name in [
+            "",
+            "2app",
+            "My-App",
+            "fn",
+            "self",
+            "async",
+            "test",
+            "std",
+            "core",
+            "tokio",
+            "serde",
+            "tower",
+            "corten",
+            "http-body-util",
+        ] {
+            assert!(check_name(name).unwrap_err().ends_with("(use --name)"), "{name}");
+        }
+    }
 
     #[test]
     fn a_new_app_depends_on_the_release_the_command_came_from() {
