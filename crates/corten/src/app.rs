@@ -575,8 +575,10 @@ impl<M: Middleware> App<M> {
     /// overlap. With `MissedTickBehavior::Skip` a run that overran a mark is followed by one late
     /// run, and then the marks again (tokio's default, `Burst`, runs once for each mark missed,
     /// back to back). `biased` puts the signal first, so no run starts once shutdown has begun; one
-    /// in progress has until [`App::shutdown_grace`]. A mark on the clock (:15 past the hour,
-    /// UTC) is where the interval starts, and the loop keeps what each job did for a status page:
+    /// in progress has until [`App::shutdown_grace`], and a run that can take longer is given the
+    /// signal and stops its slow awaits there. A test aborts a task's signal as `serve` does with
+    /// [`Signal::task`]. A mark on the clock (:15 past the hour, UTC) is where the interval starts,
+    /// and the loop keeps what each job did for a status page:
     ///
     /// ```
     /// use corten::{prelude::*, Signal};
@@ -590,9 +592,13 @@ impl<M: Middleware> App<M> {
     /// # struct Models { runs: Arc<Mutex<Vec<(Job, Duration)>>>, start: Instant }
     /// # impl Models {
     /// #     fn ran(&self, job: Job) { self.runs.lock().unwrap().push((job, self.start.elapsed())) }
-    /// #     async fn refresh(&self) -> Result<(), String> {
+    /// #     async fn refresh(&self, signal: &Signal) -> Result<(), String> {
     /// #         self.ran(Job::Refresh);
-    /// #         tokio::time::sleep(Duration::from_secs(11 * 60)).await;
+    /// #         tokio::select! {
+    /// #             biased;
+    /// #             _ = signal.aborted() => return Err("stopped for shutdown".into()),
+    /// #             _ = tokio::time::sleep(Duration::from_secs(11 * 60)) => {}
+    /// #         }
     /// #         Err("the provider answered 503".into())
     /// #     }
     /// #     async fn recheck(&self) -> Result<(), String> { self.ran(Job::Recheck); Ok(()) }
@@ -630,7 +636,8 @@ impl<M: Middleware> App<M> {
     ///         };
     ///         let (started, clock) = (SystemTime::now(), Instant::now());
     ///         let outcome = match job {
-    ///             Job::Refresh => models.refresh().await,
+    ///             // Given the signal: its slow reads stop there, where its writes are whole.
+    ///             Job::Refresh => models.refresh(&signal).await,
     ///             Job::Recheck => models.recheck().await,
     ///         };
     ///         let ran = Ran { started, took: clock.elapsed(), outcome };
@@ -643,11 +650,13 @@ impl<M: Middleware> App<M> {
     /// }
     /// # // Three hours on a paused clock, with a refresh that takes 11 minutes.
     /// # tokio::runtime::Builder::new_current_thread().enable_time().start_paused(true).build().unwrap().block_on(async {
-    /// #     let _ = app; // the app's own is served; this runs the loop alone, with a signal that never aborts
+    /// #     let _ = app; // the app's own is served; this runs the loop alone
     /// #     let shared = Models { runs: Default::default(), start: Instant::now() };
     /// #     let status = Status::default();
     /// #     let wall = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    /// #     let _ = tokio::time::timeout(3 * HOUR, models(shared.clone(), status.clone(), Signal::default())).await;
+    /// #     let (signal, shutdown) = Signal::task();
+    /// #     let task = tokio::spawn(models(shared.clone(), status.clone(), signal));
+    /// #     tokio::time::sleep(3 * HOUR).await;
     /// #     let runs = shared.runs.lock().unwrap().clone();
     /// #     let refreshes: Vec<_> = runs.iter().filter(|r| r.0 == Job::Refresh).map(|r| r.1).collect();
     /// #     assert_eq!(refreshes.len(), 3, "{runs:?}");
@@ -659,10 +668,18 @@ impl<M: Middleware> App<M> {
     /// #     for r in &refreshes {
     /// #         assert!(!runs.iter().any(|(_, at)| at > r && *at < *r + Duration::from_secs(11 * 60)), "{runs:?}");
     /// #     }
-    /// #     let status = status.lock().unwrap();
-    /// #     let refresh = &status[&Job::Refresh];
+    /// #     let ran = status.lock().unwrap();
+    /// #     let refresh = &ran[&Job::Refresh];
     /// #     assert!(refresh.took == Duration::from_secs(11 * 60) && refresh.outcome.is_err() && refresh.started <= SystemTime::now());
-    /// #     assert_eq!(status[&Job::Recheck].outcome, Ok(()));
+    /// #     assert_eq!(ran[&Job::Recheck].outcome, Ok(()));
+    /// #     drop(ran);
+    /// #     // Shutdown begins 2 minutes into the fourth refresh: the loop returns at once.
+    /// #     tokio::time::sleep(refreshes[2] + HOUR + Duration::from_secs(120) - shared.start.elapsed()).await;
+    /// #     let at = Instant::now();
+    /// #     shutdown.begin();
+    /// #     task.await.unwrap();
+    /// #     assert_eq!(at.elapsed(), Duration::ZERO);
+    /// #     assert_eq!(status.lock().unwrap()[&Job::Refresh].outcome, Err("stopped for shutdown".into()));
     /// # });
     /// ```
     ///

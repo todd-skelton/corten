@@ -1148,6 +1148,11 @@ Corten is pre-1.0, so any minor version may change the API.
     0.08% more instructions (median of 3, callgrind, release build: 35,619,673,804 against
     35,592,439,055 on its base), the look for the notice cookie in each request's `Cookie`.
     ([#385 A post that redirects cannot say what it did on the page it lands on, so each screen carries its message in a query value](https://github.com/todd-skelton/corten/issues/385)).
+151. `Signal::task()`: a task's signal and its `Shutdown` handle, whose `begin()` aborts the signal
+    with `Abort::Shutdown` as `serve` does, so a test of an app's task covers its shutdown path (a
+    job released, a loop that returns at once) on a paused clock; a request's signal still cannot
+    be aborted by the app (a `compile_fail` doctest). Nothing a request does changes
+    ([#489 A task's shutdown path cannot be tested: Signal::default never aborts and abort is crate-private, so the app wraps Signal in a trait of its own](https://github.com/todd-skelton/corten/issues/489)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -2553,6 +2558,21 @@ Corten is pre-1.0, so any minor version may change the API.
     cases through both in a test, which `corten check` runs. Corten does not compile Rust to the
     script or add a runner of its own: a test already does it
     ([#444 A value a script computes as the user types is also drawn by the server, so its arithmetic is written twice (Rust and JS) with nothing checking they agree](https://github.com/todd-skelton/corten/issues/444)).
+40. The app guide's task loop gives its step the signal, and says why: a run in progress is outside
+    the loop's `select!`, so one that can take longer than `App::shutdown_grace` (a remote read
+    with a 10 s timeout) stops its slow awaits at the signal, and Corten does not race the whole
+    step, which would leave half a write. A new section, "A queue a request fills", has a worker's
+    loop: the claim and lease are the app's SQL; the job's work, made once and pinned, races its
+    renewal (bounded by a timeout, the next a period after it ended) and the signal, which is safe
+    because each of its writes is whole and a job can be done again; the work is dropped before the
+    claim is released; `finished` and the work's writes are fenced by the claim, so a lost lease
+    writes nothing; a retry's delay is the queue's (`run_after`), so a job that fails at once is not
+    claimed again at once; a claim error is logged and waited out; the idle wait is a `sleep` and
+    a `Notify`, not an interval. `App::task`'s example gives its refresh the signal and tests its
+    shutdown with `Signal::task`. Corten has no job queue or worker type
+    and no `every` helper: the queue is the app's storage, and a helper that raced the step would
+    drop work mid-write
+    ([#488 A worker for jobs that requests queue builds its own leased claim, heartbeat, requeue, progress and retry on App::task, once per worker](https://github.com/todd-skelton/corten/issues/488)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
