@@ -177,8 +177,9 @@ impl Policy {
     }
 
     /// Allows `style="..."` attributes in markup. Off by default; setting `element.style` from
-    /// script is always allowed. Pages that draw sizes from data in one part of the app allow
-    /// them there only ([`crate::Area::policy`]).
+    /// script is always allowed. A size drawn from data needs none: it is a custom property set
+    /// from markup ([`crate::style::Var`]). Pages that show rich text written with style attributes
+    /// in one part of the app allow them there only ([`crate::Area::policy`]).
     pub fn allow_style_attributes(mut self) -> Self {
         self.sources = self.sources.allow_style_attributes();
         self
@@ -605,13 +606,24 @@ impl Sources {
     }
 }
 
+/// The CSP source of a page's style block (its custom properties, `style={..}` in markup), set
+/// on the response by [`crate::Req::page`]: [`Applied::headers`] adds it to the page's
+/// `style-src`, so the block applies and nothing else inline does.
+#[derive(Clone, Debug)]
+pub(crate) struct StyleBlock(pub String);
+
+/// Where a page's style block's hash goes in a CSP: after `style-src 'self'`, which every policy
+/// writes (`csp_with`).
+const STYLE_AT: &str = "style-src 'self'";
+
 /// `'sha256-...'`, the CSP source that allows the inline element whose text is `text`.
 pub(crate) fn hash_source(text: &str) -> String {
     format!("'sha256-{}'", base64(&sha256(text.as_bytes())))
 }
 
-/// SHA-256 (FIPS 180-4), for the CSP hashes of Corten's inline tags. They are computed once at
-/// startup, so a small plain implementation serves instead of a dependency.
+/// SHA-256 (FIPS 180-4), for the CSP hashes of Corten's inline tags: computed once at startup,
+/// except a page's style block, once per page that has one, so a small plain implementation
+/// serves instead of a dependency.
 fn sha256(data: &[u8]) -> [u8; 32] {
     const K: [u32; 64] = [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01,
@@ -623,41 +635,68 @@ fn sha256(data: &[u8]) -> [u8; 32] {
         0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
     ];
     let mut h: [u32; 8] = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
-    let mut message = data.to_vec();
-    message.push(0x80);
-    while message.len() % 64 != 56 {
-        message.push(0);
+    let (blocks, rest) = data.as_chunks::<64>();
+    for block in blocks {
+        compress(&mut h, block, &K);
     }
-    message.extend_from_slice(&((data.len() as u64) * 8).to_be_bytes());
-    for block in message.as_chunks::<64>().0 {
-        let mut w = [0u32; 64];
-        for (word, bytes) in w.iter_mut().zip(block.as_chunks::<4>().0) {
-            *word = u32::from_be_bytes(*bytes);
-        }
-        for i in 16..64 {
-            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
-            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
-        }
-        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = h;
-        for (k, w) in K.iter().zip(w) {
-            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let choice = (e & f) ^ (!e & g);
-            let t1 = hh.wrapping_add(s1).wrapping_add(choice).wrapping_add(*k).wrapping_add(w);
-            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let majority = (a & b) ^ (a & c) ^ (b & c);
-            let t2 = s0.wrapping_add(majority);
-            (hh, g, f, e, d, c, b, a) = (g, f, e, d.wrapping_add(t1), c, b, a, t1.wrapping_add(t2));
-        }
-        for (state, add) in h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
-            *state = state.wrapping_add(add);
-        }
+    // The last bytes, the 1 bit, zeros and the length in bits: one block, or two when the length
+    // does not fit after the last bytes.
+    let mut tail = [0u8; 128];
+    tail[..rest.len()].copy_from_slice(rest);
+    tail[rest.len()] = 0x80;
+    let len = if rest.len() < 56 { 64 } else { 128 };
+    tail[len - 8..len].copy_from_slice(&((data.len() as u64) * 8).to_be_bytes());
+    for block in tail[..len].as_chunks::<64>().0 {
+        compress(&mut h, block, &K);
     }
     let mut out = [0u8; 32];
     for (bytes, word) in out.as_chunks_mut::<4>().0.iter_mut().zip(h) {
         *bytes = word.to_be_bytes();
     }
     out
+}
+
+/// One block of SHA-256 into the state `h`.
+fn compress(h: &mut [u32; 8], block: &[u8; 64], k: &[u32; 64]) {
+    let mut w = [0u32; 64];
+    for (word, bytes) in w.iter_mut().zip(block.as_chunks::<4>().0) {
+        *word = u32::from_be_bytes(*bytes);
+    }
+    for i in 16..64 {
+        let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
+        let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
+        w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
+    }
+    let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = *h;
+    // Eight rounds at a time, each naming the words where the last left them, so no round moves
+    // the state along.
+    for (k, w) in k.as_chunks::<8>().0.iter().zip(w.as_chunks::<8>().0) {
+        let kw = |j: usize| k[j].wrapping_add(w[j]);
+        round([a, b, c], &mut d, [e, f, g], &mut hh, kw(0));
+        round([hh, a, b], &mut c, [d, e, f], &mut g, kw(1));
+        round([g, hh, a], &mut b, [c, d, e], &mut f, kw(2));
+        round([f, g, hh], &mut a, [b, c, d], &mut e, kw(3));
+        round([e, f, g], &mut hh, [a, b, c], &mut d, kw(4));
+        round([d, e, f], &mut g, [hh, a, b], &mut c, kw(5));
+        round([c, d, e], &mut f, [g, hh, a], &mut b, kw(6));
+        round([b, c, d], &mut e, [f, g, hh], &mut a, kw(7));
+    }
+    for (state, add) in h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
+        *state = state.wrapping_add(add);
+    }
+}
+
+/// One round of SHA-256 on the words `a b c` `d` `e f g` `h`, with its constant and message word
+/// added (`kw`): `d` takes the new `e` and `h` the new `a`.
+#[inline(always)]
+fn round([a, b, c]: [u32; 3], d: &mut u32, [e, f, g]: [u32; 3], h: &mut u32, kw: u32) {
+    let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+    let choice = g ^ (e & (f ^ g));
+    let t1 = h.wrapping_add(s1).wrapping_add(choice).wrapping_add(kw);
+    let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+    let majority = (a & b) | (c & (a | b));
+    *d = d.wrapping_add(t1);
+    *h = t1.wrapping_add(s0.wrapping_add(majority));
 }
 
 /// Standard base64 with padding.
@@ -696,15 +735,62 @@ pub(crate) struct Applied {
 pub(crate) struct Csp {
     parts: Vec<String>,
     without_nonce: HeaderValue,
+    /// Where a style block's hash is written: the end of `style-src 'self'` in `without_nonce`,
+    /// and the part of `parts` that holds it with the offset of its end there.
+    style_at: (usize, usize, usize),
     opener: HeaderValue,
     referrer: Sent,
 }
 
 impl Csp {
     fn new(policy: &Policy, import_map: &str) -> Self {
-        let parts = policy.csp_with(Some("\0"), import_map).split('\0').map(str::to_string).collect();
-        let without_nonce = HeaderValue::try_from(policy.csp_with(None, import_map)).expect("CSP sources are checked tokens");
-        Csp { parts, without_nonce, opener: policy.sources.opener.header(), referrer: policy.sources.referrer }
+        let parts: Vec<String> = policy.csp_with(Some("\0"), import_map).split('\0').map(str::to_string).collect();
+        let text = policy.csp_with(None, import_map);
+        let at = text.find(STYLE_AT).expect("every policy writes style-src 'self'") + STYLE_AT.len();
+        let (part, offset) = parts
+            .iter()
+            .enumerate()
+            .find_map(|(i, part)| part.find(STYLE_AT).map(|at| (i, at + STYLE_AT.len())))
+            .expect("every policy writes style-src 'self'");
+        let without_nonce = HeaderValue::try_from(text).expect("CSP sources are checked tokens");
+        Csp {
+            parts,
+            without_nonce,
+            style_at: (at, part, offset),
+            opener: policy.sources.opener.header(),
+            referrer: policy.sources.referrer,
+        }
+    }
+
+    /// The header with `nonce` (when there is one) and `hash`, a page's style block's, among its
+    /// `style-src` sources.
+    fn with_style(&self, nonce: Option<&str>, hash: &str) -> Option<HeaderValue> {
+        let mut text = String::with_capacity(self.without_nonce.len() + hash.len() + nonce.map_or(0, |n| 2 * (n.len() + 10)));
+        match nonce {
+            None => {
+                let csp = std::str::from_utf8(self.without_nonce.as_bytes()).ok()?;
+                text.push_str(&csp[..self.style_at.0]);
+                text.push(' ');
+                text.push_str(hash);
+                text.push_str(&csp[self.style_at.0..]);
+            }
+            Some(nonce) => {
+                for (i, part) in self.parts.iter().enumerate() {
+                    if i > 0 {
+                        text.push_str(nonce);
+                    }
+                    if i == self.style_at.1 {
+                        text.push_str(&part[..self.style_at.2]);
+                        text.push(' ');
+                        text.push_str(hash);
+                        text.push_str(&part[self.style_at.2..]);
+                    } else {
+                        text.push_str(part);
+                    }
+                }
+            }
+        }
+        HeaderValue::try_from(text).ok()
     }
 }
 
@@ -773,6 +859,7 @@ impl Applied {
     /// the app's opener policy, and still the area's referrer policy.
     pub fn headers(&self, res: &mut Response, nonce: Option<&NonceSlot>, csp: &Csp) {
         let page = nonce.map(|nonce| (nonce, csp));
+        let block = if page.is_some() { res.extensions_mut().remove::<StyleBlock>() } else { None };
         let headers = res.headers_mut();
         // Room for the headers below and `Cache-Control` (`Vary` from compression is appended to an
         // existing one, or added): the map grows at most once, and not at all when a page reserved
@@ -782,10 +869,18 @@ impl Applied {
             if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
         let ours = csp.referrer;
         let opener = if page.is_some() { csp.opener.clone() } else { self.csp.opener.clone() };
-        let csp = match page.map(|(slot, csp)| (slot.taken(), csp)) {
-            None => Some(self.api_csp.clone()),
-            Some((None, csp)) => Some(csp.without_nonce.clone()),
-            Some((Some(nonce), csp)) => HeaderValue::try_from(csp.parts.join(&*nonce.0)).ok(),
+        let csp = match (page.map(|(slot, csp)| (slot.taken(), csp)), block) {
+            (None, _) => Some(self.api_csp.clone()),
+            (Some((None, csp)), None) => Some(csp.without_nonce.clone()),
+            // A hash that made no header value (it cannot: base64 is header text) leaves the block
+            // blocked, never the page without a policy.
+            (Some((None, csp)), Some(StyleBlock(hash))) => {
+                csp.with_style(None, &hash).or_else(|| Some(csp.without_nonce.clone()))
+            }
+            (Some((Some(nonce), csp)), None) => HeaderValue::try_from(csp.parts.join(&*nonce.0)).ok(),
+            (Some((Some(nonce), csp)), Some(StyleBlock(hash))) => {
+                csp.with_style(Some(&nonce.0), &hash).or_else(|| HeaderValue::try_from(csp.parts.join(&*nonce.0)).ok())
+            }
         };
         // A response that brings a policy of its own is a relayed page (or a bug): it keeps it.
         if let Some(brought) = csp.and_then(|csp| headers.insert(csp_header, csp)) {
@@ -1151,6 +1246,19 @@ mod tests {
     }
 
     #[test]
+    fn a_style_block_s_hash_joins_style_src_with_or_without_a_nonce() {
+        let csp = Csp::new(&Policy::new().style_src("https://fonts.example"), "{}");
+        let plain = csp.with_style(None, "'sha256-X'").unwrap();
+        let plain = plain.to_str().unwrap();
+        assert!(plain.contains("; style-src 'self' 'sha256-X' https://fonts.example; img-src"), "{plain}");
+        assert_eq!(plain.replace(" 'sha256-X'", ""), csp.without_nonce.to_str().unwrap());
+        let nonced = csp.with_style(Some("n0"), "'sha256-X'").unwrap();
+        let nonced = nonced.to_str().unwrap();
+        assert!(nonced.contains("; style-src 'self' 'sha256-X' 'nonce-n0' https://fonts.example; img-src"), "{nonced}");
+        assert_eq!(nonced.replace(" 'sha256-X'", ""), csp.parts.join("n0"));
+    }
+
+    #[test]
     fn hash_sources_match_the_browsers_sha256() {
         // Known answers (FIPS 180-4 examples, and Node's crypto for the rest), across block sizes.
         assert_eq!(hash_source(""), "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='");
@@ -1160,6 +1268,10 @@ mod tests {
             "'sha256-JI1qYdIGOLjlwCaTDD5gOaM85Flk/yFn9uzt1BnbBsE='"
         );
         assert_eq!(hash_source(&"a".repeat(1000)), "'sha256-Qe3s5C1j6Nm/UVqbppMuHCDLyfWl0TRkWttdsblzfqM='");
+        // Where the length no longer fits in the last block, and a whole block.
+        assert_eq!(hash_source(&"a".repeat(55)), "'sha256-n0OQ+NMMLdkuyfCVtl4rmumwqSWlJY4kHJ8ekQ9zQxg='");
+        assert_eq!(hash_source(&"a".repeat(56)), "'sha256-s1Q5pKxvCUi21vnjxq8PX1kM4g8b3nCQ73lwaG7Gc4o='");
+        assert_eq!(hash_source(&"a".repeat(64)), "'sha256-/+BU/nrgy23GXDr5th1SCfQ5hR20PQulmXM33xVGaOs='");
         assert_eq!(hash_source("x-a,x-b{display:contents}"), "'sha256-00iQbWJAoniMipHb+WLUVm3oMINcwW9byUcwNquEbzc='");
         assert_eq!(base64(b"ab"), "YWI=");
         assert_eq!(base64(b"a"), "YQ==");

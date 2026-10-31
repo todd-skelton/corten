@@ -1,0 +1,4 @@
+/* For the doctests and tests of style={..}: a meter whose fill and offset come from data. */
+@property --fill { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+@property --nudge { syntax: "<length>"; inherits: true; initial-value: 0px; }
+.meter { background: linear-gradient(to right, currentColor var(--fill), transparent var(--fill)); translate: var(--nudge) 0; }

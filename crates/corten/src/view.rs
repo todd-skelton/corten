@@ -1197,12 +1197,16 @@ impl<T: Attrs> Attrs for Option<T> {
 }
 
 /// `[("data-id", id), ("title", title)]`: each pair as an attribute. Names come from the app's
-/// code; a name with characters an attribute name cannot have is skipped.
+/// code; a name with characters an attribute name cannot have is skipped, and so is `data-vars`,
+/// which only `style={..}` writes (a full page's style block has rules for its values alone).
 impl<N: AsRef<str>, V: AttrValue> Attrs for [(N, V)] {
     fn render_attrs(&self, out: &mut String) {
         for (name, value) in self {
             let name = name.as_ref();
-            if !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.')) {
+            if !name.is_empty()
+                && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.'))
+                && !name.eq_ignore_ascii_case("data-vars")
+            {
                 value.write_attr(&format!(" {name}"), out);
             }
         }
