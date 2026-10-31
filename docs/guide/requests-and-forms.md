@@ -49,7 +49,11 @@ filtering or totalling what the page already shows is faster in a handler, with 
 ([Server or browser](scripts.md#server-or-browser)).
 
 `#[derive(Fields)]` gives a form struct its field names as `FieldName` constants, so markup and
-validation cannot misspell them: `Errors` takes nothing else. Validation stays in the app; `Errors` carries the first message per field.
+validation cannot misspell them: `Errors` takes nothing else. A name carries the type its control
+sends (`condition: Option<Condition>` is a `FieldName<Condition>`), so a control that takes a typed
+name (`SubmitKey::field`, corten-ui's `Picker`, `Number` and `RequiredWhen`) cannot be given another
+field's; `name={..}` and `Errors` take a name of any type, and `.untyped()` drops the type for a
+list of names of several fields (`[f.email.untyped(), f.price.untyped()]`). Validation stays in the app; `Errors` carries the first message per field.
 Any name works, including ones the DOM gives a form's own properties (`action`, `method`, `id`): the runtime
 posts a `data-patch` form to its own `action` and `method` whatever its controls are named. An app's own
 script that reads `form.action` gets the control instead, as in any page; read `getAttribute("action")`.
