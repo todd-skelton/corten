@@ -177,8 +177,9 @@ impl Policy {
     }
 
     /// Allows `style="..."` attributes in markup. Off by default; setting `element.style` from
-    /// script is always allowed. Pages that draw sizes from data in one part of the app allow
-    /// them there only ([`crate::Area::policy`]).
+    /// script is always allowed. A size drawn from data needs none: it is a custom property set
+    /// from markup ([`crate::style::Var`]). Pages that show rich text written with style attributes
+    /// in one part of the app allow them there only ([`crate::Area::policy`]).
     pub fn allow_style_attributes(mut self) -> Self {
         self.sources = self.sources.allow_style_attributes();
         self

@@ -711,7 +711,7 @@ pub(crate) fn custom_properties(css: &str) -> (Vec<&str>, Vec<&str>) {
             (i, last) = (end, b'-');
             continue;
         }
-        if c == b'@' && css[i..].starts_with("@property") {
+        if c == b'@' && css.get(i..i + 9).is_some_and(|at| at.eq_ignore_ascii_case("@property")) {
             let start = space(i + "@property".len());
             if css[start..].starts_with("--") {
                 let end = name_end(start + 2);
@@ -803,7 +803,7 @@ mod tests {
     fn a_stylesheet_names_the_custom_properties_it_declares_and_reads() {
         let css = "/* var(--commented) */ :root{--ink:#111;--space-1 : 4px}.a--b:hover{color:var(--ink)}
 .x { padding: var( --space-1 ); margin: var(--gap, var(--nope)); content: \"var(--quoted)\"; background: VAR(--bg) }
-@property --angle { syntax: '<angle>'; inherits: false; initial-value: 0deg }
+@PROPERTY --angle { syntax: '<angle>'; inherits: false; initial-value: 0deg }
 @supports (--x: 1) { .y { width: calc(var(--w) * 2); --é-ä: 1 } }";
         let (declared, needed) = custom_properties(css);
         assert_eq!(declared, ["--ink", "--space-1", "--angle", "--é-ä"]);
