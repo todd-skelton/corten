@@ -44,6 +44,32 @@ use axum::{
 use http_body::{Frame, SizeHint};
 use tokio::sync::Notify;
 
+/// Begins the shutdown of the task whose signal [`Signal::task`] made with it: what `serve` does
+/// to a task's signal on Ctrl-C or `SIGTERM`, for a test. It aborts that one signal; the app's
+/// own shutdown is [`crate::shutdown`].
+///
+/// Only a signal made with it can be aborted: a request's signal, or one a test has, cannot.
+///
+/// ```compile_fail,E0423
+/// fn stop(signal: corten::Signal) {
+///     corten::Shutdown(signal).begin();
+/// }
+/// ```
+///
+/// ```compile_fail,E0624
+/// fn stop(signal: corten::Signal) {
+///     signal.abort(corten::Abort::Shutdown);
+/// }
+/// ```
+pub struct Shutdown(Signal);
+
+impl Shutdown {
+    /// Aborts the task's signal with [`Abort::Shutdown`].
+    pub fn begin(self) {
+        self.0.abort(Abort::Shutdown);
+    }
+}
+
 /// Why a request's [`Signal`] aborted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Abort {
@@ -96,6 +122,48 @@ impl Signal {
     /// A request's signal in an app.
     pub(crate) fn for_app(shared: Arc<crate::page::Shared>) -> Signal {
         Signal(Arc::new(Inner { shared: Some(shared), ..Inner::default() }))
+    }
+
+    /// A task's signal and the handle that begins its shutdown, for a test of an app's task: the
+    /// signal [`crate::App::task`] gives aborts with [`Abort::Shutdown`] when `serve` begins to stop,
+    /// and this does the same when the test calls [`Shutdown::begin`], so the task's shutdown path
+    /// (a job released, a loop that returns at once) is tested as it runs. `app.router()` starts no
+    /// tasks, so a test runs the task's function itself. Only a signal made here can be aborted: a
+    /// request's is the app's alone.
+    ///
+    /// ```
+    /// use corten::{Abort, Signal};
+    /// use std::time::Duration;
+    ///
+    /// /// Polls every 10 s; a poll is a step that takes 6 s and stops at the signal.
+    /// async fn poll(signal: Signal) -> &'static str {
+    ///     loop {
+    ///         tokio::select! {
+    ///             biased;
+    ///             _ = signal.aborted() => return "stopped while idle",
+    ///             _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+    ///         }
+    ///         tokio::select! {
+    ///             biased;
+    ///             _ = signal.aborted() => return "stopped mid-step",
+    ///             _ = tokio::time::sleep(Duration::from_secs(6)) => {}
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// # tokio::runtime::Builder::new_current_thread().enable_time().start_paused(true).build().unwrap().block_on(async {
+    /// let (signal, shutdown) = Signal::task();
+    /// let task = tokio::spawn(poll(signal.clone()));
+    /// tokio::time::sleep(Duration::from_secs(12)).await; // 2 s into the first step
+    /// let at = tokio::time::Instant::now();
+    /// shutdown.begin();
+    /// assert_eq!(task.await.unwrap(), "stopped mid-step");
+    /// assert_eq!((at.elapsed(), signal.reason()), (Duration::ZERO, Some(Abort::Shutdown)));
+    /// # });
+    /// ```
+    pub fn task() -> (Signal, Shutdown) {
+        let signal = Signal::default();
+        (signal.clone(), Shutdown(signal))
     }
 
     /// The app's shared state, for a request an app serves.
