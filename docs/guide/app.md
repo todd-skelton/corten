@@ -309,7 +309,7 @@ the pool, so a test can hand it a transaction:
 // The app's write: a transaction in a handler, a test's transaction in a test.
 pub async fn record_cost(db: &mut PgConnection, order: &Order) -> sqlx::Result<()> { .. }
 
-async fn save(State(db): State<PgPool>, Form(order): Form<Order>) -> corten::Result<..> {
+async fn save(State(db): State<PgPool>, Form(order): Form<Order>) -> HtmlResult {
     let mut tx = db.begin().await?;
     record_cost(&mut tx, &order).await?;
     tx.commit().await?;
@@ -319,22 +319,31 @@ async fn save(State(db): State<PgPool>, Form(order): Form<Order>) -> corten::Res
 
 Then pick one of two ways to keep tests from leaving rows behind:
 
-1. **A fresh database per test**: `#[sqlx::test]` creates one, applies the migrations and gives
-   the test a pool (or a connection), and drops the database afterwards. Code that commits is
-   tested as it runs, and tests do not see each other's rows. This is the one to reach for.
+1. **A fresh database per test**: `#[sqlx::test]` (sqlx's `migrate` feature) creates one with the
+   role in `DATABASE_URL`, which must be allowed to create databases, applies `./migrations`
+   (`migrator`, `fixtures` or `migrations = false` for a schema the app does not own) and gives
+   the test a pool or a connection; a passing test's database is dropped, a failing one's is kept
+   for a look and dropped by the next run. Code that commits is tested as it runs, and tests do
+   not see each other's rows. This is the one to reach for, and the one a handler test needs: a
+   handler opens its transaction from the pool, so the test builds the app's state with the test's
+   pool and asks `app(shared).router()` as above.
 2. **A transaction per test, rolled back**: `let mut tx = pool.begin().await?;`, the code under
    test given `&mut tx` (its own transactions become savepoints), the result read on `tx`, and
    `tx` dropped or rolled back at the end. This works against a shared database (a dev copy) but
    cannot test code that commits on its own connection.
 
-A handler test that needs the database builds `Shared` with the test's pool and asks the router as
-above. Tests that need a database the machine may not have are `#[ignore = "needs DATABASE_URL"]`
-and run with `cargo test -- --ignored`; a test target of their own (`tests/db.rs`, run with
-`cargo test --test db -- --ignored`) keeps them out of a run filtered by module name.
+`corten check` runs `cargo test` alone, so a test that needs a database the machine may not have is
+`#[ignore = "needs DATABASE_URL"]`, and the app's CI runs `cargo test -- --ignored` with a
+database. Such a test reads `DATABASE_URL` and fails with that name when it is missing rather than
+panicking somewhere later.
 
-Something that calls a live service and writes files (a fixture recorder) is not a test: make it a
-binary or an example (`examples/record_fixtures.rs`, run with `cargo run --example
-record_fixtures`), so no `cargo test` run, `--include-ignored` or not, can start it.
+Code outside `src/main.rs` (a test target of its own, `tests/db.rs`, an example, a second
+binary) can reach the app only through a library: `corten new` writes `src/main.rs` alone, so move
+`app()` and the modules into `src/lib.rs` and keep `main` calling it. Then `cargo test --test db
+-- --ignored` runs the database tests and nothing else. Something that calls a live service and
+writes files (a fixture recorder) is not a test: make it an example (`examples/record_fixtures.rs`,
+run with `cargo run --example record_fixtures`) or a binary, so no `cargo test` run,
+`--include-ignored` or not, starts it.
 
 ## Your own listeners
 

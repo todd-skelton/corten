@@ -48,8 +48,9 @@ mod tests {
    JavaScript and once without.
 5. A test that needs a database: code that writes takes the connection (`&mut PgConnection`),
    not the pool, so a test can pass it a transaction. Prefer `#[sqlx::test]` (a fresh database per
-   test, migrations applied, dropped after); a transaction rolled back at the end works against a
-   shared database but cannot test code that commits on its own. Mark tests that need a database
-   the machine may not have `#[ignore = "needs DATABASE_URL"]` (`cargo test -- --ignored`). A
-   fixture recorder that calls a live service is a binary or an example, never a test. See the app
-   guide, Testing an app.
+   test, made with a role that can create databases, migrations applied); a transaction rolled
+   back at the end works against a shared database but cannot test code that commits on its own.
+   Mark tests that need a database `#[ignore = "needs DATABASE_URL"]` and run them in CI with
+   `cargo test -- --ignored`. A test target, example or binary reaches the app only through
+   `src/lib.rs`. A fixture recorder that calls a live service is an example or a binary, never a
+   test. See the app guide, Testing an app.
