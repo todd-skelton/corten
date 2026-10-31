@@ -174,14 +174,24 @@ try {
   check("service worker is registered and active", registration === `${base}/service-worker.js`);
   const manifest = await page.evaluate(async () => (await fetch("/manifest.webmanifest")).json());
   check("manifest is installable (name, 192 and 512 icons)", manifest.name === "Card Market" && manifest.icons.some((i) => i.sizes === "512x512"));
-  // The browser reads every member the app sets (orientation, categories, a screenshot, a
-  // shortcut) without an error, and the images they name are served.
+  // The browser reads every member the app sets (categories, screenshots, a shortcut) without an
+  // error, and the images they name are served. (The smoke's catalog has no categories, so the
+  // shortcut's page is checked to be the category page; a unit test checks the demo catalog has
+  // items in it.)
   const manifestCdp = await context.newCDPSession(page);
   const read = await manifestCdp.send("Page.getAppManifest");
   check("the browser reads the manifest without errors", read.errors.length === 0, JSON.stringify(read.errors));
   const images = [...manifest.screenshots.map((s) => s.src), ...manifest.shortcuts.flatMap((s) => s.icons.map((i) => i.src))];
   const served = await page.evaluate(async (urls) => Promise.all(urls.map(async (u) => (await fetch(u)).status)), images);
   check("the manifest's screenshots and shortcut icon are served", images.length === 3 && served.every((s) => s === 200), JSON.stringify(served));
+  // Each screenshot is the size the manifest says, or Chrome leaves it out of its install dialog.
+  const sizes = await page.evaluate(async (shots) => Promise.all(shots.map(async (s) => {
+    const img = new Image();
+    img.src = s.src;
+    await img.decode();
+    return [s.sizes, `${img.naturalWidth}x${img.naturalHeight}`];
+  })), manifest.screenshots);
+  check("each screenshot is the size the manifest says", sizes.length === 2 && sizes.every(([said, is]) => said === is), JSON.stringify(sizes));
   const shortcut = await page.evaluate(async (url) => {
     const r = await fetch(url);
     return { status: r.status, type: r.headers.get("content-type") ?? "", title: /<title>([^<]*)/.exec(await r.text())?.[1] ?? "" };

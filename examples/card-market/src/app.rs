@@ -57,6 +57,10 @@ struct Keys<'a> {
     agents: &'a str,
 }
 
+/// The category the installed app's shortcut opens: one of the demo catalog's (a test checks it
+/// lists items there).
+const SHORTCUT_CATEGORY: &str = "ember-reach";
+
 /// The app with the keys and the writes a minute given, for tests.
 fn app_with(source: Source, keys: Keys, writes: u32) -> App {
     let Keys { partners, agents } = keys;
@@ -80,7 +84,8 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App {
                 .label("Popular items"),
         )
         .shortcut(
-            Shortcut::new("Ember Reach", &routes::Category { slug: "ember-reach" }).icon(views::Static::ICONS_192_PNG, "192x192"),
+            Shortcut::new("Ember Reach", &routes::Category { slug: SHORTCUT_CATEGORY })
+                .icon(views::Static::ICONS_192_PNG, "192x192"),
         );
     // Agents in a browser on another site (AGENT_ORIGINS, comma separated) may call the tools.
     let origins = std::env::var("AGENT_ORIGINS").unwrap_or_default();
@@ -536,6 +541,12 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+
+    /// The installed app's shortcut opens a category with items in the demo catalog.
+    #[test]
+    fn the_shortcut_opens_a_category_with_items() {
+        assert!(!Source::demo().in_category(SHORTCUT_CATEGORY).is_empty(), "{SHORTCUT_CATEGORY}");
+    }
 
     fn app() -> Router {
         let offers: Vec<_> = (1..=7)

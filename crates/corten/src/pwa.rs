@@ -180,6 +180,14 @@ impl Dir {
 /// `Narrow` ones (or ones with no form factor) on a phone. The browser checks the image, not
 /// Corten.
 ///
+/// A path written as text does not compile: a file of the app is its constant, so a misspelled
+/// one does not compile either.
+///
+/// ```compile_fail,E0277
+/// use corten::pwa::Screenshot;
+/// let _ = Screenshot::new("shots/cart.png", "1280x720");
+/// ```
+///
 /// ```
 /// use corten::pwa::{FormFactor, Manifest, Screenshot};
 /// # use axum::http::Uri;
@@ -283,7 +291,15 @@ impl Shortcut {
         self
     }
 
-    /// An icon for the shortcut, as [`Manifest::icon`] takes one (96x96 at least).
+    /// An icon for the shortcut, as [`Manifest::icon`] takes one (96x96 at least): not a path as
+    /// text.
+    ///
+    /// ```compile_fail,E0277
+    /// # #[corten::routes] mod url { #[route("/watchlist", get = page)] pub struct Watchlist; }
+    /// # async fn page() -> &'static str { "" }
+    /// use corten::pwa::Shortcut;
+    /// let _ = Shortcut::new("Watchlist", &url::Watchlist).icon("icons/w.png", "96x96");
+    /// ```
     pub fn icon(self, src: impl Into<IconSrc>, sizes: &str) -> Self {
         self.with_icon(src.into(), sizes, None)
     }
@@ -300,7 +316,7 @@ impl Shortcut {
     }
 }
 
-/// Where an icon is: a file of the static directory (`Static::ICONS_192_PNG`), or a `Uri` for one
+/// Where an image (an icon or a screenshot) is: a file of the static directory (`Static::ICONS_192_PNG`), or a `Uri` for one
 /// another site serves (`Uri::from_static("https://cdn.example.com/192.png")`), written as is.
 #[derive(Clone, Debug)]
 pub struct IconSrc(Src);
@@ -739,13 +755,11 @@ impl Pwa {
     }
 }
 
+/// The image's type as the static directory serves it ([`crate::assets`]'s one table); a name
+/// that is not an image's is taken for a PNG, as before.
 fn image_type(path: &str) -> &'static str {
-    match path.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase()).as_deref() {
-        Some("svg") => "image/svg+xml",
-        Some("webp") => "image/webp",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("avif") => "image/avif",
-        Some("ico") => "image/x-icon",
+    match crate::assets::content_type(path) {
+        image if image.starts_with("image/") => image,
         _ => "image/png",
     }
 }

@@ -1240,7 +1240,8 @@ Corten is pre-1.0, so any minor version may change the API.
     resolved to its versioned URL as an icon is. A manifest that sets none of them is written as
     before. `examples/card-market` sets categories, a wide and a narrow screenshot of its home page
     and a shortcut, and its smoke checks that Chromium reads the manifest without errors, that the
-    images are served and that the shortcut opens a page
+    screenshots are served at the sizes it says and that the shortcut opens a page. A manifest image's
+    `type` comes from the static directory's own table (a GIF was written `image/png`)
     ([#515 pwa::Manifest cannot set the manifest's other members (orientation, categories, id, screenshots, shortcuts)](https://github.com/todd-skelton/corten/issues/515)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
