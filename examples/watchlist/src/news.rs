@@ -198,8 +198,8 @@ pub struct Readers(Arc<Mutex<BTreeSet<String>>>);
 const READERS: usize = 10_000;
 
 /// The news page's parameters, one struct for the links that write them and the page that reads
-/// them: the sectors, the watchlist filter, how many stories the page has (Load more), and
-/// whether a signup sent the reader back. A field renamed here is renamed in every link.
+/// them: the sectors, the watchlist filter and how many stories the page has (Load more). A field
+/// renamed here is renamed in every link.
 #[derive(Clone, Default, Deserialize, Route, Fields)]
 #[route(query)]
 pub struct NewsQuery {
@@ -207,7 +207,6 @@ pub struct NewsQuery {
     pub sector: Vec<Sector>,
     pub mine: Option<bool>,
     pub shown: Option<usize>,
-    pub subscribed: Option<bool>,
 }
 
 impl NewsQuery {
@@ -282,7 +281,7 @@ fn whole_page(
                     </ol>
                     <LoadMore sectors={&q.sector} mine={mine} shown={next} total={total} />
                     <Disclaimer />
-                    <Subscribe form={briefing} errors={errors} subscribed={q.subscribed.unwrap_or(false)} />
+                    <Subscribe form={briefing} errors={errors} notice={req.notice()} />
                 </section>
             </div>
         </Layout>
@@ -391,18 +390,18 @@ struct BriefingForm {
     email: String,
 }
 
-/// The signup: what the reader typed and the server's messages after a refused submit, and a
-/// note once they are on the list.
+/// The signup: what the reader typed and the server's messages after a refused submit, and what
+/// a signup said once it sent the reader back (`req.notice()`).
 #[component]
-fn Subscribe<'a>(form: &'a BriefingForm, errors: &'a Errors, subscribed: bool) -> impl Patch {
+fn Subscribe<'a>(form: &'a BriefingForm, errors: &'a Errors, notice: Option<&'a Notice>) -> impl Patch {
     let f = BriefingForm::FIELDS;
     let e = errors.within(BriefingId);
     html! {
         <form id={BriefingId} method="post" action={url::Briefing} data-patch class={(card(), stack(Space::_3))}>
             <h2>"The morning briefing"</h2>
             {errors.form_message()}
-            if subscribed {
-                <p role="status">"You're on the list for the morning briefing."</p>
+            if let Some(notice) = notice {
+                <p role="status">{notice}</p>
             } else {
                 <p class={muted()}>"The day's top stories by email, before the market opens."</p>
             }
@@ -417,8 +416,9 @@ fn Subscribe<'a>(form: &'a BriefingForm, errors: &'a Errors, subscribed: bool) -
 }
 
 /// Signs a reader up, then sends the browser back to the form it came from, at the end of the
-/// page: `News { .. }.at(BriefingId)` is `/news?subscribed=true#briefing`, the id the form's
-/// markup prints, and the page says it worked. An address the server refuses comes back with
+/// page: `News { .. }.at(BriefingId)` is `/news#briefing`, the id the form's markup prints, and
+/// the page says it worked, once (`req.redirect_with_notice`): the address carries nothing for
+/// it, so a reload or a copied link does not say it again. An address the server refuses comes back with
 /// the message next to the field: the form, as a patch, or the page without JavaScript.
 async fn subscribe(
     req: Req,
@@ -442,13 +442,13 @@ async fn subscribe(
         }
     }
     if !errors.is_empty() {
-        let patch = Subscribe { form: &form, errors: &errors, subscribed: false };
+        let patch = Subscribe { form: &form, errors: &errors, notice: None };
         let q = NewsQuery::default();
         let page = || async { news_page(&req, viewer.as_deref(), &watching, &q, &form, &errors).await };
         return req.invalid(&errors, patch, page).await;
     }
-    let back = url::News { filter: NewsQuery { subscribed: Some(true), ..NewsQuery::default() } };
-    req.redirect(&back.at(BriefingId))
+    let back = url::News { filter: NewsQuery::default() };
+    req.redirect_with_notice(&back.at(BriefingId), "You're on the list for the morning briefing.")
 }
 
 /// Where a story is: another site. A client navigation's `fetch` cannot follow a redirect there,
@@ -558,9 +558,16 @@ mod tests {
     async fn subscribing_goes_back_to_the_form_which_says_so() {
         let res = call(post("/news/briefing", None, None, "email=ada%40example.com")).await;
         assert_eq!(res.status(), StatusCode::SEE_OTHER);
-        assert_eq!(res.headers()["location"], "/news?subscribed=true#briefing");
-        let (_, page) = send(get("/news?subscribed=true")).await;
+        assert_eq!(res.headers()["location"], "/news#briefing");
+        let set = res.headers()["set-cookie"].to_str().unwrap();
+        let cookie = set.split(';').next().unwrap();
+        assert!(cookie.starts_with("__Host-corten-notice="), "{set}");
+        let res = call(get_with("/news", cookie)).await;
+        assert!(res.headers()["set-cookie"].to_str().unwrap().starts_with("__Host-corten-notice=; "), "the page removes it");
+        let page = text(res).await;
         assert!(page.contains("You&#39;re on the list for the morning briefing."), "{page}");
+        let (_, page) = send(get("/news")).await;
+        assert!(!page.contains("on the list"), "{page}");
     }
 
     #[tokio::test]
