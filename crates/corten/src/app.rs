@@ -301,6 +301,8 @@ pub struct App<M = ()> {
     areas: Vec<Placed>,
     deadline: Option<Duration>,
     apis: Vec<(Mount, Router)>,
+    /// The APIs' route paths as written, checked with the pages' when the router is built.
+    api_paths: Vec<&'static str>,
     tasks: Vec<Task>,
     grace: Duration,
     /// Work its handlers finish whether or not they are dropped ([`Signal::finish`]), which
@@ -345,6 +347,7 @@ impl App {
             areas: Vec::new(),
             deadline: Some(Duration::from_secs(30)),
             apis: Vec::new(),
+            api_paths: Vec::new(),
             tasks: Vec::new(),
             grace: Duration::from_secs(5),
             finishing: Arc::default(),
@@ -380,6 +383,7 @@ impl App {
             areas: self.areas,
             deadline: self.deadline,
             apis: self.apis,
+            api_paths: self.api_paths,
             tasks: self.tasks,
             grace: self.grace,
             finishing: self.finishing,
@@ -473,6 +477,7 @@ impl<M: Middleware> App<M> {
             panic!("corten: the API prefixes {:?} and {prefix:?} overlap", other.prefix);
         }
         let api = build(Api::new());
+        self.api_paths.extend(&api.written);
         self.apis.push((Mount::new(prefix.to_string(), &api), api.routes));
         self
     }
@@ -858,6 +863,13 @@ impl<M: Middleware> App<M> {
         // The same path routed in two places (the app's routes and an area's) is one route to axum,
         // with the methods of both.
         let mut pages: Vec<(&'static str, bool)> = Vec::new();
+        crate::route::assert_no_clash(
+            self.pages
+                .iter()
+                .chain(self.areas.iter().flat_map(|area| &area.pages))
+                .map(|(p, _)| *p)
+                .chain(self.api_paths.iter().copied()),
+        );
         for &(pattern, get) in self.pages.iter().chain(self.areas.iter().flat_map(|area| &area.pages)) {
             match pages.iter_mut().find(|(p, _)| *p == pattern) {
                 Some((_, has)) => *has |= get,

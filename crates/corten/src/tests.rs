@@ -2457,6 +2457,36 @@ async fn a_parameter_followed_by_text_is_read_without_it() {
     assert_eq!((status, &body[..]), (StatusCode::OK, "rss"));
     let (status, _, _) = call_with(router, "GET", "/feeds/news.atom", None, None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // And one of an API, whose failures are JSON.
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let router = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiFile>(json)).router();
+    let (status, _, body) = call_with(router.clone(), "GET", &ApiFile { name: "rates" }.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "json"));
+    let (status, _, _) = call_with(router, "GET", "/api/files/rates.csv", None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[derive(crate::Route)]
+#[route("/api/files/{name}.json")]
+struct ApiFile<'a> {
+    name: &'a str,
+}
+
+#[derive(crate::Route)]
+#[route("/feeds/{name}.atom")]
+struct Atom<'a> {
+    name: &'a str,
+}
+
+/// Two routes that differ only in the text after a parameter, in different places (the app's
+/// routes and an area): axum would match them as one path, so the app does not start.
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn routes_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let atom = crate::Methods::reads(axum::routing::post(|| async { "atom" }));
+    let _ = App::new(Routes::new().__route::<Rss>(rss)).area::<Feeds>(|feeds| feeds.route::<Atom>(atom)).router();
 }
 
 #[tokio::test]

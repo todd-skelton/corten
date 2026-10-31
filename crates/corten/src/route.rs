@@ -525,7 +525,7 @@ pub use corten_macros::routes;
 pub trait Route {
     /// The path as axum matches it: `"/items/{id}"`. A parameter followed by text in its segment
     /// (`#[route("/sitemap/{page}.xml")]`) is matched as the whole segment (`"/sitemap/{page}"`),
-    /// and the path as written is [`Route::WRITTEN`].
+    /// and Corten checks the text.
     const PATH: &'static str;
 
     /// The path as written, `"/sitemap/{page}.xml"`, when a parameter is followed by text in its
@@ -2218,10 +2218,6 @@ impl Routes {
     }
 }
 
-/// `methods` for `R`'s path: when a parameter of it is followed by text (`{page}.xml`), a request
-/// whose segment does not end in that text is a 404 before a handler runs, whatever its method. The
-/// route still takes every path of its shape from the router, so another route (a `/{*page}`
-/// catch-all) does not answer `/sitemap/about` either. A route with none is `methods` as it is.
 /// Whether `written` is `path` with text after some of its `{name}` parameters (in their segment),
 /// as `#[derive(Route)]` writes the two.
 const fn written_fits(path: &str, written: &str) -> bool {
@@ -2264,6 +2260,37 @@ const fn written_fits(path: &str, written: &str) -> bool {
     j == w.len()
 }
 
+/// The path axum matches for a route written `written`: the text after each parameter left out
+/// (`/sitemap/{page}` for `/sitemap/{page}.xml`).
+fn matched(written: &str) -> String {
+    written
+        .split('/')
+        .map(|s| if s.starts_with("{") { &s[..s.find('}').map_or(s.len(), |n| n + 1)] } else { s })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// Two routes of the app (in any module, area or API) that differ only in the text after a
+/// parameter, which axum matches as one path: a startup panic naming both, since only one could
+/// be reached (a `#[corten::routes]` module already refuses them when it compiles).
+pub(crate) fn assert_no_clash<'a>(written: impl IntoIterator<Item = &'a str>) {
+    let mut seen: Vec<(String, &str)> = Vec::new();
+    for path in written {
+        let at = matched(path);
+        match seen.iter().find(|(m, _)| *m == at) {
+            Some((_, other)) if *other != path => panic!(
+                "corten: the routes {other:?} and {path:?} differ only in the text after a parameter, which the router does not tell apart: give one a segment of its own"
+            ),
+            Some(_) => {}
+            None => seen.push((at, path)),
+        }
+    }
+}
+
+/// `methods` for `R`'s path: when a parameter of it is followed by text (`{page}.xml`), a request
+/// whose segment does not end in that text is a 404 before a handler runs, whatever its method. The
+/// route still takes every path of its shape from the router, so another route (a `/{*page}`
+/// catch-all) does not answer `/sitemap/about` either. A route with none is `methods` as it is.
 pub(crate) fn with_suffixes<R: Route + ?Sized, S: Clone + Send + Sync + 'static>(
     methods: axum::routing::MethodRouter<S>,
 ) -> axum::routing::MethodRouter<S> {
@@ -2276,13 +2303,45 @@ pub(crate) fn with_suffixes<R: Route + ?Sized, S: Clone + Send + Sync + 'static>
     if R::WRITTEN == R::PATH {
         return methods;
     }
-    methods.layer(axum::middleware::from_fn(|req: axum::extract::Request, next: axum::middleware::Next| async move {
-        if routes_path(R::WRITTEN, req.uri().path()) {
-            next.run(req).await
+    methods.layer(Suffixed { written: R::WRITTEN, inner: () })
+}
+
+/// [`with_suffixes`]'s layer and service: a 404 unless the path ends each segment as `written`
+/// does. A service of its own, not `middleware::from_fn`, so a request boxes no future.
+#[derive(Clone)]
+struct Suffixed<S> {
+    written: &'static str,
+    inner: S,
+}
+
+impl<S> tower_layer::Layer<S> for Suffixed<()> {
+    type Service = Suffixed<S>;
+
+    fn layer(&self, inner: S) -> Suffixed<S> {
+        Suffixed { written: self.written, inner }
+    }
+}
+
+impl<S> tower_service::Service<axum::extract::Request> for Suffixed<S>
+where
+    S: tower_service::Service<axum::extract::Request, Response = axum::response::Response>,
+{
+    type Response = axum::response::Response;
+    type Error = S::Error;
+    type Future = futures_util::future::Either<std::future::Ready<Result<Self::Response, S::Error>>, S::Future>;
+
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), S::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: axum::extract::Request) -> Self::Future {
+        if routes_path(self.written, req.uri().path()) {
+            futures_util::future::Either::Right(self.inner.call(req))
         } else {
-            axum::response::IntoResponse::into_response(axum::http::StatusCode::NOT_FOUND)
+            let missing = axum::response::IntoResponse::into_response(axum::http::StatusCode::NOT_FOUND);
+            futures_util::future::Either::Left(std::future::ready(Ok(missing)))
         }
-    }))
+    }
 }
 
 /// The crate's tests build routers by hand, to test what `App` does with any response.

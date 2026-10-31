@@ -58,6 +58,8 @@ use crate::{
 /// [`crate::App::api`] gives its function to fill in.
 pub struct Api<P> {
     pub(crate) routes: Router,
+    /// Its routes' paths as written, for [`crate::route::assert_no_clash`].
+    pub(crate) written: Vec<&'static str>,
     pub(crate) origins: Vec<String>,
     deadline: Option<Option<std::time::Duration>>,
     errors: Option<ErrorShape>,
@@ -76,6 +78,7 @@ impl<P: Prefix> Api<P> {
     pub(crate) fn new() -> Self {
         Api {
             routes: Router::new(),
+            written: Vec::new(),
             origins: Vec::new(),
             deadline: None,
             errors: None,
@@ -113,6 +116,7 @@ impl<P: Prefix> Api<P> {
             )
         };
         self.routes = self.routes.route(R::PATH, crate::route::with_suffixes::<R, _>(methods.0));
+        self.written.push(R::WRITTEN);
         self
     }
 
