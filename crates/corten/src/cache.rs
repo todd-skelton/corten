@@ -251,7 +251,11 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
 
 /// True when `Cache-Control` text has `directive`.
 pub(crate) fn has(text: &str, directive: &str) -> bool {
-    text.split(',').any(|d| d.split('=').next().unwrap_or("").trim().eq_ignore_ascii_case(directive))
+    // Bytes, not chars: the whitespace HTTP allows around a directive (spaces and tabs) is ASCII.
+    text.as_bytes().split(|&b| b == b',').any(|d| {
+        let name = d.split(|&b| b == b'=').next().unwrap_or(d);
+        name.trim_ascii().eq_ignore_ascii_case(directive.as_bytes())
+    })
 }
 
 /// The same lifetime for the browser alone: `public` and `s-maxage` become `private`.
