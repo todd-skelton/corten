@@ -2366,12 +2366,6 @@ Corten is pre-1.0, so any minor version may change the API.
     parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
     and a form's body are still refused. Links write what they did
     ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
-86. A task (`App::task`) that returns before shutdown began is logged with its name, as one that
-    panics is (`corten: task "pricing worker" returned before shutdown began`): a task that could
-    not start or gave up ended without a trace, so a log could not tell it from one that runs. The
-    app guide shows a task the configuration turns off as one not registered (`if on { app.task(..)
-    } else { app }`). Nothing a request does changes
-    ([#503 A task that returns before shutdown is silent: a task the configuration turns off, or one that cannot start, ends without a trace](https://github.com/todd-skelton/corten/issues/503)).
 82. A `corten-macros` script test bounded three parses on the wall clock (under 2 or 3 s), so check 1
     failed on a busy machine with nothing wrong. Each case now passes in one run under a second, and
     otherwise is checked by its growth (at a size about four times as long as at a quarter of it,
@@ -2383,6 +2377,12 @@ Corten is pre-1.0, so any minor version may change the API.
     still fails. One helper, `scripts/steady.mjs`, wraps each smoke's browser at launch. Test code
     only
     ([#497 Browser CI fails at random on net::ERR_NETWORK_CHANGED during a smoke navigation, blocking merges until a rerun](https://github.com/todd-skelton/corten/issues/497)).
+86. A task (`App::task`) that returns before shutdown began is logged with its name, as one that
+    panics is (`corten: task "pricing worker" returned before shutdown began`): a task that could
+    not start or gave up ended without a trace, so a log could not tell it from one that runs. The
+    app guide shows a task the configuration turns off as one not registered (`if on { app.task(..)
+    } else { app }`). Nothing a request does changes
+    ([#503 A task that returns before shutdown is silent: a task the configuration turns off, or one that cannot start, ends without a trace](https://github.com/todd-skelton/corten/issues/503)).
 
 ### Documentation
 
