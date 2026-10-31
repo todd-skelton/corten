@@ -2366,6 +2366,10 @@ Corten is pre-1.0, so any minor version may change the API.
     parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
     and a form's body are still refused. Links write what they did
     ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
+85. A release build of an app no longer warns that `Assets::module_tag` is never used: its only
+    caller is the debug-build check that a page's handlers call a module the app serves, so it is
+    built in debug builds only. Nothing a page renders changes
+    ([#500 A release build warns that Assets::module_tag is never used: its only caller is a debug-build check](https://github.com/todd-skelton/corten/issues/500)).
 
 ### Documentation
 
