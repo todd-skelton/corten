@@ -184,19 +184,29 @@ mod tests {
     }
 
     /// A task that returns before shutdown began is logged with its name (it could not start,
-    /// or gave up); one that returns once shutdown began, as it should, is not.
+    /// or gave up); one that returns once shutdown began, as it should, is not. Run through
+    /// `Running`, so the tasks are given the signal shutdown aborts.
     #[test]
     fn a_task_that_returns_before_shutdown_is_logged_with_its_name() {
-        let poll = |signal: &Signal| {
-            let mut run = Logged { name: "pricing worker", run: Box::pin(async {}), signal: signal.clone() };
-            let waker = std::task::Waker::noop();
-            assert!(Pin::new(&mut run).poll(&mut Context::from_waker(waker)).is_ready());
-        };
-        let early = logged(|| poll(&Signal::default()));
-        assert!(early.contains("corten: task \"pricing worker\" returned before shutdown began"), "{early}");
-        let (signal, shutdown) = Signal::task();
-        shutdown.begin();
-        let late = logged(|| poll(&signal));
-        assert!(late.is_empty(), "{late}");
+        let text = logged(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+            runtime.block_on(async {
+                let early = Task { name: "pricing worker", start: Box::new(|_| Box::pin(async {})) };
+                let waits = Task {
+                    name: "refresh",
+                    start: Box::new(|signal: Signal| {
+                        Box::pin(async move {
+                            signal.aborted().await;
+                        })
+                    }),
+                };
+                let running = Running::start(vec![early, waits], Signal::default());
+                tokio::task::yield_now().await;
+                let grace = Duration::from_secs(5);
+                running.finish(tokio::time::Instant::now() + grace, grace).await;
+            });
+        });
+        assert!(text.contains("corten: task \"pricing worker\" returned before shutdown began"), "{text}");
+        assert!(!text.contains("\"refresh\""), "{text}");
     }
 }

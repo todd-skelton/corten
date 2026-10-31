@@ -149,32 +149,6 @@ let app = App::new(url::router(quotas.clone())).task("refresh", move |signal| re
 corten::serve(app).await
 ```
 
-`serve` starts the tasks once it listens; `app.router()` starts none, so a test of the app does
-not run them. On Ctrl-C or `SIGTERM` the signal aborts with `Abort::Shutdown` first, then live
-streams end and the listeners close, and `serve` returns once requests in progress and the
-tasks have finished, waiting for the tasks up to `App::shutdown_grace` (5 seconds unless set),
-and then, within the same grace, for work handlers finish ([`Signal::finish`](cancellation.md#work-that-must-finish)).
-A task still running then is ended and logged by name, so a stuck one cannot hold the process,
-and so is one that panics; whether to restart it is the app's choice. A task that returns before
-shutdown began (it could not reach its database, or gave up) is logged by name as well
-(`corten: task "pricing worker" returned before shutdown began`), so the log tells a task that
-stopped from one that runs. A task the configuration turns off is not registered, and what it
-needs from the configuration is read there and passed in, so the task never returns at once.
-The builder chain ends before the switched tasks:
-
-```rust,ignore
-let app = App::new(routes).middleware(Stamp).area::<Admin>(admin).task("sales", sales);
-let app = match config.pricing_worker {
-    Some(settings) => app.task("pricing worker", move |signal| worker::run(settings, signal)),
-    None => {
-        tracing::info!("task \"pricing worker\" is off");
-        app
-    }
-};
-```
-
-Work that runs once at start (a migration) is done before `serve`, not in a task.
-
 Three things in the loop matter. `biased` polls the signal first, so no run starts once shutdown
 has begun (`select!` otherwise picks among ready branches at random). A run in progress is
 outside that `select!`, so the signal reaches it only if the run takes it: a step that can take
@@ -185,6 +159,31 @@ the step knows where it can stop. A task still running at the end of the grace i
 With `MissedTickBehavior::Skip` a run that took longer than the interval is followed by one late
 run, and then the interval's marks again: tokio's default, `Burst`, runs once for each mark
 missed, back to back.
+
+`serve` starts the tasks once it listens; `app.router()` starts none, so a test of the app does
+not run them. On Ctrl-C or `SIGTERM` the signal aborts with `Abort::Shutdown` first, then live
+streams end and the listeners close, and `serve` returns once requests in progress and the
+tasks have finished, waiting for the tasks up to `App::shutdown_grace` (5 seconds unless set),
+and then, within the same grace, for work handlers finish ([`Signal::finish`](cancellation.md#work-that-must-finish)).
+A task still running then is ended and logged by name, so a stuck one cannot hold the process,
+and so is one that panics; whether to restart it is the app's choice. A task that returns before
+shutdown began (it could not reach its database, or gave up) is logged by name as well
+(`corten: task "pricing worker" returned before shutdown began`), so the log tells a task that
+stopped from one that runs. A task the configuration turns off is not registered at all (the task
+does not read the configuration and return), and a task with work to do once (warming a cache
+after the app listens) waits for the signal when it is done (`warm(&cache, &signal).await;
+signal.aborted().await`), so only a task that stopped early is logged. The builder chain ends
+before the switched tasks:
+
+```rust,ignore
+let app = App::new(routes).middleware(Stamp).area::<Admin>(admin).task("sales", sales);
+let app = match config.pricing_worker {
+    Some(settings) => app.task("pricing worker", move |signal| worker::run(settings, signal)),
+    None => app, // the app's own log line says the worker is off
+};
+```
+
+Work that must finish before the first request (a migration) is done before `serve`, not in a task.
 
 ### A queue a request fills
 
