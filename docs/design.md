@@ -125,8 +125,11 @@ framework's shape, and what it does not do yet.
    Corten's own would mix into content negotiation; a document a cache handed to a navigation
    fetch by mistake carries neither, so the runtime loads the URL in full. `corten-shell` is the
    key of the page around `<main>`, compared with the one the page loaded with, not a validator
-   of the answer, so it is not an `ETag`, which caches and conditional requests read. Corten
-   would move to `Location` once `fetch` can read a redirect's target without following it.
+   of the answer, so it is not an `ETag`, which caches and conditional requests read.
+   `corten-notice` hands the runtime a redirect's notice (`req.redirect_with_notice`) the swapped
+   page did not draw, which it dispatches as `corten:notice`; the notice itself rides to the page
+   in the `__Host-corten-notice` cookie, since `fetch` follows the redirect. Corten would move to
+   `Location` once `fetch` can read a redirect's target without following it.
 
 ## Rules
 
