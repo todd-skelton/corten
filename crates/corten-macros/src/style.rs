@@ -80,7 +80,10 @@ fn initial_fits(kind: &str, value: &str) -> bool {
         return false;
     }
     let unit = unit.to_ascii_lowercase();
-    const LENGTHS: &[&str] = &["px", "rem", "em", "ch", "vw", "vh", "ex", "lh", "rlh", "vmin", "vmax", "cm", "mm", "in", "pt", "pc", "q", "svw", "svh", "lvw", "lvh", "dvw", "dvh", "cqw", "cqh", "cqi", "cqb"];
+    const LENGTHS: &[&str] = &[
+        "px", "rem", "em", "ch", "vw", "vh", "ex", "lh", "rlh", "vmin", "vmax", "cm", "mm", "in", "pt", "pc", "q", "svw", "svh",
+        "lvw", "lvh", "dvw", "dvh", "cqw", "cqh", "cqi", "cqb",
+    ];
     match kind {
         "Number" => unit.is_empty(),
         "Integer" => unit.is_empty() && number.fract() == 0.0 && !value.contains(['.', 'e', 'E']),
@@ -957,14 +960,31 @@ mod tests {
         assert!(error("@property fill { syntax: '*'; inherits: false }").contains("starts with --"));
         assert!(error("@property --a { syntax: '*'; inherits: false }\n@property --a { syntax: '*'; inherits: false }")
             .contains("twice"));
-        assert!(error("@property --a { syntax: '<percentage>'; inherits: false; initial-value: 0px }").contains("is not a <percentage>"));
-        assert!(error("@property --a { syntax: '<integer>'; inherits: false; initial-value: 1.5 }").contains("is not a <integer>"));
+        assert!(error("@property --a { syntax: '<percentage>'; inherits: false; initial-value: 0px }")
+            .contains("is not a <percentage>"));
+        assert!(
+            error("@property --a { syntax: '<integer>'; inherits: false; initial-value: 1.5 }").contains("is not a <integer>")
+        );
         assert!(error("@property --a { syntax: '<angle>'; inherits: false; initial-value: 0 }").contains("is not a <angle>"));
-        for ok in ["'<length>'; initial-value: 0", "'<length>'; initial-value: 1.5em", "'<number>'; initial-value: -2e3", "'<time>'; initial-value: 150ms", "'<color>'; initial-value: red"] {
+        for ok in [
+            "'<length>'; initial-value: 0",
+            "'<length>'; initial-value: 1.5em",
+            "'<number>'; initial-value: -2e3",
+            "'<time>'; initial-value: 150ms",
+            "'<color>'; initial-value: red",
+        ] {
             assert!(scope(&format!("@property --a {{ syntax: {ok}; inherits: TRUE }}"), "m").is_ok(), "{ok}");
         }
-        let url = scope("@property --fill { syntax: '*'; inherits: false }\n.a { background: url(--fill.svg); width: var(--fill) }", "m").unwrap();
-        assert!(url.css.contains("url(--fill.svg)") && url.css.contains("var(--m__fill)"), "a URL is not a property: {}", url.css);
+        let url = scope(
+            "@property --fill { syntax: '*'; inherits: false }\n.a { background: url(--fill.svg); width: var(--fill) }",
+            "m",
+        )
+        .unwrap();
+        assert!(
+            url.css.contains("url(--fill.svg)") && url.css.contains("var(--m__fill)"),
+            "a URL is not a property: {}",
+            url.css
+        );
     }
 
     #[test]
