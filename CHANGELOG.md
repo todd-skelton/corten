@@ -2366,6 +2366,17 @@ Corten is pre-1.0, so any minor version may change the API.
     parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
     and a form's body are still refused. Links write what they did
     ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
+82. A `corten-macros` script test bounded three parses on the wall clock (under 2 or 3 s), so check 1
+    failed on a busy machine with nothing wrong. Each case now passes in one run under a second, and
+    otherwise is checked by its growth (at a size about four times as long as at a quarter of it,
+    not sixteen), so load slows both runs alike
+    ([#495 A corten-macros script test's wall-clock bound (under 2 s) fails when the machine is busy, so check 1 goes red without a cause](https://github.com/todd-skelton/corten/issues/495)).
+84. The browser smokes retry a page's `goto` or `reload` once on `net::ERR_NETWORK_CHANGED`
+    alone, which Chromium raises when Docker changes the machine's network interfaces mid-run (twice
+    in CI in a week, each blocking a merge until a rerun); any other failure, a second one included,
+    still fails. One helper, `scripts/steady.mjs`, wraps each smoke's browser at launch. Test code
+    only
+    ([#497 Browser CI fails at random on net::ERR_NETWORK_CHANGED during a smoke navigation, blocking merges until a rerun](https://github.com/todd-skelton/corten/issues/497)).
 85. A release build of an app no longer warns that `Assets::module_tag` is never used: its only
     caller is the debug-build check that a page's handlers call a module the app serves, so it is
     built in debug builds only. Nothing a page renders changes
