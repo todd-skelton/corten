@@ -23,7 +23,7 @@ function vars(root) {
     if (!list || !(el instanceof HTMLElement || el instanceof SVGElement)) continue;
     for (const one of list.split(";")) {
       const at = one.indexOf(":");
-      if (one.startsWith("--") && at > 2) el.style.setProperty(one.slice(0, at), one.slice(at + 1));
+      if (one.startsWith("--") && at > 2) el.style.setProperty(one.slice(0, at), one.slice(at + 1), "important");
     }
   }
 }

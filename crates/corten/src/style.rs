@@ -248,12 +248,12 @@
 //! - The property is the component's, as its classes are: `--fill` is `--meter__fill` everywhere
 //!   in the file, so two components can both register a `--fill`. A rule the browser would ignore
 //!   (no `syntax`, `inherits` or `initial-value`, or for a number syntax an `initial-value` that
-//!   is not one, or depends on the font or viewport, `1em`) does not compile.
+//!   is not one, or depends on the font or a container, `1em`) does not compile.
 //! - `style={..}` takes one value, an `Option` (`None` sets nothing) or a tuple or array of them,
 //!   and writes `data-vars`. A full page gets one `<style>` at `<Corten />` with a rule for each
 //!   distinct value (`[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%!important}`, which wins
-//!   over the component's normal rules, as the runtime's inline values do; set a property from
-//!   markup or with an `!important` rule, not both), allowed by its
+//!   over every rule of the stylesheet, `!important` ones included, as the runtime's inline
+//!   `!important` values do), allowed by its
 //!   hash in that response's CSP, so it paints with the sizes and no script, and no style
 //!   attribute is allowed anywhere. A patch, a client navigation and a `<corten-live>` fragment
 //!   arrive under the policy the document loaded with, so the runtime sets their values through

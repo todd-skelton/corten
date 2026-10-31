@@ -689,7 +689,8 @@ function parse(html) {
  * them: `style={FILL.pct(42.0)}` in markup is `data-vars="--meter__fill:42%"`. A full page brings
  * them in a style block its CSP allows by hash; markup a patch or a navigation brings in is
  * under the policy the document loaded with, which allows neither that block nor a style
- * attribute, so they are set through the CSSOM, which the policy does not govern. Called once
+ * attribute, so they are set through the CSSOM, which the policy does not govern, `!important`
+ * as the block's rules are, so markup wins over every rule of the stylesheet either way. Called once
  * the markup is in the document, before the browser paints it.
  * @param {Element} root
  */
@@ -700,7 +701,7 @@ function setVars(root) {
     for (const one of vars.split(";")) {
       const at = one.indexOf(":");
       // Custom properties only: the server writes nothing else here.
-      if (one.startsWith("--") && at > 2) el.style.setProperty(one.slice(0, at), one.slice(at + 1));
+      if (one.startsWith("--") && at > 2) el.style.setProperty(one.slice(0, at), one.slice(at + 1), "important");
     }
   }
 }

@@ -272,8 +272,9 @@ pub(crate) fn collect<T>(render: impl FnOnce() -> T) -> (T, String) {
         rules.push_str("[data-vars=\"");
         rules.push_str(vars);
         rules.push_str("\"]{");
-        // `!important`: the runtime sets a patch's values inline, which wins over every normal
-        // rule whatever its specificity, so a full load's values win the same way.
+        // `!important`: the runtime sets a patch's values inline and `!important`, which wins over
+        // every rule of the stylesheet, `!important` ones included, so a full load's values win the
+        // same way.
         for (i, one) in vars.split(';').enumerate() {
             if i > 0 {
                 rules.push(';');

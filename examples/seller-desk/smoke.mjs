@@ -327,10 +327,16 @@ try {
     const { patch } = await import("corten");
     const name = /** @type {string} */ (document.querySelector("tbody [data-vars]")?.getAttribute("data-vars")).split(":")[0];
     document.querySelector("main")?.append(Object.assign(document.createElement("span"), { id: "vars-probe" }));
+    // A rule of the stylesheet marked !important loses to markup's value, as on a full load.
+    const rule = new CSSStyleSheet();
+    rule.replaceSync(`#vars-probe { ${name}: 0% !important }`);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, rule];
     await patch(`<span id="vars-probe" data-vars="${name}:61.5%"></span>`);
-    return getComputedStyle(/** @type {Element} */ (document.getElementById("vars-probe"))).getPropertyValue(name).trim();
+    const got = getComputedStyle(/** @type {Element} */ (document.getElementById("vars-probe"))).getPropertyValue(name).trim();
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== rule);
+    return got;
   });
-  check("a patch's values are set by the runtime", patched === "61.5%", patched);
+  check("a patch's values are set by the runtime, over an !important rule", patched === "61.5%", patched);
   // A row rows() copies from a <template> gets the template row's values through the CSSOM too,
   // after a client navigation (the page's style block is from the first load and has none for it).
   await page.click('header a[href="/"]');

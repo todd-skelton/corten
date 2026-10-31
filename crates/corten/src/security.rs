@@ -668,18 +668,35 @@ fn compress(h: &mut [u32; 8], block: &[u8; 64], k: &[u32; 64]) {
         w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
     }
     let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = *h;
-    for (k, w) in k.iter().zip(w) {
-        let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-        let choice = (e & f) ^ (!e & g);
-        let t1 = hh.wrapping_add(s1).wrapping_add(choice).wrapping_add(*k).wrapping_add(w);
-        let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-        let majority = (a & b) ^ (a & c) ^ (b & c);
-        let t2 = s0.wrapping_add(majority);
-        (hh, g, f, e, d, c, b, a) = (g, f, e, d.wrapping_add(t1), c, b, a, t1.wrapping_add(t2));
+    // Eight rounds at a time, each naming the words where the last left them, so no round moves
+    // the state along.
+    for (k, w) in k.as_chunks::<8>().0.iter().zip(w.as_chunks::<8>().0) {
+        let kw = |j: usize| k[j].wrapping_add(w[j]);
+        round([a, b, c], &mut d, [e, f, g], &mut hh, kw(0));
+        round([hh, a, b], &mut c, [d, e, f], &mut g, kw(1));
+        round([g, hh, a], &mut b, [c, d, e], &mut f, kw(2));
+        round([f, g, hh], &mut a, [b, c, d], &mut e, kw(3));
+        round([e, f, g], &mut hh, [a, b, c], &mut d, kw(4));
+        round([d, e, f], &mut g, [hh, a, b], &mut c, kw(5));
+        round([c, d, e], &mut f, [g, hh, a], &mut b, kw(6));
+        round([b, c, d], &mut e, [f, g, hh], &mut a, kw(7));
     }
     for (state, add) in h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
         *state = state.wrapping_add(add);
     }
+}
+
+/// One round of SHA-256 on the words `a b c` `d` `e f g` `h`, with its constant and message word
+/// added (`kw`): `d` takes the new `e` and `h` the new `a`.
+#[inline(always)]
+fn round([a, b, c]: [u32; 3], d: &mut u32, [e, f, g]: [u32; 3], h: &mut u32, kw: u32) {
+    let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+    let choice = g ^ (e & (f ^ g));
+    let t1 = h.wrapping_add(s1).wrapping_add(choice).wrapping_add(kw);
+    let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+    let majority = (a & b) | (c & (a | b));
+    *d = d.wrapping_add(t1);
+    *h = t1.wrapping_add(s0.wrapping_add(majority));
 }
 
 /// Standard base64 with padding.
