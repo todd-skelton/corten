@@ -1808,8 +1808,8 @@ Corten is pre-1.0, so any minor version may change the API.
     `:root:not([data-theme="light"])`. The examples' generated CSS adds the default context's rule
     (`[data-theme="light"]`, `[data-density="comfortable"]`) and otherwise differs only in that
     selector, a 6-digit hex where one was written with 3, `0px` for a zero length token and no
-    space between layered shadows: card-market's tokens 1,946 to 2,163 bytes (473 to 487
-    brotli), the watchlist's 14,713 to 14,944 (1,752 to 1,760 brotli)
+    space between layered shadows: card-market's tokens 1,946 to 2,171 bytes (473 to 492
+    brotli), the watchlist's 14,713 to 14,952 (1,752 to 1,759 brotli)
     ([#394 tokens! reads a token format of our own instead of the W3C Design Tokens format (DTCG 2025.10)](https://github.com/todd-skelton/corten/issues/394)).
 
 93. Breaking: a form's `FieldName` carries the type its control sends, `FieldName<T = Untyped, P = Root>`
