@@ -2895,6 +2895,18 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
                     .0,
                 )
                 .route(
+                    "/public-live",
+                    crate::route::get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let live = crate::live(futures_util::StreamExt::map(futures_util::stream::iter([()]), move |()| {
+                            let when = t.date_time(at, DateStyle::Medium, TimeStyle::Short);
+                            crate::Fragment::new(format!(r#"<p id="n">{when}</p>"#))
+                        }));
+                        Public::new(std::time::Duration::from_secs(60), live)
+                    })
+                    .0,
+                )
+                .route(
                     "/live",
                     get(move |req: Req| async move {
                         let t: ZoneMsg = req.t();
@@ -2932,6 +2944,9 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
     let (cache, page) = get_with(zoned.clone(), "/public", Some("corten-zone=America/Chicago")).await;
     assert!(page.contains(&format!("{utc}<p>unknown</p><p>0</p>")), "{page}");
     assert!(cache.starts_with("public"), "{cache}");
+    // Its live part's fragments too, as the stream is read after the handler returned.
+    let (cache, live) = get_with(zoned.clone(), "/public-live", Some("corten-zone=America/Chicago")).await;
+    assert!(live.contains("3:04 PM UTC") && cache.starts_with("public"), "{cache}: {live}");
     // A live part's fragments are written in the zone, as its page was.
     let (_, live) = get_with(zoned, "/live", Some("corten-zone=America/Chicago")).await;
     assert!(live.contains("10:04 AM GMT-5"), "{live}");

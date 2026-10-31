@@ -304,7 +304,6 @@ impl<A: IntoResponse> IntoResponse for SwitchOr<A> {
 
 impl<A: crate::Answer> crate::Answer for SwitchOr<A> {
     const FORMAT: crate::answer::Format = A::FORMAT;
-    const SHARED: bool = A::SHARED;
     type Inputs = A::Inputs;
     type Rows = A::Rows;
 }

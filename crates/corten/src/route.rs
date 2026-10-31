@@ -2039,7 +2039,7 @@ macro_rules! methods {
                 T: 'static,
                 S: Clone + Send + Sync + 'static,
             {
-                Methods(axum::routing::$method(__private::endpoint(handler)), stringify!($method) == "get")
+                Methods(axum::routing::$method(__private::endpoint(handler, <<<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Inputs as crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>>::SHARED)), stringify!($method) == "get")
             }
         )*
 
@@ -2057,7 +2057,7 @@ macro_rules! methods {
                         crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>,
                     T: 'static,
                 {
-                    Methods(self.0.$method(__private::endpoint(handler)), self.1 || stringify!($method) == "get")
+                    Methods(self.0.$method(__private::endpoint(handler, <<<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Inputs as crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>>::SHARED)), self.1 || stringify!($method) == "get")
                 }
             )*
         }
@@ -2142,7 +2142,7 @@ pub mod __private {
                     T: 'static,
                     S: Clone + Send + Sync + 'static,
                 {
-                    Methods(axum::routing::$method(endpoint(handler)), matches!(stringify!($method), "get" | "any"))
+                    Methods(axum::routing::$method(endpoint(handler, <<<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Inputs as crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>>::SHARED)), matches!(stringify!($method), "get" | "any"))
                 }
             )*
 
@@ -2378,13 +2378,24 @@ pub mod __private {
         }
     }
 
-    /// The handler with its answer in its type, so a JSON route's failures are marked as JSON.
+    /// The handler with its answer in its type, so a JSON route's failures are marked as JSON, and
+    /// whether the answer is the same for everyone (`Public`, known when the crate compiles).
     #[inline]
-    pub(crate) fn endpoint<H, T, S>(handler: H) -> crate::answer::Endpoint<H::Handler, <H as crate::answer::Signature<T>>::Out>
+    pub(crate) fn endpoint<H, T, S>(
+        handler: H,
+        shared: bool,
+    ) -> crate::answer::Endpoint<H::Handler, <H as crate::answer::Signature<T>>::Out>
     where
         H: RouteHandler<T, S> + crate::answer::Signature<T>,
     {
-        crate::answer::Endpoint { handler: handler.into_handler(), answer: std::marker::PhantomData }
+        #[cfg(not(feature = "zones"))]
+        let _ = shared;
+        crate::answer::Endpoint {
+            handler: handler.into_handler(),
+            answer: std::marker::PhantomData,
+            #[cfg(feature = "zones")]
+            shared,
+        }
     }
 
     /// A handler a route names: an async function whose arguments a request fills (extractors,

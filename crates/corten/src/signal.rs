@@ -81,6 +81,10 @@ struct Inner {
     callers: AtomicU64,
     /// The app's error page is answering it.
     error_page: AtomicBool,
+    /// Its answer is `Public`, the same for everyone: written as for a visitor whose zone is not
+    /// known, its live part's fragments too.
+    #[cfg(feature = "zones")]
+    for_everyone: AtomicBool,
     /// The first callers marked, so the error page, which looks them up again, does not mark one
     /// twice (the key mixes them by XOR, so a second mark would take it out).
     marked: [AtomicU64; 4],
@@ -249,6 +253,18 @@ impl Signal {
     /// around `<main>` (their time zone): private, but not part of the page's key.
     pub(crate) fn mark_personal(&self) {
         self.0.personal.store(true, Ordering::Relaxed);
+    }
+
+    /// The request's answer is `Public` (its route says so when the crate compiles).
+    #[cfg(feature = "zones")]
+    pub(crate) fn mark_for_everyone(&self) {
+        self.0.for_everyone.store(true, Ordering::Relaxed);
+    }
+
+    /// True when the request's answer is `Public`.
+    #[cfg(feature = "zones")]
+    pub(crate) fn is_for_everyone(&self) -> bool {
+        self.0.for_everyone.load(Ordering::Relaxed)
     }
 
     /// The app's error page is answering the request.

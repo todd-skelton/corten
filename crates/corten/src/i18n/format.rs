@@ -1046,8 +1046,8 @@ impl When {
 
     /// Written in UTC only because the visitor's zone is not known yet: the app learns it
     /// ([`crate::App::client_zone`], the `zones` feature), [`When::zone`] did not choose one, and
-    /// the request is the browser's first (no zone cookie yet). A script can write it again in the
-    /// browser's zone (corten-ui's `LocalTime`).
+    /// the request is the browser's first (no zone cookie yet) or its answer is `Public`, the same
+    /// for everyone. A script can write it again in the browser's zone (corten-ui's `LocalTime`).
     pub fn zone_unknown(&self) -> bool {
         !self.zoned && super::visitor::unknown()
     }

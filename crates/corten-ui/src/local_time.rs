@@ -7,8 +7,8 @@ use corten::{i18n::When, prelude::*};
 /// `<time datetime>` that says the instant. A browser's first page comes before that report, so
 /// there the server writes UTC, and its script (`local_time.js`) writes the same text again in the
 /// browser's zone, with the server's own format for the locale and style (so a later page, written
-/// by the server, reads the same). Only that first page loads the script. Without JavaScript the
-/// first page stays in UTC. Without `App::client_zone` and the `zones` feature it is the date as
+/// by the server, reads the same). A `Public` page, the same for everyone, is written that way on
+/// every visit. Only those pages load the script. Without JavaScript they stay in UTC. Without `App::client_zone` and the `zones` feature it is the date as
 /// written, on every page: Corten writes no zone, and the script never runs.
 ///
 /// Parts: the `time` element alone.

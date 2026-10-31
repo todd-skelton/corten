@@ -719,8 +719,9 @@ impl<St: Send + Sync> FromRequestParts<St> for Req {
 
 impl Req {
     pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, uri: &Uri, shared: Arc<Shared>) -> Self {
+        let signal: crate::Signal = extensions.get::<crate::Signal>().cloned().unwrap_or_default();
         #[cfg(feature = "zones")]
-        let for_everyone = extensions.get::<crate::answer::SharedAnswer>().is_some();
+        let for_everyone = shared.client_zone && signal.is_for_everyone();
         Req {
             mode: mode_of(headers),
             nonce: extensions.get::<NonceSlot>().cloned(),
@@ -733,7 +734,7 @@ impl Req {
             #[cfg(feature = "zones")]
             for_everyone,
             shared,
-            signal: extensions.get::<crate::Signal>().cloned().unwrap_or_default(),
+            signal,
         }
     }
 
