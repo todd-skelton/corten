@@ -1179,7 +1179,8 @@ Corten is pre-1.0, so any minor version may change the API.
     the browser's zone with the server's own format (`DateFormat` takes an offset,
     `format(at, { offset })`); later pages are the server's. `When` has `datetime()`, `format()` and
     `zone_unknown()`. The minified format module grows by 18 bytes (3,008 to 3,026); the runtime
-    is unchanged. RENDER_TBD
+    is unchanged. The item page's `render_cost` (release, callgrind, 3 runs) is 35,621,122,132
+    instructions against 35,603,094,486 on main (+0.05%)
     ([#387 Dates in the visitor's zone need a tz crate, a ClientZone argument on every handler and a prop through every component, and the first page is UTC](https://github.com/todd-skelton/corten/issues/387)).
 154. `corten::i18n::Day`: a calendar date with no instant behind it (a report's window, a week's
     start, a due date, an API's `"2026-09-02"`). `t.date(day, style)` writes it as that day in every
@@ -2400,6 +2401,12 @@ Corten is pre-1.0, so any minor version may change the API.
     otherwise is checked by its growth (at a size about four times as long as at a quarter of it,
     not sixteen), so load slows both runs alike
     ([#495 A corten-macros script test's wall-clock bound (under 2 s) fails when the machine is busy, so check 1 goes red without a cause](https://github.com/todd-skelton/corten/issues/495)).
+84. The browser smokes retry a page's `goto` or `reload` once on `net::ERR_NETWORK_CHANGED`
+    alone, which Chromium raises when Docker changes the machine's network interfaces mid-run (twice
+    in CI in a week, each blocking a merge until a rerun); any other failure, a second one included,
+    still fails. One helper, `scripts/steady.mjs`, wraps each smoke's browser at launch. Test code
+    only
+    ([#497 Browser CI fails at random on net::ERR_NETWORK_CHANGED during a smoke navigation, blocking merges until a rerun](https://github.com/todd-skelton/corten/issues/497)).
 
 ### Documentation
 
