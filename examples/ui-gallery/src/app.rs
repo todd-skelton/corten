@@ -7,13 +7,13 @@
 //! | `POST /sell` | the listing form: a patch with JavaScript, the page without; refused (422) when it ships nowhere or takes offers with no lowest one |
 //! | `POST /archive`, `POST /watch` | the menu's form actions: archive the draft, watch the card |
 //! | `POST /save` | saving the draft, answered with a toast |
-//! | `POST /rename` | the rename dialog's form: refused, the dialog drawn open; else back to the draft |
+//! | `POST /rename` | the rename dialog's form: refused, the dialog drawn open; else back to the draft, whose toaster says it was renamed (`req.redirect_with_notice`) |
 //! | `GET /help` | the menu's link |
 use corten::{Component, i18n::Currency, prelude::*};
 use serde::Deserialize;
 use std::time::{Duration, SystemTime};
 
-use corten_ui::Toast;
+use corten_ui::{Toast, Toaster};
 
 use crate::gallery::{
     CARD, Condition, Gallery, MarketTab, MenuResult, OrderResult, Period, Pricing, Region, RenameDialog, Sale, Times,
@@ -69,9 +69,13 @@ pub fn app() -> App {
     App::new(url::router()).assets(Static).components(COMPONENTS).components(corten_ui::COMPONENTS)
 }
 
-/// The document around every page.
-#[component]
-fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
+/// The document around every page, with the toaster: what an answer says (`toast`) or, after a
+/// redirect, what the write said (`req.notice()`), which the runtime hands the toaster on a
+/// navigation, since the layout does not run there.
+#[component(css)]
+fn Layout<'a>(req: &'a Req, title: &'a str, toast: Option<&'a str>, children: impl Render) -> impl Document {
+    let notice = req.notice();
+    let message = notice.map(|n| n as &dyn Render).or(toast.as_ref().map(|t| t as &dyn Render));
     html! {
         <!DOCTYPE html>
         <html lang="en">
@@ -85,6 +89,9 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
             </head>
             <body>
                 <main>{children}</main>
+                <div class={Toasts}>
+                    <Toaster close="Dismiss" seconds={2} toast={Toast { message }} />
+                </div>
             </body>
         </html>
     }
@@ -98,19 +105,18 @@ fn times(req: &Req) -> Times {
 
 /// The gallery in the layout.
 fn gallery(req: &Req, gallery: Gallery<'_>) -> HtmlResult {
-    req.page(Layout { req, title: TITLE, children: gallery })
+    req.page(Layout { req, title: TITLE, toast: None, children: gallery })
 }
 
 const TITLE: &str = "Sell Ashen Drake | corten-ui";
 
 /// The listings tab with nothing to report: what each answer below changes one part of
-/// (`Gallery { toast: Some(SAVED), ..listings(&req, &none) }`), since every prop is written.
+/// (`Gallery { result: &text, ..listings(&req, &none) }`), since every prop is written.
 fn listings<'a>(req: &Req, none: &'a Errors) -> Gallery<'a> {
     Gallery {
         tab: MarketTab::Listings,
         period: Period::Month,
         result: "",
-        toast: None,
         sale: false,
         times: times(req),
         rename: RenameDialog { name: "", errors: none },
@@ -183,7 +189,7 @@ async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
 async fn save(req: Req) -> HtmlResult {
     const SAVED: &str = "Draft saved.";
     let none = Errors::new();
-    let page = || async { gallery(&req, Gallery { toast: Some(SAVED), ..listings(&req, &none) }) };
+    let page = || async { req.page(Layout { req: &req, title: TITLE, toast: Some(SAVED), children: listings(&req, &none) }) };
     req.patch_or(Toast { message: Some(SAVED) }, page).await
 }
 
@@ -197,7 +203,7 @@ pub struct RenameForm {
 async fn rename(req: Req, Form(form): Form<RenameForm>) -> HtmlResult {
     let name = form.name.trim();
     if !name.is_empty() {
-        return req.redirect(&url::Home { tab: None, sale: None, period: None });
+        return req.redirect_with_notice(&url::Home { tab: None, sale: None, period: None }, format_args!("Renamed to {name}."));
     }
     let mut errors = Errors::new();
     errors.add(RenameForm::FIELDS.name, "Give the draft a name.");
@@ -219,7 +225,7 @@ async fn menu_action(req: Req, text: &'static str) -> HtmlResult {
 
 async fn help(req: Req) -> HtmlResult {
     req.page(html! {
-        <Layout req={&req} title="Help | corten-ui">
+        <Layout req={&req} title="Help | corten-ui" toast={None}>
             <h1>"Listing a card"</h1>
             <p>"A draft is yours until you list it. Each part of the form:"</p>
             <dl>

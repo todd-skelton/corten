@@ -1129,6 +1129,25 @@ Corten is pre-1.0, so any minor version may change the API.
     keys its tabs differ in, so selecting a tab keeps a choice's key (it took the tab link's whole
     query)
     ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
+150. `req.redirect_with_notice(&to, text)` and `req.notice()`: a redirect after a write says what
+    it did ("Batch 3517 deleted.") once, on the page it lands on, without a query field that a
+    reload, a copied link or Back says again. The text rides in a `__Host-` cookie for that page's
+    path (a minute, cut at 500 bytes, the path hashed with its escapes decoded), which the page's
+    answer removes and which a `HEAD` request leaves. The page renders it (`Notice`, escaped,
+    corten-ui's `Toast { message: req.notice() }` in the layout) and is private. A navigation's page
+    that did not draw it, its layout not run, hands it to the runtime in `corten-notice`, and the
+    runtime dispatches `corten:notice` (`detail.message`), which the `Toaster` shows; when the
+    navigation loads the page in full instead (its layout changed), the runtime keeps the notice in
+    session storage and dispatches it after the load. A debug build warns about a full load that
+    did not draw it. `OnSite` (sealed): the links a notice may go to, a route, `route.at(id)`, a
+    `Local` and a `#[derive(Href)]` enum whose variants all are; another site's URL does not compile.
+    The watchlist's subscribe and the gallery's rename use it, and the gallery's toaster moved into
+    its layout. A write forgets what was prefetched while it was on its way, which could predate
+    it or use up its notice. The minified runtime grows by 637 bytes (26,791 to 27,428), 240
+    gzipped (9,707 to 9,947), 216 with brotli (8,771 to 8,987). The item page's render runs
+    0.08% more instructions (median of 3, callgrind, release build: 35,619,673,804 against
+    35,592,439,055 on its base), the look for the notice cookie in each request's `Cookie`.
+    ([#385 A post that redirects cannot say what it did on the page it lands on, so each screen carries its message in a query value](https://github.com/todd-skelton/corten/issues/385)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
