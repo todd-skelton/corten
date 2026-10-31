@@ -53,6 +53,64 @@ Another source (a database's change stream, a queue) does the same with `corten:
 `since` with the version the part is at, send the current part first only when they differ, and
 give each fragment its version with `Fragment::cursor`.
 
+A job another process runs (a worker writing to a shared database, a third party's job API) has
+no channel to watch, only a read to repeat. When many pages can follow the same job, one task
+of the app's ([`App::task`](app.md#tasks)) reads it on an interval into a `watch` channel, and
+each page's stream is `live_watch` over it: one read per interval however many pages are open.
+A job only one page follows reads in its own stream, with `corten::live` over a loop that reads,
+sends the part only when its version moved, ends after the state that settles it, and after a
+few failed reads in a row draws that the job could not be read before it ends:
+
+```rust,ignore
+async fn batch_live(Path(id): Path<BatchId>, State(jobs): State<Jobs>, since: LiveSince) -> LiveResponse {
+    // The version the page shows, failed reads in a row, and the wait before the next read
+    // (None once the batch has settled and its last state is sent).
+    let start = (since.0, 0, Some(Duration::ZERO));
+    corten::live(futures_util::stream::unfold(start, move |(shown, mut failed, wait)| {
+        let jobs = jobs.clone();
+        async move {
+            let mut wait = wait?;
+            loop {
+                tokio::time::sleep(wait).await;
+                wait = Duration::from_secs(1);
+                match jobs.batch(id).await {
+                    Ok(batch) => {
+                        failed = 0;
+                        let version = batch.version.to_string();
+                        let next = batch.running().then_some(wait);
+                        if shown.as_deref() != Some(version.as_str()) {
+                            let part = Fragment::new(BatchPanel { batch: &batch }.to_html()).cursor(version.clone());
+                            return Some((part, (Some(version), 0, next)));
+                        }
+                        next?;
+                    }
+                    Err(error) if failed < 10 => {
+                        failed += 1;
+                        tracing::warn!(%error, "reading batch {id}");
+                    }
+                    Err(_) => {
+                        // Ending without a word would look settled: the element keeps what it drew.
+                        let part = Fragment::new(BatchUnreadable { id }.to_html());
+                        return Some((part, (shown, 0, None)));
+                    }
+                }
+            }
+        }
+    }))
+}
+```
+
+The version is one the job writes (a counter, an update time); without one, a hash of the
+rendered part does (a cursor another deploy does not know only draws the part again). A
+settled batch is sent once more if the page has not drawn it, and the stream ends; a stream that
+ends sends `end`, and the element keeps the last state it drew. How often to read, what to read
+less often (a costly part every few reads), when the job is done and what giving up draws are
+the app's to choose, so this loop is written in the app; what many pages share is `live_watch`.
+
+`App::task` starts its tasks with the app, so jobs that start while it runs share one task: it
+reads each running job and sends to that job's `watch` channel (a map from the job to its
+sender), and drops the sender once the job settles, which ends every `live_watch` on it.
+
 A cursor the app no longer knows (too old, another deploy's) is the handler's to handle; drawing
 the part as it is now is always correct. A cursor with a line break or NUL would end its event,
 so `cursor` refuses it (a panic in debug builds; in release the fragment goes without it).

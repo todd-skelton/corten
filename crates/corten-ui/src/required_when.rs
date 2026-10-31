@@ -1,5 +1,7 @@
 use corten::{form::FieldName, prelude::*};
 
+use crate::ValueOf;
+
 /// Fields required only for some values of another field: a refund amount for a partial refund, a
 /// tracking number when the seller ships, a description for "Other". HTML's `required` is fixed
 /// when the page is drawn, so the platform cannot say this.
@@ -49,6 +51,39 @@ use corten::{form::FieldName, prelude::*};
 /// assert!(html.contains(r#"<fieldset data-on="connect:ui.required_when.connect($t,&quot;kind&quot;,[&quot;partial&quot;],$s)"><label>"#), "{html}");
 /// ```
 ///
+/// The values are the control's own, written as its `Display` as a route writes a field: a word of
+/// its enum, a number for a number field (`values={&[3]}` for `line: i32`), text for a text field,
+/// or the `value` a checkbox (a `bool` field) sends, so a word of another field's enum does not
+/// compile:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+/// use corten_ui::RequiredWhen;
+///
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
+/// enum Kind { Full, Partial }
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
+/// enum Ship { Pickup, Post }
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Refund { kind: Kind, ship: Ship }
+///
+/// let html = html! { <RequiredWhen control={Refund::FIELDS.kind} values={&[Ship::Post]}>"Amount"</RequiredWhen> };
+/// ```
+///
+/// A number field's values are numbers:
+///
+/// ```
+/// use corten::prelude::*;
+/// use corten_ui::RequiredWhen;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Order { line: i32, note: Option<String> }
+///
+/// let html = html! { <RequiredWhen control={Order::FIELDS.line} values={&[3]}>"Note"</RequiredWhen> }.to_html();
+/// assert!(html.contains(r#"connect($t,&quot;line&quot;,[&quot;3&quot;],$s)"#), "{html}");
+/// ```
+///
 /// The control is a field of the form struct, so a misspelled name does not compile:
 ///
 /// ```compile_fail,E0308
@@ -58,9 +93,14 @@ use corten::{form::FieldName, prelude::*};
 /// let html = html! { <RequiredWhen control="kind" values={&["partial"]}>"Amount"</RequiredWhen> };
 /// ```
 #[component(js)]
-pub fn RequiredWhen<'a, V: AsRef<str>, C: Render>(control: FieldName, values: &'a [V], children: C) -> impl Render {
+pub fn RequiredWhen<'a, F, V: ValueOf<F> + std::fmt::Display, C: Render>(
+    control: FieldName<F>,
+    values: &'a [V],
+    children: C,
+) -> impl Render {
+    let values: Vec<String> = values.iter().map(V::to_string).collect();
     html! {
-        <fieldset on:connect={js::connect(target, control.as_str(), values, signal)}>
+        <fieldset on:connect={js::connect(target, control.as_str(), &values, signal)}>
             {children}
         </fieldset>
     }

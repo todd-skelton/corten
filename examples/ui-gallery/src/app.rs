@@ -15,7 +15,9 @@ use std::time::{Duration, SystemTime};
 
 use corten_ui::Toast;
 
-use crate::gallery::{CARD, Condition, Gallery, MarketTab, MenuResult, OrderResult, Pricing, Region, RenameDialog, Sale, Times};
+use crate::gallery::{
+    CARD, Condition, Gallery, MarketTab, MenuResult, OrderResult, Period, Pricing, Region, RenameDialog, Sale, Times,
+};
 
 corten::i18n::messages! {
     /// The gallery's text: one locale, for the relative times.
@@ -38,6 +40,7 @@ pub mod url {
     pub struct Home {
         pub tab: Option<crate::gallery::MarketTab>,
         pub sale: Option<crate::gallery::Sale>,
+        pub period: Option<crate::gallery::Period>,
     }
 
     #[route("/sell", post = sell)]
@@ -105,6 +108,7 @@ const TITLE: &str = "Sell Ashen Drake | corten-ui";
 fn listings<'a>(req: &Req, none: &'a Errors) -> Gallery<'a> {
     Gallery {
         tab: MarketTab::Listings,
+        period: Period::Month,
         result: "",
         toast: None,
         sale: false,
@@ -116,7 +120,8 @@ fn listings<'a>(req: &Req, none: &'a Errors) -> Gallery<'a> {
 async fn home(req: Req, Params(q): Params<url::Home>) -> HtmlResult {
     let none = Errors::new();
     let tab = q.tab.unwrap_or(MarketTab::Listings);
-    gallery(&req, Gallery { tab, sale: q.sale == Some(Sale::Last), ..listings(&req, &none) })
+    let period = q.period.unwrap_or(Period::Month);
+    gallery(&req, Gallery { tab, period, sale: q.sale == Some(Sale::Last), ..listings(&req, &none) })
 }
 
 #[derive(Deserialize, Fields)]
@@ -192,7 +197,7 @@ pub struct RenameForm {
 async fn rename(req: Req, Form(form): Form<RenameForm>) -> HtmlResult {
     let name = form.name.trim();
     if !name.is_empty() {
-        return req.redirect(&url::Home { tab: None, sale: None });
+        return req.redirect(&url::Home { tab: None, sale: None, period: None });
     }
     let mut errors = Errors::new();
     errors.add(RenameForm::FIELDS.name, "Give the draft a name.");
@@ -209,7 +214,7 @@ async fn watch(req: Req) -> HtmlResult {
 }
 
 async fn menu_action(req: Req, text: &'static str) -> HtmlResult {
-    req.patch_or(MenuResult { text }, || async { req.redirect(&url::Home { tab: None, sale: None }) }).await
+    req.patch_or(MenuResult { text }, || async { req.redirect(&url::Home { tab: None, sale: None, period: None }) }).await
 }
 
 async fn help(req: Req) -> HtmlResult {
@@ -229,7 +234,7 @@ async fn help(req: Req) -> HtmlResult {
                 <dt>"Archive and Watch"</dt>
                 <dd>"Archiving puts the draft away without listing it. Watching tells you when this card's market low moves."</dd>
             </dl>
-            <p><a href={url::Home { tab: None, sale: None }}>"Back to the draft"</a></p>
+            <p><a href={url::Home { tab: None, sale: None, period: None }}>"Back to the draft"</a></p>
         </Layout>
     })
 }
@@ -340,8 +345,10 @@ mod tests {
                 .unwrap();
             assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "{body}");
         }
+        // An address with a tab the page does not have (an old link, a renamed tab) reads as no tab:
+        // the page opens on its first, where a posted word it does not offer is refused above.
         let tab = app().router().oneshot(Request::get("/?tab=bids").body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(tab.status(), StatusCode::BAD_REQUEST, "a tab the page does not have");
+        assert_eq!(tab.status(), StatusCode::OK, "a tab the page does not have");
     }
 
     #[tokio::test]

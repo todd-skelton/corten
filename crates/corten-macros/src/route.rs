@@ -53,7 +53,12 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         let tokens: Vec<TokenTree> = attr.stream().into_iter().collect();
         if let [TokenTree::Ident(name), TokenTree::Group(args)] = tokens.as_slice() {
             let args: Vec<TokenTree> = args.stream().into_iter().collect();
-            if name.to_string() == "route" && args.len() > 1 && matches!(args.first(), Some(TokenTree::Literal(_))) {
+            if name.to_string() == "route"
+                && args.len() > 1
+                && matches!(args.first(), Some(TokenTree::Literal(_)))
+                // `"/..", prefetch = false` alone is a path's, read below.
+                && !(args.len() == 5 && is_ident(args.get(2), "prefetch"))
+            {
                 return err(
                     args[1].span(),
                     "a handler (get = show) is named in a #[corten::routes] module; a route outside one is only its path, #[route(\"/..\")]",
@@ -61,6 +66,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             }
         }
     }
+    let (attrs, prefetch) = route_prefetch(&item.attrs)?;
+    let item = Item { attrs, ..item };
     let Some((path, span)) = item.attr_string("route")? else {
         return err(
             item.name.span(),
@@ -133,13 +140,14 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         "::corten::route::Route",
         q(
             "const PATH: &'static str = __A0;
+            const PREFETCH: bool = __A2;
             #[allow(unused_variables)]
             fn write_href(&self, __OUT: &mut ::std::string::String, __corten_html: bool) {
                 #[allow(unused_imports)]
                 use ::corten::route::__private::{QueryOption as _, QueryValue as _, SegmentText as _, SegmentValue as _};
                 __A1
             }",
-            &[string(&path).into(), body],
+            &[string(&path).into(), body, TokenTree::Ident(Ident::new(if prefetch { "true" } else { "false" }, span)).into()],
         ),
     );
     out.extend(item.impl_block(
@@ -154,6 +162,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
                 out.push_str(\"=\\\"\");
                 ::corten::route::Route::write_href(self, out, true);
                 out.push('\"');
+                ::corten::route::no_prefetch(name, <Self as ::corten::route::Route>::PREFETCH, out);
             }",
             &[],
         ),
@@ -659,6 +668,57 @@ fn is_route_query(attr: &proc_macro::Group) -> bool {
     let tokens: Vec<proc_macro::TokenTree> = attr.stream().into_iter().collect();
     matches!(tokens.as_slice(), [proc_macro::TokenTree::Ident(name), proc_macro::TokenTree::Group(args)]
         if name.to_string() == "route" && args.stream().to_string().trim() == "query")
+}
+
+/// `#[route("/..", prefetch = false)]`: the attributes with the route's cut to its path, and
+/// whether the runtime may prefetch the page (`true` unless it says `false`).
+fn route_prefetch(attrs: &[Group]) -> Result<(Vec<Group>, bool), Error> {
+    let mut prefetch = true;
+    let mut out = Vec::with_capacity(attrs.len());
+    for attr in attrs {
+        let tokens: Vec<TokenTree> = attr.stream().into_iter().collect();
+        let (Some(TokenTree::Ident(name)), Some(TokenTree::Group(args))) = (tokens.first(), tokens.get(1)) else {
+            out.push(attr.clone());
+            continue;
+        };
+        let inner: Vec<TokenTree> = args.stream().into_iter().collect();
+        if name.to_string() != "route" || !matches!(inner.first(), Some(TokenTree::Literal(_))) || inner.len() == 1 {
+            out.push(attr.clone());
+            continue;
+        }
+        match &inner[1..] {
+            [TokenTree::Punct(comma), key, TokenTree::Punct(eq), TokenTree::Ident(value)]
+                if comma.as_char() == ',' && is_ident(Some(key), "prefetch") && eq.as_char() == '=' =>
+            {
+                match value.to_string().as_str() {
+                    "false" => prefetch = false,
+                    "true" => {
+                        return err(
+                            value.span(),
+                            "a route is prefetched unless it says prefetch = false: leave prefetch = true out",
+                        )
+                    }
+                    _ => return err(
+                        value.span(),
+                        "prefetch takes only false: prefetch = false, and the runtime does not fetch the page ahead of a click",
+                    ),
+                }
+            }
+            _ => {
+                return err(
+                    inner[1].span(),
+                    "after the path a route takes only prefetch = false: #[route(\"/reports\", prefetch = false)]",
+                )
+            }
+        }
+        let mut path = Group::new(Delimiter::Parenthesis, inner[..1].iter().cloned().collect());
+        path.set_span(args.span());
+        let mut cut =
+            Group::new(Delimiter::Bracket, [TokenTree::Ident(name.clone()), TokenTree::Group(path)].into_iter().collect());
+        cut.set_span(attr.span());
+        out.push(cut);
+    }
+    Ok((out, prefetch))
 }
 
 /// `#[route(prefix = "dim.")]`: the prefix and its span.

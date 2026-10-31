@@ -114,9 +114,27 @@ validation message (`errors.add(f.ids, ..)` when empty), not a missing field; wr
 `None` for an `Option`. A typed route's list field writes `?condition=nm&condition=lp`, which
 its `Params` reads back.
 
+## Groups and rows
+
+A group several forms share (an address) is its own `Fields` struct, put in a form with
+`#[fields(group)] ship_to: Address` (posted `ship_to.street`, named `f.ship_to.street`); never
+`#[serde(flatten)]`, which does not compile. Rows of the same fields (an editable table, line
+items) are `#[fields(rows)] #[serde(default)] lines: BTreeMap<Key, Line>`, and a row's field is
+`f.lines.at(&key).qty` (posted `lines[key].qty`), in markup and in `errors.add`. Never post
+rows as parallel `Vec` columns: the key joins a row's values and gives each row's field its own
+error. A key type is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum without
+`alias` or `other`. A group is never an `Option`; one a form may leave out is `Option` fields
+and `#[serde(default)]`. One plain
+value per key (a count per SKU) is `#[fields(map)] #[serde(default)] counts: BTreeMap<Sku, u32>`,
+a field per key: `f.counts.at(&sku)`, posted `counts[sku]`.
+
 ## Validation
 
-Validate on the server into `Errors`, keyed by `FieldName`, never by string:
+Validate on the server into `Errors`, keyed by `FieldName`, never by string. A `FieldName` carries
+its field's type (`FieldName<Condition>`), so pass a typed control (`Picker::new`, `Number::new`,
+`RequiredWhen`, `SubmitKey::field`) the field it is for; a helper that takes a name of any field is
+generic over it (`fn hint<T>(f: FieldName<T>)`), and a list of several fields' names takes
+`.untyped()`:
 
 ```rust
 pub fn check(t: Msg, input: &AlertInput) -> Result<f64, Errors> {
@@ -151,13 +169,20 @@ A refusal that belongs to no field (a cross-field rule, or the backend saying no
 Never attach it to an arbitrary field, and never pass it beside `Errors` in a separate prop: data
 clients and agents only see what is in `Errors`. A refusal for a stale state (another save came
 first, a step out of order) is `errors.refuse(Refusal::Conflict, text)`, a 409 from
-`req.invalid`; never set a status on the response by hand. Make such a form `data-patch`
+`req.invalid`; a service the handler calls that failed (a carrier, a payment provider) is
+`Refusal::Upstream`, a 502 with the form drawn again; never set a status on the response by hand. Make such a form `data-patch`
 (a download is the exception: a plain post whose refusal redirects to the page with the reason).
 A field helper several forms share takes `e: &corten::Within<'_, I>`.
 
 A write that must apply once (an order, a payment) takes a `submit: SubmitKey` field, drawn with
 `{SubmitKey::field(f.submit)}`; the app stores the key with the write and answers a repeat with the
 first outcome. The runtime keeps the key until the submit has an answer below 500, then renews it.
+
+A press while the form's write is pending waits for its answer, then goes out from the form as
+the answer left it (found by its `id`: give a form a patch redraws one), after a 2xx or a 422.
+A refusal (409, 410), a 5xx, an answer the runtime does not draw, a redirect or no answer drops
+it, and the user sends it again. Steps that
+each count (a count's + and -) keep their own ordered queue in the component's script.
 
 The handler answers a failed check with `req.invalid`. It replies 422 with the form as a patch for
 the runtime, a Problem Details document (`application/problem+json`, `{"title","status","detail","fields","form"}`) for JSON clients, or the whole page for a browser without
@@ -173,6 +198,11 @@ let price = match check(t, &form) {
     }
 };
 ```
+
+When the form itself needs a read (the record as it is now), use
+`req.invalid_with(&errors, |form| async { let r = read().await?; form.draw(View { r: &r }) }, page)`,
+never a branch on `req.mode`: each side runs only for its mode, and JSON clients (feature `json`)
+still get Problem Details.
 
 Keep the HTML attributes (`required`, `type="email"`, `inputmode`) too: the browser checks them
 first, and the server check is the one that counts. A field required only for some values of

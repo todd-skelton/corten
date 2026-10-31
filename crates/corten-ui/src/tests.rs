@@ -34,6 +34,7 @@ fn every_component_has_its_script_and_no_css() {
             "ui.relative_time",
             "ui.checkbox_group",
             "ui.required_when",
+            "ui.choice",
             "ui.dialog"
         ]
     );
@@ -142,18 +143,26 @@ fn a_number_field_disables_the_button_at_each_bound() {
 }
 
 #[test]
-fn a_menu_button_lists_links_and_actions() {
+fn a_menu_button_holds_the_apps_items() {
     #[derive(Route)]
     #[route("/out")]
     struct Out;
-    let items = [MenuItem { label: "Out", link: &Out, post: true }];
-    let html = MenuButton { id: "m", label: "Menu", items: &items }.to_html();
+    let html = html! {
+        <MenuButton id="m" label="Menu">
+            <form method="post" action={Out}><button role="menuitem">"Out"</button></form>
+        </MenuButton>
+    }
+    .to_html();
     assert!(
-        html.starts_with(r#"<div data-scope="ui-menu-button" data-on="connect:ui.menu_button.connect(@trigger,@menu,*item)">"#),
+        html.starts_with(r#"<div data-scope="ui-menu-button" data-on="connect:ui.menu_button.connect(@trigger,@menu)">"#),
         "{html}"
     );
     assert!(
-        html.contains(r#"<button data-ref="item" role="menuitem" data-on="click:ui.menu_button.used(@menu)">Out</button>"#),
+        html.contains(r#"data-on="keydown:ui.menu_button.step($e,@menu) click:ui.menu_button.used($e,@trigger,@menu)"#),
+        "{html}"
+    );
+    assert!(
+        html.contains(r#"<form method="post" action="/out"><button role="menuitem">Out</button></form></div></div>"#),
         "{html}"
     );
 }

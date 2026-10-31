@@ -19,7 +19,8 @@ One handler serves every mode, and `req.mode` says which. A `data-patch` form's 
 both of its rows with `req.patch_or(view, || async { req.page(..) }).await`: the patch with
 JavaScript, and otherwise the page (or a redirect), whose closure runs only then, so the patch
 never loads what only the page shows. A patch that needs data of its own, which the page does not,
-or a status or headers of its own, checks `req.mode == Mode::Action` itself. A route with no screen goes under
+or a status or headers of its own, checks `req.mode == Mode::Action` itself; a refusal whose
+form needs a read is `req.invalid_with` (below). A route with no screen goes under
 [`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The layout around `<main>` renders on full
 loads only ([the document](views.md#the-document)); every page carries a key hashed from the
 caller its handler read (if any), the deploy and its layout, and when a navigation answers with a different key
@@ -48,7 +49,11 @@ filtering or totalling what the page already shows is faster in a handler, with 
 ([Server or browser](scripts.md#server-or-browser)).
 
 `#[derive(Fields)]` gives a form struct its field names as `FieldName` constants, so markup and
-validation cannot misspell them: `Errors` takes nothing else. Validation stays in the app; `Errors` carries the first message per field.
+validation cannot misspell them: `Errors` takes nothing else. A name carries the type its control
+sends (`condition: Option<Condition>` is a `FieldName<Condition>`), so a control that takes a typed
+name (`SubmitKey::field`, corten-ui's `Picker`, `Number` and `RequiredWhen`) cannot be given another
+field's; `name={..}` and `Errors` take a name of any type, and `.untyped()` drops the type for a
+list of names of several fields (`[f.email.untyped(), f.price.untyped()]`). Validation stays in the app; `Errors` carries the first message per field.
 Any name works, including ones the DOM gives a form's own properties (`action`, `method`, `id`): the runtime
 posts a `data-patch` form to its own `action` and `method` whatever its controls are named. An app's own
 script that reads `form.action` gets the control instead, as in any page; read `getAttribute("action")`.
@@ -62,6 +67,24 @@ if let Err(errors) = check(&input) {
     // or the whole page for a browser without JavaScript (only then is `page` called).
     return req.invalid(&errors, AlertForm { input: &input, errors: &errors }, page).await;
 }
+```
+
+A refusal whose form needs a read of its own (the batch as it is now, for "someone moved it
+on") is `req.invalid_with`: the form side runs only for the patch, the page side only for the
+page, and a data client gets the Problem Details document (feature `json`) with neither read. The form side gets
+a `FormPatch`, which draws a patch and nothing else, so it cannot answer a page by mistake:
+
+```rust,ignore
+return req
+    .invalid_with(
+        &errors,
+        |form| async {
+            let batch = store.batch(id).await?;
+            form.draw(BatchPanel { batch: &batch, errors: &errors })
+        },
+        || page(&req, &store, id, &errors),
+    )
+    .await;
 ```
 
 A JSON handler has no form to show again: it `?`s the same check, next to the `?` of a load
@@ -123,7 +146,13 @@ async fn search(req: Req, Params(search): Params<url::Search<'_>>) -> HtmlResult
 ```
 
 A missing parameter is `None` for an `Option`, empty for a list, and a field's
-`#[serde(default)]` for anything else, as a link leaves those out. In a `#[corten::routes]`
+`#[serde(default)]` for anything else, as a link leaves those out. A word an enum parameter
+does not have (`?state=due_now` after the app renamed it, or an address edited by hand) reads as
+missing too, so a filter, a sort or a tab falls back to its default and the page still shows: a
+bookmark outlives the words it was written with; a `#[route(prefix = ..)]` entry whose key or
+value is such a word is left out of the map. A parameter with neither `Option` nor a default
+still refuses it (400), and so does a value that is not a word (`?page=two`), a list holding one,
+or a form's body, which the page that sent it just wrote. In a `#[corten::routes]`
 module a route with a parameter in its path holds each of its handlers to taking its own
 `Params`: one that reads the path another way (axum's `Path`), or reads another route's, does
 not compile.
@@ -203,6 +232,66 @@ and then the message. A browser keeps only an attribute's first value, so a star
 The runtime focuses the first invalid field (unless the user has moved on to another part of the
 page while waiting).
 
+A group of fields several forms share (an address) is a `Fields` struct of its own, put in a form
+with `#[fields(group)]`. Its fields post under the field's name, `ship_to.street`, so a form can
+hold two of one type (where it ships from and to), each read into its own value as its own type (a
+number stays a number). A component draws the group once for every form that has one, given its
+names: `<AddressInputs f={f.ship_to} />`, where `f: AddressGroupFields` (the
+names of an `Address` put in a form as a group; in a row it is `AddressRowGroupFields<'k>`, so a
+group drawn both at a form's top and in its rows takes a component for each). A group whose
+fields a form can all leave out (checkboxes, `Option`s, file inputs) needs `#[serde(default)]` on the group's
+field as well, or it does not compile: a form that sends none of them would otherwise be refused.
+A group is never an `Option` (that does not compile either): a form sends a group's fields one by
+one, so a group the form may leave out is a group of `Option`s with `#[serde(default)]`.
+Keys under a field's name (`go.x`, `go.y`) are its group's, so a plain field sent only that way (an
+image button `name={f.go}` sends `go.x` and `go.y`, never `go`) is refused with a message that
+says so, unless it is an `Option`, which reads as `None`.
+
+Rows of the same fields (one per API domain, a line of an intake, a shipment) are a map from each
+row's key to a `Fields` struct, `#[fields(rows)] #[serde(default)] domains: BTreeMap<Domain,
+DomainLimits>`. A row's field is named by its key, `f.domains.at(&row.domain).max_concurrent`,
+posted as `domains[seller-portal].max_concurrent`, so it is the key, not the row's place in the
+form, that puts each value in its row: a row the browser leaves out (its inputs disabled) leaves
+the others where they are, and an unchecked checkbox is `false` in its own row. A row is in the
+map when the form sends any of its fields, so give each row one the browser always sends (a
+value, or a hidden input); a row of checkboxes alone, all unchecked, is not read at all. `at`
+takes only a reference to the map's key type. An error on one row's field marks that input only, with its own message id
+(`limits-domains[seller-portal].max_concurrent-error`):
+
+```rust,ignore
+#[derive(Deserialize, Fields)]
+struct DomainLimits { max_concurrent: u32, #[serde(default)] adaptive: bool }
+
+#[derive(Deserialize, Fields)]
+struct Limits { #[fields(rows)] #[serde(default)] domains: BTreeMap<Domain, DomainLimits> }
+
+let f = Limits::FIELDS;
+html! {
+    for row in rows {
+        let max = f.domains.at(&row.domain).max_concurrent;
+        <input name={max} value={row.max_concurrent} {..e.aria(max)}> {e.message(max)}
+    }
+}
+errors.add(f.domains.at(&Domain::SellerPortal).max_concurrent, "At least 1.");
+```
+
+A key is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, whose key is the word
+serde reads (`seller-portal`), so it reads back as the same variant. Its characters other than letters, digits, `-` and `_` are %-encoded in the name, so any text is
+a key, and a key sent any other way (`%61` for `a`) is refused, so one key cannot reach a row two
+ways. An integer key is read only as it writes itself: `07`, `+7` and `-0` are refused, for the
+same reason. An enum with a variant serde reads by more than its word (`#[serde(alias)]`,
+`#[serde(other)]`) is not a `RowKey`, so naming its row does not compile: two keys the form tells
+apart would be one row on the server.
+
+One plain value per key (a count per SKU) is a map without a row struct:
+`#[fields(map)] #[serde(default)] counts: BTreeMap<Sku, u32>`. Each key's value is a field of its
+own, `f.counts.at(&sku)`, posted as `counts[sku]`, with its own error, and its keys follow the
+rules above.
+
+A row holds plain fields and groups. A group of groups, rows in a group and rows in a row
+do not compile, and neither does `#[serde(flatten)]`: a group is named under its field so two of
+one type cannot clash.
+
 A refusal no single field explains (a rule across fields, or a service the handler wrote to
 saying no: "The policy was retired meanwhile.") is the form's own message:
 `errors.add_form(text)`, shown with `{errors.form_message()}` at the top of the form, a
@@ -214,7 +303,17 @@ step already taken or out of order, a record deleted meanwhile) is
 `errors.refuse(Refusal::Conflict, text)` (`Refusal::Gone` for a deleted one). It is the form's
 message, and `req.invalid` answers it with 409 (410) in every mode instead of 422: the form
 drawn again with what the user typed, the page without JavaScript, the Problem Details document
-for a data client. A post that can be refused is a `data-patch` form: a plain post's refusal
+for a data client. A service the handler calls for the submit that failed or did not answer
+(a carrier, a payment provider, another app) is `errors.refuse(Refusal::Upstream, text)`: 502,
+the same three answers, with the form drawn again so the user can send it once more. The
+service may have applied it, so the retry must be the same submission: the runtime keeps the
+form's `SubmitKey` (below) over whatever key the patch drew, and the form drawn for the page
+without JavaScript writes the posted key again, `input.submit.again(f.submit)` where it would
+write `SubmitKey::field(f.submit)`. A proxy in front of the app that swaps 5xx bodies for a page
+of its own (nginx's `proxy_intercept_errors`, a CDN's error pages) hides the redrawn form; let
+the app's 502 through. A failure of the
+app itself (its database) is no refusal: it is `?`'d, and the error page answers it. A post
+that can be refused is a `data-patch` form: a plain post's refusal
 draws the whole page and leaves the address at the action's URL, whose GET may not exist. The
 one exception is a download, which must be a plain post ([below](#files)): its refusal redirects
 to the page that says why.
@@ -240,11 +339,14 @@ async fn order(req: Req, State(db): State<Db>, Form(input): Form<OrderInput>) ->
 
 The same key is sent for as long as the submission has no answer: a page reloaded after a post
 posts it again, and the runtime sends a `data-patch` form again with it after a network error, a
-5xx, an abort (a newer submit of the same form, a navigation) or an answer whose body was cut off
-on the way. Once a whole answer arrives, any status below 500, the runtime gives the form a new
-key, so the next submit is a new one; a page or patch the server draws has a new key anyway. A form changed and sent again before the first had an
-answer is the same submission: the app answers it with what it did the first time, and the user
-sees that and can send the change. The key is the app's to store, next to the write (Corten keeps
+5xx, an abort (a navigation) or an answer whose body was cut off on the way. Once a whole answer
+arrives, any status below 500, the runtime gives the form a new key, so the next submit is a new
+one. A patch never sets the key: the runtime keeps the form's own over the one the patch drew, so
+a 5xx patch (`Refusal::Upstream`) cannot swap in a fresh key before the retry. A form sent again before the first had an answer (a
+browser without JavaScript, a data client) is the same submission: the app answers it with what
+it did the first time, and the user sees that and can send the change. A `data-patch` form's
+change made while its write is out waits for the answer instead, and goes under the new key
+(below). The key is the app's to store, next to the write (Corten keeps
 no store); `corten_cluster::begin` takes it as its idempotency key. A field that is not a UUID v4
 (in either case; it is kept lowercase) is a 422 that names it. Make the field
 `Option<SubmitKey>` when data clients post the same form without one.
@@ -254,6 +356,28 @@ without JavaScript cannot set a header, so a field is the one way that works for
 and a data client posts the same field. The header is still an IETF draft
 (`draft-ietf-httpapi-idempotency-key-header`); a second place for the key would wait for it to
 be a standard, with a rule for a request that sends both.
+
+A `data-patch` form has one submit in flight. Pressing the same button again with the same values
+while it is pending sends nothing (a double click). A newer submit of a read (a GET: a search, a
+filter) aborts the older one, whose answer is worth nothing now. While a write is pending, any
+newer submit of the form waits instead: the server may already have applied the write, and its
+answer is the page's next state. Once the runtime has drawn the write's answer (a patch or a
+page) and it took the write (2xx) or refused only its input (422), it sends the latest of the submits that waited, from the form as it is then,
+so the version or count the answer wrote goes out with it, under the form's new key. Its
+`on:submit` handlers ran at the press and do not run again, and the browser does not check the
+form's constraints again (the server checks what it gets). Several presses while the write is
+out are one submit of where the form ended. A form the answer replaced is found by its `id`, so
+give a form that a patch redraws, or that sits in an element a patch redraws, one: a form that
+left the page without an id is not sent, since its values are the ones from before the answer.
+The waiting submit is dropped, and the user sends it again, when the write gets no answer (the
+network failed, or the browser is leaving the page) or one the runtime does not draw (a proxy's
+502), which `corten:error` reports; when the write is refused for the state it was made against
+(`Errors::refuse`, a 409 or 410), which the user reads before anything else goes; or a 5xx,
+after which the server may or may not have applied the write; when the answer sends the browser elsewhere (a redirect,
+a reload), or removed the form or the pressed button; and a navigation aborts everything, so a
+late answer never patches a page it was not meant for. A screen whose every press is a step of
+its own (a count's + and -, each a delta the server adds) keeps its own ordered queue in its
+script: the form sends where the user ended up, not each step.
 
 When a `data-patch` submit gets no answer the runtime can draw, it dispatches `corten:error` on
 the form (it bubbles), with `detail.status`: the answer's status (a proxy's 502 page), or 0 when
@@ -298,8 +422,28 @@ pub fn Status(text: &str) -> impl Patch {
 }
 ```
 
+Rows known only from data (the fields of the items a write touched) are a `for` among the
+patch's parts, with its `let`s and branches, as in a page:
+
+```rust,ignore
+req.patch(html! {
+    <QueueTotals queue={&queue} />
+    for sku in &taken {
+        let label = label_of(sku);
+        if sku.counted {
+            <QuantityField id={FieldId(sku.id)} label={&label} quantity={0} />
+        } else {
+            {Remove(FieldId(sku.id))}
+        }
+    }
+})
+```
+
 A component that says `-> impl Render` is not a patch, so one that is drawn by the page and sent
-by an action says `-> impl Patch`, as a layout says `-> impl Document`. A `corten::live`
+by an action says `-> impl Patch`, as a layout says `-> impl Document`. When a view is refused,
+the error names the kind of part that is not a patch (`ComponentOrExpressionNotAPatch`,
+`IdNotADeriveIdType`, `TextOrElementWithoutId`), though not where it is: look for that kind among
+the view's top-level parts. A `corten::live`
 fragment is already text, so debug builds check it when it is sent instead (it panics, naming the
 element).
 
@@ -458,6 +602,24 @@ patches the page it was sent from: a `target` or `formtarget` on it is not follo
 <form method="get" action={url::Search} data-keep-place on:change={js::apply(target)}>
     <label><input type="checkbox" name={f.in_stock} checked={q.in_stock}>"In stock"</label>
     <button>"Apply"</button>
+</form>
+```
+
+A GET form sends only its own controls, and drops its `action`'s query. On a screen whose address
+holds more than one form changes (the seller and the page, and the research a second form sets),
+each form wraps its controls in `keep_query(&at, html! { .. })`: the controls are drawn, and every
+key of the route's query that none of them names (`name=`, a `#[route(query)]` set's key, a
+`#[route(prefix)]` entry's) becomes a hidden input, in the encoding the route's links use. There
+is no list of names, so a key is neither dropped nor sent twice, and a field added to the route
+later is kept by every such form. Every control the form sends goes inside, a named submit button
+included; the route can be a `&dyn Href` a shared form is given.
+
+```rust,ignore
+<form method="get" action={&at}>
+    {keep_query(&at, html! {
+        <select name={f.grade}>..</select>
+        <button>"Price"</button>
+    })}
 </form>
 ```
 

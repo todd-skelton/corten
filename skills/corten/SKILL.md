@@ -56,7 +56,7 @@ These are what the framework is built around. Code that breaks them fights the f
 | a fragment the server keeps current | `<corten-live src={Route}>` plus `corten::live` | [scripts.md](references/scripts.md) |
 | live rows a script updates | a `Feed` plus `subscribe` in an `on:connect` handler (feature `feed`) | [scripts.md](references/scripts.md) |
 | many rows a script reads or changes (a grid) | `#[component(view)]` rows, `rows(body, Row)` in the handler | [scripts.md](references/scripts.md) |
-| a number field, combobox, tabs, menu button or toast | `corten-ui` first, the platform otherwise | [scripts.md](references/scripts.md) |
+| a number field, combobox, tabs, menu button, toast, or a choice that switches parts across the page | `corten-ui` first, the platform otherwise | [scripts.md](references/scripts.md) |
 | styles for a component | `#[component(css)]`, a CSS file next to it, design tokens | [styles.md](references/styles.md) |
 | JSON for a native client or an agent | `req.screen(&data, doc)` | [pages-and-routes.md](references/pages-and-routes.md) |
 | a route with no screen (webhook, public API, service call) | handlers return `JsonResult<T>` (every failure is JSON), mounted under `App::api` when they share a prefix | [pages-and-routes.md](references/pages-and-routes.md) |
@@ -84,5 +84,7 @@ Read only the recipe the task needs. For concepts, read the guides in the Corten
    --check` (both), clippy with warnings denied, the tests (which rewrite `types/app.d.ts`; a stale
    one fails once, then passes), and `tsc` over the scripts in `src/` and `static/`. The compiler checks each `js::` call against the script's JSDoc; `tsc` checks the
    function bodies (install TypeScript; without it `corten check` prints that they were not
-   checked). At a workspace root it checks each member that depends on `corten`.
+   checked). At a workspace root it checks each member that depends on `corten`. When the app's
+   `Cargo.lock` pins another corten than the command was built from, `dev`, `fmt` and `check`
+   first print a note with the `cargo install` line for the matching command; run it.
 3. When behavior changed, load the page in a browser both with JavaScript and without it.

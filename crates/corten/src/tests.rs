@@ -973,6 +973,16 @@ fn a_nav_marks_the_deepest_entry_that_holds_the_page() {
     let links = written(nav_links("/a%22b%7Cc", [(NavTo::page(&odd), ())]));
     assert!(links[0].starts_with(r#" href="/a%22b%7Cc?q=&quot;|&quot;" data-nav data-nav-group=""#), "{links:?}");
     assert!(links[0].ends_with(r#" aria-current="page""#), "{links:?}");
+
+    // A route that says `prefetch = false` keeps saying so in a nav, as in `href={..}`.
+    #[derive(crate::Route)]
+    #[route("/reports/suggested", prefetch = false)]
+    struct Suggested;
+    let links = written(nav_links("/", [(NavTo::page(&Suggested), ()), (NavTo::page(&Home), ())]));
+    assert!(links[0].ends_with(" data-no-prefetch") && !links[1].contains("data-no-prefetch"), "{links:?}");
+    let mut one = String::new();
+    crate::page::Nav { path: "/reports/suggested", to: &Suggested, section: false }.render_attrs(&mut one);
+    assert_eq!(one, r#" href="/reports/suggested" data-nav aria-current="page" data-no-prefetch"#);
 }
 
 #[test]
@@ -1015,11 +1025,15 @@ fn sheet_form(errors: &Errors) -> impl crate::Patch + '_ {
 }
 
 fn refused_routes() -> Router {
+    refused_by(crate::Refusal::Conflict, "Someone saved first.")
+}
+
+fn refused_by(why: crate::Refusal, message: &'static str) -> Router {
     Router::new().route(
         "/",
-        get(|req: Req| async move {
+        get(move |req: Req| async move {
             let mut errors = Errors::new();
-            errors.refuse(crate::Refusal::Conflict, "Someone saved first.");
+            errors.refuse(why, message);
             let page = || async { req.test_page("Sheet", html! { <p>"page with the refusal"</p> }) };
             req.invalid(&errors, sheet_form(&errors), page).await
         }),
@@ -1048,6 +1062,97 @@ async fn a_stale_submit_answers_409_with_the_form_message_in_each_mode() {
     }
 }
 
+#[tokio::test]
+async fn a_failed_service_answers_502_with_the_form_message_in_each_mode() {
+    let routes = || refused_by(crate::Refusal::Upstream, "The carrier did not answer. Try again.");
+    let (status, headers, body) = call(app(routes(), None), "GET", Some("action")).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert_eq!(headers["corten-patch"], "1", "the form, not the error page");
+    assert_eq!(
+        body,
+        r#"<form id="sign-up"><p class="form-error" role="alert">The carrier did not answer. Try again.</p></form>"#
+    );
+
+    let (status, _, body) = call(app(routes(), None), "GET", None).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert!(
+        body.contains("<p>page with the refusal</p>") && body.contains("<html"),
+        "no JavaScript: the whole page, not the error page: {body}"
+    );
+
+    #[cfg(feature = "json")]
+    {
+        let (status, headers, body) = call_with(app(routes(), None), "GET", "/", None, Some("application/json")).await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(headers["content-type"], "application/problem+json");
+        assert_eq!(
+            body,
+            r#"{"title":"Bad Gateway","status":502,"detail":"The carrier did not answer. Try again.","form":"The carrier did not answer. Try again.","fields":{}}"#
+        );
+    }
+}
+
+/// A refusal whose form needs a read, drawn per mode: `reads` counts the form side's reads and
+/// `pages` the page side's runs.
+fn lazily_refused_routes(
+    reads: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    pages: std::sync::Arc<std::sync::atomic::AtomicU32>,
+) -> Router {
+    Router::new().route(
+        "/",
+        get(move |req: Req| async move {
+            let mut errors = Errors::new();
+            errors.refuse(crate::Refusal::Conflict, "Someone saved first.");
+            let page = || async {
+                pages.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                req.test_page("Sheet", html! { <p>"page with the refusal"</p> })
+            };
+            // Written in the call, as an app does: the closure's type comes from `invalid_with`.
+            let shown = &errors;
+            req.invalid_with(
+                &errors,
+                |form| async {
+                    reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    form.draw(html! { <form id={SignUpId}>{shown.form_message()}"read now"</form> })
+                },
+                page,
+            )
+            .await
+        }),
+    )
+}
+
+#[tokio::test]
+async fn a_refusal_whose_form_needs_a_read_reads_only_for_the_patch() {
+    use std::sync::atomic::Ordering::Relaxed;
+    use std::sync::{atomic::AtomicU32, Arc};
+    let (reads, pages) = (Arc::new(AtomicU32::new(0)), Arc::new(AtomicU32::new(0)));
+    let routes = || lazily_refused_routes(reads.clone(), pages.clone());
+    let (status, headers, body) = call(app(routes(), None), "GET", Some("action")).await;
+    assert_eq!((status, &headers["corten-patch"]), (StatusCode::CONFLICT, &"1".parse().unwrap()));
+    assert!(
+        body.starts_with(r#"<form id="sign-up">"#) && body.contains("Someone saved first.") && body.ends_with("read now</form>"),
+        "{body}"
+    );
+    assert_eq!((reads.load(Relaxed), pages.load(Relaxed)), (1, 0), "an action draws only the patch");
+
+    let (status, _, body) = call(app(routes(), None), "GET", None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("<p>page with the refusal</p>"), "no JavaScript: the whole page");
+    assert_eq!((reads.load(Relaxed), pages.load(Relaxed)), (1, 1), "the page reads nothing for the patch");
+
+    let (status, _, _) = call(app(routes(), None), "GET", Some("nav")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!((reads.load(Relaxed), pages.load(Relaxed)), (1, 2), "a navigation gets the page");
+
+    #[cfg(feature = "json")]
+    {
+        let (status, _, body) = call_with(app(routes(), None), "GET", "/", None, Some("application/json")).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert!(body.contains(r#""status":409"#), "{body}");
+        assert_eq!((reads.load(Relaxed), pages.load(Relaxed)), (1, 2), "a data client runs neither side");
+    }
+}
 #[tokio::test]
 async fn invalid_input_answers_422_in_each_mode() {
     let (status, headers, body) = call(app(invalid_routes(), None), "GET", Some("action")).await;
@@ -1295,6 +1400,242 @@ pub(crate) struct Shipping {
     pub street_line: String,
     postal_code: Option<Vec<(u8, String)>>,
     r#type: std::collections::HashMap<String, fn(u8) -> u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, crate::UrlValue)]
+#[serde(rename_all = "kebab-case")]
+enum Domain {
+    SellerPortal,
+    Catalog,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, Fields)]
+struct Address {
+    street: String,
+    zip: Option<u32>,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, Fields)]
+struct DomainLimits {
+    max_concurrent: u32,
+    #[serde(default)]
+    adaptive: bool,
+    #[fields(group)]
+    contact: Address,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, Fields)]
+struct Limits {
+    name: String,
+    #[fields(group)]
+    ship_from: Address,
+    #[fields(group)]
+    ship_to: Address,
+    #[fields(rows)]
+    #[serde(default)]
+    domains: std::collections::BTreeMap<Domain, DomainLimits>,
+}
+
+#[derive(crate::view::Id)]
+struct LimitsFormId;
+
+/// A group's fields are named under it and a row's under its key, so two groups of one type
+/// and every row read into their own values, and each row's field has its own message.
+#[test]
+fn groups_and_rows_name_each_field_and_read_back_by_key() {
+    let f = Limits::FIELDS;
+    assert_eq!(f.name.to_string(), "name");
+    assert_eq!(f.ship_to.street.to_string(), "ship_to.street");
+    let portal = f.domains.at(&Domain::SellerPortal);
+    assert_eq!(portal.max_concurrent.to_string(), "domains[seller-portal].max_concurrent");
+    assert_eq!(portal.contact.zip.to_string(), "domains[seller-portal].contact.zip");
+    let keyed = Limits2::FIELDS.lines.at(&"a b]\"c".to_string()).qty.to_string();
+    assert_eq!(keyed, "lines[a%20b%5D%22c].qty");
+
+    // Out of order, a row with its checkbox unchecked, the catalog row's zip blank.
+    let body = "domains%5Bcatalog%5D.max_concurrent=4&ship_to.street=2+Elm&name=Main\
+        &domains%5Bseller-portal%5D.adaptive=on&domains%5Bseller-portal%5D.contact.street=1+Oak\
+        &ship_from.street=9+Ash&domains%5Bcatalog%5D.contact.street=3+Pine&ship_from.zip=55401\
+        &domains%5Bseller-portal%5D.max_concurrent=2&domains%5Bcatalog%5D.contact.zip=&ship_to.zip=";
+    let form: Limits = crate::form::from_bytes(body.as_bytes()).expect("reads");
+    assert_eq!(form.name, "Main");
+    assert_eq!(form.ship_from, Address { street: "9 Ash".into(), zip: Some(55401) });
+    assert_eq!(form.ship_to, Address { street: "2 Elm".into(), zip: None });
+    assert_eq!(
+        form.domains[&Domain::SellerPortal],
+        DomainLimits { max_concurrent: 2, adaptive: true, contact: Address { street: "1 Oak".into(), zip: None } }
+    );
+    assert_eq!(
+        form.domains[&Domain::Catalog],
+        DomainLimits { max_concurrent: 4, adaptive: false, contact: Address { street: "3 Pine".into(), zip: None } }
+    );
+    let keyed: Limits2 = crate::form::from_bytes(b"lines%5Ba%2520b%255D%2522c%5D.qty=3").expect("reads");
+    assert_eq!(keyed.lines["a b]\"c"].qty, 3);
+
+    // A row left out reads no row; nothing shifts.
+    let one: Limits = crate::form::from_bytes(
+        b"name=x&ship_from.street=a&ship_to.street=b&domains%5Bcatalog%5D.max_concurrent=1&domains%5Bcatalog%5D.contact.street=c",
+    )
+    .expect("reads");
+    assert_eq!(one.domains.keys().collect::<Vec<_>>(), [&Domain::Catalog]);
+
+    // Mistakes name the field as posted.
+    let err = |body: &str| crate::form::from_bytes::<Limits>(body.as_bytes()).unwrap_err().to_string();
+    let base = "name=x&ship_from.street=a&ship_to.street=b";
+    assert_eq!(err("name=x&ship_to.street=b"), "missing field `ship_from`");
+    assert_eq!(err("name=x&ship_from.zip=1&ship_to.street=b"), "ship_from: missing field `street`");
+    assert!(
+        err(&format!("{base}&domains%5Bcatalog%5D.max_concurrent=x&domains%5Bcatalog%5D.contact.street=c"))
+            .starts_with("domains[catalog].max_concurrent: invalid"),
+        "{}",
+        err(&format!("{base}&domains%5Bcatalog%5D.max_concurrent=x&domains%5Bcatalog%5D.contact.street=c"))
+    );
+    assert!(
+        err(&format!("{base}&domains%5Bnope%5D.max_concurrent=1")).starts_with("domains[nope]: key: unknown variant `nope`"),
+        "{}",
+        err(&format!("{base}&domains%5Bnope%5D.max_concurrent=1"))
+    );
+
+    // An error on one row marks that row's input only, with its own message id.
+    let mut errors = Errors::new();
+    errors.add(f.domains.at(&Domain::SellerPortal).max_concurrent, "At least 1.");
+    errors.add(f.domains.at(&Domain::SellerPortal).max_concurrent, "dropped: the field has one");
+    errors.add(f.domains.at(&Domain::Catalog).max_concurrent, "At most 8.");
+    let e = &errors.within(LimitsFormId);
+    let row = |d: Domain| {
+        let field = f.domains.at(&d).max_concurrent;
+        html! { <input name={field} {..e.aria(field)}>{e.message(field)} }.to_html()
+    };
+    assert_eq!(
+        row(Domain::SellerPortal),
+        r#"<input name="domains[seller-portal].max_concurrent" aria-invalid="true" aria-describedby="limits-form-domains[seller-portal].max_concurrent-error"><p class="field-error" id="limits-form-domains[seller-portal].max_concurrent-error">At least 1.</p>"#
+    );
+    assert!(row(Domain::Catalog).contains("At most 8."));
+    assert!(!errors.has(f.domains.at(&Domain::SellerPortal).contact.street));
+    assert_eq!(
+        errors.to_string(),
+        "domains[seller-portal].max_concurrent: At least 1.; domains[catalog].max_concurrent: At most 8."
+    );
+}
+
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Line {
+    qty: u32,
+}
+
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Limits2 {
+    #[fields(rows)]
+    #[serde(default)]
+    lines: std::collections::BTreeMap<String, Line>,
+}
+
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Numbered {
+    #[fields(rows)]
+    #[serde(default)]
+    lines: std::collections::BTreeMap<u32, Line>,
+}
+
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Counts {
+    note: String,
+    #[fields(map)]
+    #[serde(default)]
+    counts: std::collections::BTreeMap<u32, u32>,
+}
+
+/// One plain value per key (a count per SKU) is `map[key]`, read back by key, each with its own
+/// error.
+#[test]
+fn a_map_names_each_keys_value() {
+    let f = Counts::FIELDS;
+    assert_eq!(f.counts.at(&7).to_string(), "counts[7]");
+    let read: Counts = crate::form::from_bytes(b"counts%5B7%5D=3&note=x&counts%5B12%5D=0").expect("reads");
+    assert_eq!(read.counts.into_iter().collect::<Vec<_>>(), [(7, 3), (12, 0)]);
+    let err = crate::form::from_bytes::<Counts>(b"note=x&counts%5B7%5D=many").unwrap_err().to_string();
+    assert!(err.starts_with("counts[7]: invalid value"), "{err}");
+    let none: Counts = crate::form::from_bytes(b"note=x").expect("no keys: an empty map");
+    assert!(none.counts.is_empty() && none.note == "x");
+
+    let mut errors = Errors::new();
+    errors.add(f.counts.at(&7), "Not that many.");
+    let e = errors.within(LimitsFormId);
+    let field = f.counts.at(&7);
+    assert_eq!(
+        html! { <input name={field} {..e.aria(field)}> }.to_html(),
+        r#"<input name="counts[7]" aria-invalid="true" aria-describedby="limits-form-counts[7]-error">"#
+    );
+    assert!(!errors.has(f.counts.at(&12)));
+}
+
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Search {
+    q: String,
+    go: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Moded {
+    q: String,
+    #[serde(rename = "q-mode")]
+    mode: String,
+}
+
+/// What a client sends is not trusted: a key sent another way than the form writes it is
+/// refused, stray `x.y` keys beside a field sent as `x` are left alone, and many rows' errors
+/// cost each row its own lookup.
+#[test]
+fn rows_read_only_their_own_keys_and_scale_with_their_count() {
+    // `a` as `%61`, lowercase hex, a character the form would encode: each refused.
+    for key in ["%2561", "a%252cb", "a.b"] {
+        let body = format!("lines%5B{key}%5D.qty=1");
+        let err = crate::form::from_bytes::<Limits2>(body.as_bytes()).unwrap_err().to_string();
+        assert!(err.contains("the row's key is not"), "{key}: {err}");
+    }
+    let read: Limits2 = crate::form::from_bytes(b"lines%5Ba%252Cb%5D.qty=1").expect("the form's own encoding");
+    assert_eq!(read.lines["a,b"].qty, 1);
+
+    // An image button (`go.x`, `go.y`) and a stray `q.x` beside `q`: read as a plain form was.
+    let search: Search = crate::form::from_bytes(b"q=cards&q.x=1&go.x=3&go.y=4").expect("reads");
+    assert_eq!((search.q.as_str(), search.go), ("cards", None));
+    // A key between `q` and `q.x` (`q-mode`) does not make `q.x` a group.
+    let moded: Moded = crate::form::from_bytes(b"q=a&q-mode=b&q.x=1").expect("q is sent as itself");
+    assert_eq!((moded.q.as_str(), moded.mode.as_str()), ("a", "b"));
+
+    // An integer key is read only as it is written, so one row cannot be sent two ways.
+    for key in ["07", "%2B7", "-0"] {
+        let body = format!("lines%5B{key}%5D.qty=1");
+        let err = crate::form::from_bytes::<Numbered>(body.as_bytes()).unwrap_err().to_string();
+        assert!(err.contains("as the form writes it") || err.contains("the way the form writes it"), "{key}: {err}");
+    }
+
+    // Integer keys, written without allocating, and each row's errors found by its key.
+    let f = Numbered::FIELDS;
+    assert_eq!(f.lines.at(&7).qty.to_string(), "lines[7].qty");
+    let read: Numbered = crate::form::from_bytes(b"lines%5B7%5D.qty=2&lines%5B12%5D.qty=5").expect("reads");
+    assert_eq!((read.lines[&7].qty, read.lines[&12].qty), (2, 5));
+    let mut errors = Errors::new();
+    for row in 0..20_000u32 {
+        errors.add(f.lines.at(&row).qty, "Too many.");
+        errors.add(f.lines.at(&row).qty, "dropped: the row has one");
+    }
+    assert_eq!(errors.len(), 20_000);
+    assert_eq!(errors.get(f.lines.at(&19_999).qty), Some("Too many."));
+    assert!(!errors.has(f.lines.at(&20_000).qty));
+    assert!(errors.iter().next().is_some_and(|(name, _)| name == "lines[0].qty"));
+
+    // A group in a row: its own message id, and its key in the JSON clients get.
+    let mut errors = Errors::new();
+    let zip = Limits::FIELDS.domains.at(&Domain::SellerPortal).contact.zip;
+    errors.add(zip, "Five digits.");
+    let e = errors.within(LimitsFormId);
+    assert_eq!(
+        html! { {e.message(zip)} }.to_html(),
+        r#"<p class="field-error" id="limits-form-domains[seller-portal].contact.zip-error">Five digits.</p>"#
+    );
+    #[cfg(feature = "json")]
+    assert_eq!(serde_json::to_string(&errors).unwrap(), r#"{"domains[seller-portal].contact.zip":"Five digits."}"#);
 }
 
 #[test]
@@ -1858,6 +2199,59 @@ fn a_query_set_reads_back_what_its_links_write() {
     assert_eq!(empty, DefaultedSet { page: 1, size: 0, facets: Default::default() });
     let link = ShownSetLink { set: ShownSet { tab: Some(Shown("a b".into())) } };
     assert_eq!(link.href(), "/shown-set?tab=a%20b");
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, crate::UrlValue)]
+#[serde(rename_all = "snake_case")]
+pub enum Filter {
+    #[default]
+    All,
+    Due,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, crate::Route)]
+#[route(query)]
+pub struct FilterSet {
+    pub state: Option<Filter>,
+}
+
+#[derive(crate::Route)]
+#[route("/filtered")]
+pub struct Filtered {
+    pub sort: Option<Filter>,
+    #[serde(default)]
+    pub shown: Filter,
+    #[route(query)]
+    pub set: FilterSet,
+}
+
+#[test]
+fn a_query_word_the_app_no_longer_has_reads_as_missing() {
+    use crate::route::FromUrl;
+    let read = <Filtered as FromUrl>::__read((), "sort=due_now&shown=gone&state=old").unwrap();
+    assert_eq!((read.sort, read.shown, read.set.state), (None, Filter::All, None));
+    let read = <Filtered as FromUrl>::__read((), "sort=due&shown=due&state=due").unwrap();
+    assert_eq!((read.sort, read.shown, read.set.state), (Some(Filter::Due), Filter::Due, Some(Filter::Due)));
+    assert!(<Filtered as FromUrl>::__read((), "sort=due&sort=all").is_err(), "sent twice is still refused");
+}
+
+#[derive(crate::Route)]
+#[route("/faceted")]
+pub struct Faceted {
+    #[route(prefix = "f.")]
+    pub facets: std::collections::BTreeMap<Filter, Filter>,
+    #[route(prefix = "n.")]
+    pub counts: Vec<(Filter, u32)>,
+}
+
+#[test]
+fn a_prefixed_entry_the_app_no_longer_has_is_left_out() {
+    use crate::route::FromUrl;
+    let read = <Faceted as FromUrl>::__read((), "f.due=all&f.gone=due&f.all=gone&n.due=2&n.old=3").unwrap();
+    assert_eq!(read.facets, std::collections::BTreeMap::from([(Filter::Due, Filter::All)]));
+    assert_eq!(read.counts, vec![(Filter::Due, 2)]);
+    let err = <Faceted as FromUrl>::__read((), "n.due=two").err().expect("a value that is not a word is refused");
+    assert!(err.to_string().contains("n.due: "), "the error names the parameter: {err}");
 }
 
 /// Every kind of parameter a route has, which its handler reads back as the link wrote it.
@@ -4116,4 +4510,65 @@ async fn a_file_route_answers_a_page_when_it_refuses() {
     assert_eq!(headers[header::LOCATION], "/runs/8?said=stale");
     assert_eq!(headers[header::CACHE_CONTROL], "private, no-cache");
     assert!(headers.contains_key(header::CONTENT_SECURITY_POLICY));
+}
+
+#[derive(Default, crate::Route)]
+#[route(query)]
+#[serde(rename_all = "camelCase")]
+pub struct KeptPaging {
+    pub sort_by: Option<String>,
+    pub page_no: Option<u32>,
+}
+
+#[derive(crate::Route)]
+#[route("/kept")]
+pub struct Kept {
+    pub q: Option<String>,
+    pub tags: Vec<String>,
+    #[route(prefix = "dim.")]
+    pub dims: std::collections::BTreeMap<String, String>,
+    #[route(query)]
+    pub paging: KeptPaging,
+}
+
+#[test]
+fn keep_query_keeps_every_key_the_controls_do_not_name() {
+    use crate::form::keep_query;
+    let at = Kept {
+        q: Some("a \"b\" <c>".into()),
+        tags: vec!["x".into(), "y".into()],
+        dims: [("color".to_string(), "red".to_string()), ("size".to_string(), "9".to_string())].into(),
+        paging: KeptPaging { sort_by: Some("price".into()), page_no: Some(3) },
+    };
+    // A set's field, a prefixed entry and a list, each named by a control: none is kept.
+    let html = keep_query(
+        &at,
+        html! {
+            <select name="sortBy"><option>"price"</option></select>
+            <input name="dim.color" value="blue">
+            for tag in ["x", "z"] { <input type="checkbox" name="tags" value={tag}> }
+        },
+    )
+    .to_html();
+    assert!(!html.contains(r#"type="hidden" name="sortBy""#) && !html.contains(r#"type="hidden" name="tags""#), "{html}");
+    assert!(!html.contains(r#"type="hidden" name="dim.color""#), "{html}");
+    assert!(
+        html.ends_with(concat!(
+            r#"<input type="hidden" name="q" value="a &quot;b&quot; &lt;c&gt;">"#,
+            r#"<input type="hidden" name="dim.size" value="9">"#,
+            r#"<input type="hidden" name="pageNo" value="3">"#,
+        )),
+        "the rest, escaped, in the route's order: {html}"
+    );
+    // Text that only looks like a name is not one.
+    let html = keep_query(&at, html! { <p>" name=\"q\""</p> }).to_html();
+    assert!(html.contains(r#"type="hidden" name="q""#), "{html}");
+    // A link given as `&dyn Href` (a form several pages share) works the same.
+    let shared: &dyn crate::Href = &at;
+    assert!(keep_query(shared, "").to_html().contains(r#"name="pageNo" value="3""#));
+    // A route with no query keeps nothing.
+    assert_eq!(
+        keep_query(&Kept { q: None, tags: vec![], dims: Default::default(), paging: KeptPaging::default() }, "x").to_html(),
+        "x"
+    );
 }

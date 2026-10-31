@@ -76,7 +76,7 @@ pub fn CopyButton<'a, I: Id, L: Render>(text: I, label: L, copied: &'a str) -> i
 
 /// The id as the element has it: `write_id` escapes it for an attribute, and the script gets it
 /// as a value, escaped on its own way into the page.
-fn plain_id(id: &impl Id) -> String {
+pub(crate) fn plain_id(id: &impl Id) -> String {
     let mut out = String::new();
     id.write_id(&mut out);
     if !out.contains('&') {

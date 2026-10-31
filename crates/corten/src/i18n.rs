@@ -106,7 +106,7 @@
 //!
 //! ```
 //! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
-//! use corten::i18n::{Currency, DateStyle, Decimal, Messages as _, Minor, MonthStyle, Offset, TimeStyle};
+//! use corten::i18n::{Currency, DateStyle, DayStyle, Decimal, Messages as _, Minor, MonthStyle, Offset, TimeStyle};
 //! const USD: Currency = Currency::new("USD");
 //!
 //! let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
@@ -122,6 +122,9 @@
 //! // The month and year alone, in the locale's words: "Member since March 2026".
 //! assert_eq!(en.date(at, MonthStyle::Long).to_string(), "March 2026");
 //! assert_eq!(fr.date(at, MonthStyle::Short).to_string(), "mars 2026");
+//! // The month and day alone, for a chart's axis whose year the page says once.
+//! assert_eq!(en.date(at, DayStyle::Short).to_string(), "Mar 22");
+//! assert_eq!(fr.date(at, DayStyle::Long).to_string(), "22 mars");
 //! assert_eq!(en.time(at, TimeStyle::Short).zone(Offset::hours(-5)).to_string(), "7:00 AM GMT-5");
 //! // A message argument like any other ("{title} image {n}").
 //! assert_eq!(en.item_image("Pika", en.number(1234)).to_string(), "Pika image 1,234");
@@ -186,12 +189,21 @@
 //!   offset at the instant. Another zone is written as its offset (`GMT-5`).
 //! - `t.date(at, MonthStyle)`: the month and year without the day (`Short` is `Mar 2026`, `Long`
 //!   `March 2026`), in the locale's order and words, for a "Member since" line or a release
-//!   month. It has no time, so `t.date_time` does not take one:
+//!   month. It has no time, so `t.date_time` does not take one.
+//! - `t.date(at, DayStyle)`: the month and day without the year (`Short` is `Mar 22`, `Long`
+//!   `March 22`; `22 mars` in `fr`), for a chart's axis, a week's row or a timeline whose year the
+//!   page says once. Neither takes a time:
 //!
 //! ```compile_fail
 //! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
 //! use corten::i18n::{Messages as _, MonthStyle, TimeStyle};
 //! let joined = Msg::default().date_time(std::time::SystemTime::now(), MonthStyle::Long, TimeStyle::Short);
+//! ```
+//!
+//! ```compile_fail
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+//! use corten::i18n::{DayStyle, Messages as _, TimeStyle};
+//! let joined = Msg::default().date_time(std::time::SystemTime::now(), DayStyle::Short, TimeStyle::Short);
 //! ```
 //!
 //! An app with one locale may keep no fixed text in its catalog (the views guide, Text), and
@@ -320,9 +332,9 @@ mod display_digits;
 mod format;
 
 pub use format::{
-    parse_timestamp, Amount, Count, Currency, DateFormat, DateOnly, DateStyle, Datetime, Decimal, Formatted, InvalidDecimal,
-    Minor, MoneyFormat, MonthStyle, Number, NumberFormat, Offset, PercentFormat, Relative, RelativeStyle, TimeStyle, Utc, When,
-    Zone,
+    parse_timestamp, Amount, Count, Currency, DateFormat, DateOnly, DateStyle, Datetime, DayStyle, Decimal, Formatted,
+    InvalidDecimal, Minor, MoneyFormat, MonthStyle, Number, NumberFormat, Offset, PercentFormat, Relative, RelativeStyle,
+    TimeStyle, Utc, When, Zone,
 };
 
 /// Compiles catalogs into a messages type. See the [module docs](self).
@@ -930,8 +942,10 @@ mod tests {
         }
     }
 
-    /// The month styles, by their index in the cases after the other 14.
+    /// The month styles, by their index in the cases after the other 14, and the day styles after
+    /// them.
     const MONTHS: [MonthStyle; 2] = [MonthStyle::Short, MonthStyle::Long];
+    const DAYS: [DayStyle; 2] = [DayStyle::Short, DayStyle::Long];
 
     crate::i18n::messages! {
         /// The test catalogs.
@@ -1171,7 +1185,8 @@ mod tests {
                         0..=3 => When::date(data, at, styles[style as usize]),
                         4..=11 => When::date_time(data, at, styles[(style as usize - 4) / 2], times[(style as usize - 4) % 2]),
                         12..=13 => When::time(data, at, times[style as usize - 12]),
-                        _ => When::date(data, at, MONTHS[style as usize - 14]),
+                        14..=15 => When::date(data, at, MONTHS[style as usize - 14]),
+                        _ => When::date(data, at, DAYS[style as usize - 16]),
                     };
                     let offset = offset.first().map_or(0, |o| o.parse().unwrap());
                     when.zone(Offset::seconds(offset)).to_string()
@@ -1253,7 +1268,8 @@ mod tests {
                         0..=3 => DateFormat::date(data, styles[style]),
                         4..=11 => DateFormat::date_time(data, styles[(style - 4) / 2], times[(style - 4) % 2]),
                         12..=13 => DateFormat::time(data, times[style - 12]),
-                        _ => DateFormat::date(data, MONTHS[style - 14]),
+                        14..=15 => DateFormat::date(data, MONTHS[style - 14]),
+                        _ => DateFormat::date(data, DAYS[style - 16]),
                     };
                     // In UTC: scripts/format.mjs sets each case's offset (wire.json has one written).
                     Arg::<ts::DateFormat>::write_arg(&format, &ctx, &mut out);

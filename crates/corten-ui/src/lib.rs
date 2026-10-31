@@ -7,12 +7,13 @@
 //! | [`NumberField`] | a number input with decrease and increase buttons, press and hold | a native number input |
 //! | [`ComboBox`] | type to filter a list, pick one; the value is a native `<select>` | the `<select>` |
 //! | [`TabGroup`] | tabs with arrow keys; tabs can be links, and the address follows | links to each tab's page |
-//! | [`MenuButton`] | a button that opens a menu of links and form actions, arrow keys and typeahead | the menu opens (popover); items work |
+//! | [`MenuButton`] | a button that opens a menu of the app's own items (links, form posts, dialog commands), arrow keys and typeahead | the menu opens (popover); items work |
 //! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
 //! | [`CopyButton`] | copies an element's text to the clipboard, says so politely, and tells the page ([`Copied`]) | no button; the text is on the page to select |
 //! | [`PrintButton`] | opens the browser's print dialog; the page's print styles say what prints | no button; the browser's Print command prints the page |
 //! | [`RelativeTime`] | a time relative to now ("in 10 hours") that stays current, on one timer for the page | the time as the server wrote it |
 //! | [`CheckboxGroup`] | checkboxes of one name of which one must be checked; the browser says so before sending | the form is sent, and the handler refuses it |
+//! | [`ChoiceGroup`] | one choice (a radio group) whose value shows and hides [`ShownFor`] parts anywhere on the page; options can be links, and the address follows | links to the page with each choice, where the server draws it |
 //! | [`RequiredWhen`] | fields required only for some values of another field, disabled for the rest | the fields are optional, and the handler checks the rule |
 //! | [`dialog::modal`] | a `<dialog>` the server draws `open` (a refused form) is modal: focus in it, the page behind inert | the dialog is open, not modal |
 //! | [`dialog::modalClosedBy`] | the same for a dialog the address opens (`?selected=it_1`), and a close request (Escape) goes to its close link's address | the dialog is open, and the link closes it |
@@ -54,14 +55,14 @@
 //! except the `−` and `+` of [`NumberField`]'s buttons, which a design system replaces with
 //! icons.
 //!
-//! **Links** are typed routes (`&dyn corten::Href`): a menu item or tab cannot point at a URL the app does
-//! not route.
+//! **Links** are typed routes (`&dyn corten::Href`): a tab cannot point at a URL the app does not
+//! route.
 //!
 //! ```compile_fail
 //! use corten::prelude::*;
-//! use corten_ui::MenuItem;
+//! use corten_ui::Tab;
 //!
-//! let item = MenuItem { label: "Orders", link: &"/orders", post: false };
+//! let tab = Tab { label: "Orders", panel: &"", link: Some(&"/orders") };
 //! ```
 //!
 //! **Dialogs the server draws open.** A form in a `<dialog>` that the server refuses comes back
@@ -150,6 +151,7 @@
 use corten::{script::script, Component};
 
 mod checkbox_group;
+mod choice_group;
 mod combo_box;
 mod copy_button;
 mod menu_button;
@@ -161,10 +163,11 @@ mod tab_group;
 mod toaster;
 
 pub use checkbox_group::CheckboxGroup;
+pub use choice_group::{ChoiceGroup, ChoiceOption, Chosen, ShownFor};
 pub use combo_box::{Choice, ComboBox, Picker};
 pub use copy_button::{Copied, CopyButton};
-pub use menu_button::{MenuButton, MenuItem};
-pub use number_field::{Number, NumberField, Step};
+pub use menu_button::MenuButton;
+pub use number_field::{Number, NumberField, Numeric, Step};
 pub use print_button::PrintButton;
 pub use relative_time::RelativeTime;
 pub use required_when::RequiredWhen;
@@ -172,6 +175,8 @@ pub use tab_group::{Tab, TabGroup};
 pub use toaster::{Toast, ToastId, Toaster};
 
 script!(pub mod dialog = "dialog.js");
+// ChoiceGroup and ShownFor: one module, so a group reaches its parts without the page.
+script!(mod choice = "choice.js");
 
 /// Every component in this crate with a script, and the [`dialog`] handlers, for
 /// `App::components`.
@@ -186,8 +191,25 @@ pub const COMPONENTS: &[Component] = &[
     RelativeTime,
     CheckboxGroup,
     RequiredWhen,
+    choice::COMPONENT,
     dialog::COMPONENT,
 ];
+
+/// A value a control of a field of type `F` sends: a value of the field's own type (its
+/// `UrlValue` enum, its number), or text for a text field (`String`) or a checkbox's `value` (a
+/// `bool` field, sent as `on` unless the box says otherwise). What [`Picker::new`] and
+/// [`RequiredWhen`] check their values against the field's name with.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a value the field reads (`{F}`)",
+    label = "a value of the field's own type",
+    note = "a field's values are its own type: `Kind::Partial` for `kind: Kind`, `42` for `line: i32`, or text for a text field or a checkbox"
+)]
+pub trait ValueOf<F> {}
+
+impl<V> ValueOf<V> for V {}
+impl ValueOf<String> for &str {}
+impl ValueOf<String> for &String {}
+impl ValueOf<bool> for &str {}
 
 /// `"true"` or `"false"`, for ARIA states, which are text.
 pub(crate) fn state(on: bool) -> &'static str {

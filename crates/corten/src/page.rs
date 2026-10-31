@@ -85,7 +85,7 @@ pub struct Nav<'a, R> {
 }
 
 impl<R> crate::view::__private::Writes for Nav<'_, R> {
-    const WRITES: &'static [&'static str] = &["href", "data-nav", "aria-current"];
+    const WRITES: &'static [&'static str] = &["href", "data-nav", "aria-current", "data-no-prefetch"];
 }
 
 impl<R: crate::Route> crate::view::Attrs for Nav<'_, R> {
@@ -107,6 +107,7 @@ impl<R: crate::Route> crate::view::Attrs for Nav<'_, R> {
         if current {
             out.push_str(r#" aria-current="page""#);
         }
+        crate::route::no_prefetch(" href", R::PREFETCH, out);
     }
 }
 
@@ -117,6 +118,12 @@ pub trait NavTarget: nav_target::Sealed {
     /// Writes the URL as the browser asks for it, not escaped for HTML.
     #[doc(hidden)]
     fn write_url(&self, out: &mut String);
+
+    /// Whether the runtime may fetch the page ahead of a click: a route's [`crate::Route::PREFETCH`].
+    #[doc(hidden)]
+    fn prefetch(&self) -> bool {
+        true
+    }
 }
 
 mod nav_target {
@@ -128,6 +135,10 @@ mod nav_target {
 impl<R: crate::Route + ?Sized> NavTarget for R {
     fn write_url(&self, out: &mut String) {
         self.write_href(out, false);
+    }
+
+    fn prefetch(&self) -> bool {
+        R::PREFETCH
     }
 }
 
@@ -180,8 +191,8 @@ pub struct NavLinks<T> {
     /// The URLs one after another, not escaped.
     urls: String,
     /// Where each entry's URL ends, whether it is a section, how deep it is when it holds the
-    /// page, and its item.
-    entries: Vec<(usize, bool, Option<usize>, T)>,
+    /// page, its item, and whether the runtime may prefetch it.
+    entries: Vec<(usize, bool, Option<usize>, T, bool)>,
     /// The deepest of them: the entries that deep are current.
     deepest: Option<usize>,
     /// The group the runtime ranks these links in (`data-nav-group`): 32 bits of a hash of the
@@ -197,25 +208,35 @@ impl<T> NavLinks<T> {
     pub fn links(&self) -> impl Iterator<Item = (NavLink<'_>, &T)> {
         let mut start = 0;
         let group = std::str::from_utf8(&self.group).expect("hex digits");
-        self.entries.iter().map(move |(end, section, depth, item)| {
+        self.entries.iter().map(move |(end, section, depth, item, prefetch)| {
             let url = &self.urls[start..*end];
             start = *end;
-            (NavLink { url, section: *section, current: depth.is_some() && *depth == self.deepest, group }, item)
+            (
+                NavLink {
+                    url,
+                    section: *section,
+                    current: depth.is_some() && *depth == self.deepest,
+                    group,
+                    prefetch: *prefetch,
+                },
+                item,
+            )
         })
     }
 }
 
-/// One link of a [`NavLinks`]: `href`, `data-nav`, `data-nav-group` and, when current,
-/// `aria-current="page"`.
+/// One link of a [`NavLinks`]: `href`, `data-nav`, `data-nav-group`, when current
+/// `aria-current="page"`, and `data-no-prefetch` for a route that says `prefetch = false`.
 pub struct NavLink<'a> {
     url: &'a str,
     section: bool,
     current: bool,
     group: &'a str,
+    prefetch: bool,
 }
 
 impl crate::view::__private::Writes for NavLink<'_> {
-    const WRITES: &'static [&'static str] = &["href", "data-nav", "data-nav-group", "aria-current"];
+    const WRITES: &'static [&'static str] = &["href", "data-nav", "data-nav-group", "aria-current", "data-no-prefetch"];
 }
 
 impl crate::view::Attrs for NavLink<'_> {
@@ -230,6 +251,7 @@ impl crate::view::Attrs for NavLink<'_> {
         if self.current {
             out.push_str(r#" aria-current="page""#);
         }
+        crate::route::no_prefetch(" href", self.prefetch, out);
     }
 }
 
@@ -247,7 +269,7 @@ pub(crate) fn nav_links<'a, T>(path: &str, entries: impl IntoIterator<Item = (Na
         .map(|(entry, item)| {
             let start = urls.len();
             entry.to.write_url(&mut urls);
-            (urls.len(), entry.section, holds(path, &urls[start..], entry.section), item)
+            (urls.len(), entry.section, holds(path, &urls[start..], entry.section), item, entry.to.prefetch())
         })
         .collect();
     let deepest = entries.iter().filter_map(|entry| entry.2).max();
@@ -653,6 +675,21 @@ impl Shared {
 /// Used by handlers that run without an [`crate::App`] (unit tests of a bare router).
 static DEFAULT: LazyLock<Arc<Shared>> =
     LazyLock::new(|| Arc::new(Shared::new(error_page_fn(default_error_page, ()), None, String::new())));
+
+/// What draws the form's patch in [`Req::invalid_with`]: a patch and nothing else.
+pub struct FormPatch<'r>(&'r Req);
+
+impl FormPatch<'_> {
+    /// The form, re-rendered with the errors, as the refusal's patch.
+    pub fn draw(self, view: impl crate::view::Patch) -> Result<DrawnPatch> {
+        let mut body = String::new();
+        self.0.render_into(view, &mut body)?;
+        Ok(DrawnPatch(body))
+    }
+}
+
+/// A patch [`FormPatch::draw`] drew, which [`Req::invalid_with`] sends with the refusal's status.
+pub struct DrawnPatch(String);
 
 /// The request as a handler answers it: which [`Mode`] the client asked in, and the methods
 /// that build each kind of response. Every handler that returns HTML takes one.
@@ -1091,8 +1128,9 @@ impl Req {
     /// ([`Mode::Action`]) `view` as a patch; otherwise `page()`, the whole page or a redirect, so
     /// the form works without JavaScript too. `page` only runs then, so an action never loads
     /// data for a page it does not send. A data client ([`Mode::Data`]) gets `page()` as well. A
-    /// submit refused for its input is [`Req::invalid`]; a patch that needs data, a status or
-    /// headers of its own checks `req.mode == Mode::Action` itself.
+    /// submit refused for its input is [`Req::invalid`] (or [`Req::invalid_with`] when the form needs
+    /// a read); a patch that needs data, a status or headers of its own checks
+    /// `req.mode == Mode::Action` itself.
     ///
     /// ```
     /// use corten::prelude::*;
@@ -1137,9 +1175,10 @@ impl Req {
         }
     }
 
-    /// Answers a refused submit: its input failed validation (422 Unprocessable Content), or it
-    /// was made against a state that has moved on ([`Errors::refuse`](crate::Errors::refuse), 409
-    /// for a stale revision), with the status of [`Errors::refusal`](crate::Errors::refusal):
+    /// Answers a refused submit: its input failed validation (422 Unprocessable Content), it was
+    /// made against a state that has moved on ([`Errors::refuse`](crate::Errors::refuse), 409 for
+    /// a stale revision, 410 for a deleted record), or a service the handler calls failed (502),
+    /// with the status of [`Errors::refusal`](crate::Errors::refusal):
     ///
     /// - [`Mode::Action`]: `form`, the form re-rendered with the errors, as a patch. The runtime
     ///   then moves focus to the first field marked `aria-invalid="true"`.
@@ -1165,6 +1204,91 @@ impl Req {
         let status = errors.refusal().status();
         match self.mode {
             Mode::Action => self.patch_with_status(status, form),
+            #[cfg(feature = "json")]
+            Mode::Data => Ok(HtmlResponse::new(errors.response())),
+            _ => {
+                let mut res = page().await?;
+                if res.status().is_success() {
+                    *res.status_mut() = status;
+                }
+                Ok(res)
+            }
+        }
+    }
+
+    /// [`Req::invalid`] for a refusal whose form needs a read of its own (the record as it is
+    /// now): both sides are drawn only for the mode that sends them, so a browser without
+    /// JavaScript reads nothing for a patch it never gets, and the patch reads nothing for the
+    /// page. `form` gets a [`FormPatch`], which draws the patch and nothing else, so a page or a
+    /// redirect on that side does not compile; a data client gets the Problem Details document,
+    /// as from `invalid` (feature `json`; without it, the page), and neither side runs. A form drawn from what the handler already has is
+    /// `invalid`.
+    ///
+    /// ```
+    /// use corten::{prelude::*, Refusal};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/batch", get = show, post = price)]
+    ///     pub struct Batch;
+    /// }
+    ///
+    /// #[derive(Id)]
+    /// struct PanelId;
+    ///
+    /// #[component]
+    /// fn Panel<'a>(status: &'a str) -> impl Patch {
+    ///     html! { <p id={PanelId}>{status}</p> }
+    /// }
+    ///
+    /// async fn status_now() -> String {
+    ///     "Publishing".to_string()
+    /// }
+    ///
+    /// # async fn show(req: Req) -> HtmlResult { req.redirect(&url::Batch) }
+    /// async fn price(req: Req) -> HtmlResult {
+    ///     let mut errors = Errors::new();
+    ///     errors.refuse(Refusal::Conflict, "The batch moved on; here it is now.");
+    ///     req.invalid_with(
+    ///         &errors,
+    ///         |form| async move {
+    ///             let status = status_now().await;
+    ///             form.draw(Panel { status: &status })
+    ///         },
+    ///         || async { req.page(html! { <html><head><title>"Batch"</title><Corten /></head><body><main>"Batch"</main></body></html> }) },
+    ///     )
+    ///     .await
+    /// }
+    /// # let _ = App::new(url::router()).router();
+    /// ```
+    ///
+    /// The form side draws a patch, so it cannot answer a page:
+    ///
+    /// ```compile_fail
+    /// use corten::prelude::*;
+    ///
+    /// async fn price(req: Req, errors: Errors) -> HtmlResult {
+    ///     req.invalid_with(&errors, |_form| async { req.redirect(&corten::Local::parse("/").unwrap()) }, || async { req.redirect(&corten::Local::parse("/").unwrap()) }).await
+    /// }
+    /// ```
+    pub async fn invalid_with<'r, For, F, FormFut, P, PageFut>(
+        &'r self,
+        errors: &crate::Errors,
+        form: F,
+        page: P,
+    ) -> crate::Result<HtmlResponse<For>>
+    where
+        F: FnOnce(FormPatch<'r>) -> FormFut,
+        FormFut: Future<Output = crate::Result<DrawnPatch>>,
+        P: FnOnce() -> PageFut,
+        PageFut: Future<Output = crate::Result<HtmlResponse<For>>>,
+    {
+        let status = errors.refusal().status();
+        match self.mode {
+            Mode::Action => {
+                let DrawnPatch(body) = form(FormPatch(self)).await?;
+                Ok(HtmlResponse::new(html_response(status, body, Some(PATCH_HEADER))))
+            }
             #[cfg(feature = "json")]
             Mode::Data => Ok(HtmlResponse::new(errors.response())),
             _ => {

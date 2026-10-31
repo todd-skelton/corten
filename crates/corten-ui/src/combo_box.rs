@@ -86,21 +86,40 @@ impl<S: AsRef<str>> AttrValue for Terms<'_, S> {
 /// use corten::prelude::*;
 /// use corten_ui::{Choice, Picker};
 ///
-/// #[derive(Clone, Copy, PartialEq, UrlValue)]
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
 /// enum Color { Salt, Sand }
-/// #[derive(Clone, Copy, PartialEq, UrlValue)]
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
 /// enum Size { Small }
-/// #[derive(Fields)]
-/// struct Order { color: String }
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Order { color: Color }
 ///
 /// let colors = [Choice::new(Color::Salt, "Salt"), Choice::new(Color::Sand, "Sand")];
 /// let field = Picker { value: Some(Size::Small), ..Picker::new("color", Order::FIELDS.color, "Choose", "None", &colors) };
+/// ```
+///
+/// And the field it names reads that type, so a picker of colors on another field does not
+/// compile either:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+/// use corten_ui::{Choice, Picker};
+///
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
+/// enum Color { Salt, Sand }
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
+/// enum Size { Small }
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Order { color: Color, size: Size }
+///
+/// let colors = [Choice::new(Color::Salt, "Salt"), Choice::new(Color::Sand, "Sand")];
+/// let field = Picker::new("size", Order::FIELDS.size, "Choose", "None", &colors);
 /// ```
 pub struct Picker<'a, V, S = &'a str> {
     /// The `id` the app's `<label for>` points at. It names the `<select>` until the script
     /// runs and the text input after, so the label always labels the control that shows.
     pub id: &'a str,
-    /// The form field's name, on the `<select>`: `Input::FIELDS.color`.
+    /// The form field's name, on the `<select>`: `Input::FIELDS.color`. Set by [`Picker::new`],
+    /// which checks that the field reads the options' values.
     pub name: FieldName,
     /// The selected option's value.
     pub value: Option<V>,
@@ -120,8 +139,21 @@ static NO_ATTRS: [(&str, bool); 0] = [];
 
 impl<'a, V, S> Picker<'a, V, S> {
     /// A field with nothing selected, optional and enabled.
-    pub fn new(id: &'a str, name: FieldName, placeholder: &'a str, empty: &'a str, options: &'a [Choice<'a, V, S>]) -> Self {
-        Picker { id, name, value: None, placeholder, empty, options, required: false, disabled: false, attrs: &NO_ATTRS }
+    pub fn new<F>(id: &'a str, name: FieldName<F>, placeholder: &'a str, empty: &'a str, options: &'a [Choice<'a, V, S>]) -> Self
+    where
+        V: crate::ValueOf<F>,
+    {
+        Picker {
+            id,
+            name: name.untyped(),
+            value: None,
+            placeholder,
+            empty,
+            options,
+            required: false,
+            disabled: false,
+            attrs: &NO_ATTRS,
+        }
     }
 }
 
