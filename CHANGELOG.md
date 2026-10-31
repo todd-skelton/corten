@@ -1206,7 +1206,8 @@ Corten is pre-1.0, so any minor version may change the API.
     against 35,621,122,132 for the zones change it builds on (-0.04%; the page writes no date).
     ([#502 i18n: no way to write a calendar date (no instant behind it) that never shifts with the zone](https://github.com/todd-skelton/corten/issues/502)).
 155. `pwa::Manifest` sets the manifest's other members: `display` (`Display`, standalone
-    unless set), `display_override`, `orientation`, `id`, `lang`, `dir`, `categories`,
+    unless set), `display_override`, `orientation`, `id` (a path of this site: a route or a `Local`), `lang`,
+    `dir`, `categories`,
     `screenshot(Screenshot::new(..))` with its form factor and label (Chrome's richer install
     dialog), and `shortcut(Shortcut::new(name, &Route))`, a page named by its typed route. A
     screenshot or a shortcut's icon is a static file's constant or a `Uri`, resolved to its

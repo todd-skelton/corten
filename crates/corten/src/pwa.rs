@@ -9,8 +9,8 @@
 //!
 //! [`crate::App::pwa`] serves the manifest and the worker, links the manifest in every page,
 //! registers the worker (not under `corten dev`), caches the static files, and answers
-//! `/offline` with a plain offline page unless the app routes it. Icons and the app's worker
-//! script are files of the static directory, named by the constants
+//! `/offline` with a plain offline page unless the app routes it. Icons, screenshots and the app's
+//! worker script are files of the static directory, named by the constants
 //! [`crate::assets::embed!`] makes, so a misspelled or removed file does not compile; an icon
 //! served from another site is a `Uri`, as every URL outside the app is.
 //!
@@ -220,6 +220,15 @@ pub enum FormFactor {
     Narrow,
 }
 
+impl FormFactor {
+    fn as_str(self) -> &'static str {
+        match self {
+            FormFactor::Wide => "wide",
+            FormFactor::Narrow => "narrow",
+        }
+    }
+}
+
 /// A shortcut the platform offers on the installed app's icon: a name and a page of the app, by its
 /// typed route.
 ///
@@ -234,11 +243,17 @@ pub enum FormFactor {
 /// assert!(json.contains(r#""shortcuts":[{"name":"Watchlist","url":"/watchlist","short_name":"Watch"}]"#));
 /// ```
 ///
-/// A URL written as text is not a shortcut's page:
+/// A URL written as text is not a shortcut's page, and neither is another site's, which a
+/// browser would drop (a shortcut is a page in the app's scope):
 ///
 /// ```compile_fail,E0277
 /// use corten::pwa::Shortcut;
 /// let _ = Shortcut::new("Watchlist", "/watchlist");
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::pwa::Shortcut;
+/// let _ = Shortcut::new("Help", &axum::http::Uri::from_static("https://docs.example.com/help"));
 /// ```
 #[derive(Clone, Debug)]
 pub struct Shortcut {
@@ -250,7 +265,7 @@ pub struct Shortcut {
 }
 
 impl Shortcut {
-    pub fn new(name: &str, page: &(impl crate::Href + ?Sized)) -> Self {
+    pub fn new(name: &str, page: &(impl crate::route::OnSite + ?Sized)) -> Self {
         Shortcut { name: name.into(), url: crate::route::link(page), short_name: None, description: None, icons: Vec::new() }
     }
 
@@ -389,10 +404,16 @@ impl Manifest {
         self
     }
 
-    /// The app's identity across changes to its `start_url` (`"/"`, or a path of its own): a
-    /// browser treats two manifests with the same `id` as one installed app.
-    pub fn id(mut self, id: &str) -> Self {
-        self.id = Some(id.into());
+    /// The app's identity across changes to its `start_url`: a browser treats two manifests with
+    /// the same `id` as one installed app. A path of this site (a typed route, or a
+    /// `Local::parse("/app")`), since a browser ignores an `id` on another origin:
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::pwa::Manifest;
+    /// let _ = Manifest::new("Shop", "Shop").id("https://other.example/app");
+    /// ```
+    pub fn id(mut self, id: &(impl crate::route::OnSite + ?Sized)) -> Self {
+        self.id = Some(crate::route::link(id));
         self
     }
 
@@ -510,11 +531,7 @@ impl Manifest {
                     json_string(shot.mime)
                 ));
                 if let Some(form_factor) = shot.form_factor {
-                    out.push_str(if form_factor == FormFactor::Wide {
-                        r#","form_factor":"wide""#
-                    } else {
-                        r#","form_factor":"narrow""#
-                    });
+                    out.push_str(&format!(r#","form_factor":"{}""#, form_factor.as_str()));
                 }
                 if let Some(label) = &shot.label {
                     out.push_str(&format!(r#","label":{}"#, json_string(label)));
@@ -826,7 +843,7 @@ mod tests {
     #[test]
     fn the_manifests_other_members_are_written_when_set() {
         let m = Manifest::new("A", "A")
-            .id("/")
+            .id(&crate::route::Local::parse("/").unwrap())
             .lang("en-US")
             .dir(Dir::Ltr)
             .display(Display::MinimalUi)
@@ -853,6 +870,41 @@ mod tests {
                 r#""icons":[{"src":"/i/w.png","sizes":"96x96","type":"image/png"}]}]}"#
             )
         );
+    }
+
+    /// Every value each enum writes, as the spec names it.
+    #[test]
+    fn each_mode_is_written_as_the_spec_names_it() {
+        use DisplayOverride as O;
+        let display = [Display::Fullscreen, Display::Standalone, Display::MinimalUi, Display::Browser].map(Display::as_str);
+        assert_eq!(display, ["fullscreen", "standalone", "minimal-ui", "browser"]);
+        let overrides =
+            [O::WindowControlsOverlay, O::Tabbed, O::Fullscreen, O::Standalone, O::MinimalUi, O::Browser].map(O::as_str);
+        assert_eq!(overrides, ["window-controls-overlay", "tabbed", "fullscreen", "standalone", "minimal-ui", "browser"]);
+        let orientations = [
+            Orientation::Any,
+            Orientation::Natural,
+            Orientation::Landscape,
+            Orientation::LandscapePrimary,
+            Orientation::LandscapeSecondary,
+            Orientation::Portrait,
+            Orientation::PortraitPrimary,
+            Orientation::PortraitSecondary,
+        ]
+        .map(Orientation::as_str);
+        let named = [
+            "any",
+            "natural",
+            "landscape",
+            "landscape-primary",
+            "landscape-secondary",
+            "portrait",
+            "portrait-primary",
+            "portrait-secondary",
+        ];
+        assert_eq!(orientations, named);
+        assert_eq!([Dir::Ltr, Dir::Rtl, Dir::Auto].map(Dir::as_str), ["ltr", "rtl", "auto"]);
+        assert_eq!([FormFactor::Wide, FormFactor::Narrow].map(FormFactor::as_str), ["wide", "narrow"]);
     }
 
     #[test]
