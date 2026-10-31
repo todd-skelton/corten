@@ -40,8 +40,9 @@ const NOTICE_HEADER: HeaderName = HeaderName::from_static("corten-notice");
 pub(crate) const NOTICE_COOKIE: &str = "__Host-corten-notice";
 /// The notice's cookie for a write from a plain `http://` origin that is not loopback (a LAN
 /// tool), which refuses a `Secure` cookie and so a `__Host-` one: read only from a request without
-/// `Sec-Fetch-Site`, which a browser sends to every secure origin, so on HTTPS another site on the
-/// domain cannot plant one.
+/// `Sec-Fetch-Site`, which a current browser sends to every secure origin, so on HTTPS another site
+/// on the domain cannot plant one there; never with [`crate::security::Policy::hsts`], which says
+/// the app is HTTPS only.
 pub(crate) const PLAIN_NOTICE_COOKIE: &str = "corten-notice";
 /// The longest notice kept, in bytes: a sentence, well inside a cookie's 4 KB once encoded.
 const NOTICE_MAX: usize = 500;
@@ -630,6 +631,9 @@ pub(crate) struct Shared {
     pub locales: Option<&'static [&'static str]>,
     /// [`crate::App::client_zone`]: the runtime keeps the browser's time zone in a cookie.
     pub client_zone: bool,
+    /// A redirect's notice may ride in [`PLAIN_NOTICE_COOKIE`]: the app is not HTTPS only
+    /// ([`crate::security::Policy::hsts`]).
+    pub plain_notice: bool,
     /// Dev mode: error pages show the error.
     pub dev: bool,
     /// The names of the components the app lists (`App::components` and `Area::components`).
@@ -677,6 +681,7 @@ impl Shared {
             offline: None,
             locales: None,
             client_zone: false,
+            plain_notice: true,
             dev: false,
             components: Default::default(),
             sections: Vec::new(),
@@ -732,8 +737,16 @@ pub struct Req {
 pub struct Notice {
     text: Box<str>,
     signal: crate::Signal,
-    /// It came in [`PLAIN_NOTICE_COOKIE`], so the answer removes that one.
-    plain: bool,
+    /// Which cookies it was read from, which the answer removes.
+    gone: Gone,
+}
+
+/// The notice cookies a request carried that its page's answer removes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Gone {
+    Host,
+    Plain,
+    Both,
 }
 
 impl Notice {
@@ -744,8 +757,8 @@ impl Notice {
     }
 
     /// The request's notice: the cookie's, when it was written for this path.
-    fn of(headers: &HeaderMap, path: &str, signal: &crate::Signal) -> Option<Notice> {
-        let (value, plain) = notice_cookie(headers)?;
+    fn of(headers: &HeaderMap, path: &str, signal: &crate::Signal, plain: bool) -> Option<Notice> {
+        let (value, gone) = notice_cookie(headers, plain)?;
         let (mut to, mut text) = (None, None);
         for (key, value) in form_urlencoded::parse(value.as_bytes()) {
             match &*key {
@@ -754,33 +767,46 @@ impl Notice {
                 _ => {}
             }
         }
-        (*to? == *path_key(path)).then(|| Notice { text: text.unwrap_or_default().into(), signal: signal.clone(), plain })
+        (*to? == *path_key(path)).then(|| Notice { text: text.unwrap_or_default().into(), signal: signal.clone(), gone })
     }
 }
 
-/// The request's notice cookie, and whether it is [`PLAIN_NOTICE_COOKIE`]: in one pass over the
-/// cookies, the `__Host-` one first; the plain one only from a browser that does not count the
-/// page's origin as secure (no `Sec-Fetch-Site`).
-fn notice_cookie(headers: &HeaderMap) -> Option<(&str, bool)> {
-    let mut plain = None;
+/// The request's notice cookie and the cookies its answer removes, in one pass over the cookies:
+/// the `__Host-` one's text first; the plain one when `plain` (the app is not HTTPS only) and
+/// the browser does not count the page's origin as secure (no `Sec-Fetch-Site`).
+fn notice_cookie(headers: &HeaderMap, plain: bool) -> Option<(&str, Gone)> {
+    let (mut host, mut plain_value) = (None, None);
     for pair in headers.get_all(header::COOKIE).iter().filter_map(|v| v.to_str().ok()).flat_map(|v| v.split(';')) {
         let Some((name, value)) = pair.trim().split_once('=') else { continue };
-        if name == NOTICE_COOKIE {
-            return Some((value, false));
-        }
-        if name == PLAIN_NOTICE_COOKIE && plain.is_none() {
-            plain = Some(value);
+        if name == NOTICE_COOKIE && host.is_none() {
+            host = Some(value);
+        } else if plain && name == PLAIN_NOTICE_COOKIE && plain_value.is_none() {
+            plain_value = Some(value);
         }
     }
-    plain.filter(|_| !headers.contains_key("sec-fetch-site")).map(|value| (value, true))
+    let plain_value = plain_value.filter(|_| !headers.contains_key("sec-fetch-site"));
+    match (host, plain_value) {
+        (Some(value), None) => Some((value, Gone::Host)),
+        (Some(value), Some(_)) => Some((value, Gone::Both)),
+        (None, Some(value)) => Some((value, Gone::Plain)),
+        (None, None) => None,
+    }
 }
 
-/// Whether a write's `Origin` is plain `http://` on a host that is not loopback (`localhost`, a
-/// name under it, `127.0.0.0/8`, `[::1]`): an origin a browser does not count as secure, so it
-/// refuses a `Secure` cookie from it.
+/// Whether a write comes from a page on a plain `http://` origin that is not loopback
+/// (`localhost`, a name under it, `127.0.0.0/8`, `[::1]`), which a browser does not count as
+/// secure, so it refuses a `Secure` cookie from it: no `Sec-Fetch-Site` (which the page reading
+/// the notice is held to as well), and an `Origin` of this host, as the same-origin check on a
+/// write without that header requires ([`crate::security::Policy::same_origin`]).
 pub(crate) fn plain_origin(headers: &HeaderMap) -> bool {
+    if headers.contains_key("sec-fetch-site") {
+        return false;
+    }
     let Some(origin) = headers.get(header::ORIGIN).map(HeaderValue::as_bytes) else { return false };
     let Some(rest) = origin.strip_prefix(b"http://") else { return false };
+    if !headers.get(header::HOST).is_some_and(|host| host.as_bytes().eq_ignore_ascii_case(rest)) {
+        return false;
+    }
     let host = match rest.first() {
         Some(b'[') => return !rest.starts_with(b"[::1]"),
         _ => rest.split(|&b| b == b':').next().unwrap_or_default(),
@@ -868,8 +894,10 @@ impl Req {
             nonce: extensions.get::<NonceSlot>().cloned(),
             uri: uri.clone(),
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
-            notice: if notice { Notice::of(headers, uri.path(), &signal) } else { None },
-            plain_write: !matches!(*method, axum::http::Method::GET | axum::http::Method::HEAD) && plain_origin(headers),
+            notice: if notice { Notice::of(headers, uri.path(), &signal, shared.plain_notice) } else { None },
+            plain_write: shared.plain_notice
+                && !matches!(*method, axum::http::Method::GET | axum::http::Method::HEAD)
+                && plain_origin(headers),
             shared,
             signal,
         }
@@ -1183,13 +1211,13 @@ impl Req {
         res.headers_mut().insert(header::VARY, self.vary());
         if let Some(notice) = &self.notice {
             // Shown once: this page is the one it was for, drawn here or by the runtime.
-            let gone = if notice.plain {
-                crate::security::cookie::SetCookie::remove(PLAIN_NOTICE_COOKIE).insecure()
-            } else {
-                crate::security::cookie::SetCookie::remove(NOTICE_COOKIE)
-            };
-            let gone = gone.header();
-            res.headers_mut().append(header::SET_COOKIE, gone);
+            if notice.gone != Gone::Plain {
+                res.headers_mut().append(header::SET_COOKIE, crate::security::cookie::SetCookie::remove(NOTICE_COOKIE).header());
+            }
+            if notice.gone != Gone::Host {
+                let plain = crate::security::cookie::SetCookie::remove(PLAIN_NOTICE_COOKIE).insecure();
+                res.headers_mut().append(header::SET_COOKIE, plain.header());
+            }
             self.signal.mark_personal();
             let swap = matches!(self.mode, Mode::Navigation | Mode::Action);
             #[cfg(debug_assertions)]

@@ -125,7 +125,7 @@ framework's shape, and what it does not do yet.
    page did not draw, which it dispatches as `corten:notice`; the notice itself rides to the page
    in the `__Host-corten-notice` cookie, since `fetch` follows the redirect (in `corten-notice`,
    read only without `Sec-Fetch-Site`, for a write from a plain `http://` origin off loopback,
-   which refuses a `Secure` cookie). Corten would move to
+   which refuses a `Secure` cookie; never with `Policy::hsts`). Corten would move to
    `Location` once `fetch` can read a redirect's target without following it.
 
 ## Rules

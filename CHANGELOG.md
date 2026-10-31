@@ -2345,10 +2345,12 @@ Corten is pre-1.0, so any minor version may change the API.
 83. `req.redirect_with_notice` from a write on a plain `http://` origin that is not loopback (a LAN
     tool at `http://automation.lan:3001`) reaches its page: a browser refuses the `Secure`
     `__Host-corten-notice` cookie there, so the notice was dropped without a trace. Corten reads
-    the write's `Origin` and sets a plain `corten-notice` cookie instead (`HttpOnly`,
-    `SameSite=Lax`, a minute), which a page reads only from a request without `Sec-Fetch-Site`,
-    so on HTTPS another site on the domain cannot plant one; `localhost` and `127.0.0.1` keep
-    `__Host-`. MEASURE_TBD
+    the write (an `Origin` of this host over `http://`, no `Sec-Fetch-Site`) and sets a plain
+    `corten-notice` cookie instead (`HttpOnly`, `SameSite=Lax`, a minute), which a page reads
+    only from a request without `Sec-Fetch-Site`, so on HTTPS another site on the domain cannot
+    plant one in a current browser; an app with `Policy::hsts()` never sets or reads it, and
+    `localhost` and `127.0.0.1` keep `__Host-`. The ui-gallery smoke renames from the machine's
+    LAN address in each engine (it fails on the image before this change). MEASURE_TBD
     ([#498 redirect_with_notice is lost without a trace on a plain-HTTP LAN deployment: __Host- cookies need a secure origin](https://github.com/todd-skelton/corten/issues/498)).
 
 ### Documentation

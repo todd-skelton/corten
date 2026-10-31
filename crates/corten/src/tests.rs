@@ -2794,9 +2794,16 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
 /// Which origins a browser refuses a `Secure` cookie from: plain `http://` but for loopback.
 #[test]
 fn a_plain_origin_is_http_off_loopback() {
-    let plain = |origin: &'static str| {
-        crate::page::plain_origin(&[(header::ORIGIN, HeaderValue::from_static(origin))].into_iter().collect())
+    let with = |origin: &str, host: &str, fetch_site: Option<&'static str>| {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::ORIGIN, HeaderValue::from_str(origin).unwrap());
+        headers.insert(header::HOST, HeaderValue::from_str(host).unwrap());
+        if let Some(site) = fetch_site {
+            headers.insert("sec-fetch-site", HeaderValue::from_static(site));
+        }
+        crate::page::plain_origin(&headers)
     };
+    let plain = |origin: &str| with(origin, origin.split_once("://").map_or("", |(_, host)| host), None);
     for origin in
         ["http://automation.lan:3001", "http://192.168.1.5", "http://localhost.lan", "http://[fe80::1]:80", "http://10.0.0.127"]
     {
@@ -2805,15 +2812,22 @@ fn a_plain_origin_is_http_off_loopback() {
     for origin in [
         "https://automation.lan",
         "http://localhost",
+        "http://localhost.:3000",
         "http://LOCALHOST:3000",
         "http://app.localhost:3000",
         "http://127.0.0.2:8080",
         "http://[::1]:3000",
+        "http://[::1]",
         "null",
     ] {
         assert!(!plain(origin), "{origin}");
     }
     assert!(!crate::page::plain_origin(&HeaderMap::new()), "no Origin: not a browser's write");
+    // A browser that counts the origin as secure (a policy for an internal tool) sends
+    // `Sec-Fetch-Site`, takes a `Secure` cookie and is not read the plain one.
+    assert!(!with("http://automation.lan:3001", "automation.lan:3001", Some("same-origin")));
+    // Another origin's write (`Policy::allow_origin`): the response is this host's, not that one's.
+    assert!(!with("http://admin.lan", "automation.lan:3001", None));
 }
 
 /// A write from a plain `http://` origin on the LAN, which a browser does not count as secure and so
@@ -2875,12 +2889,66 @@ async fn a_notice_written_over_plain_http_on_the_lan_reaches_its_page() {
     assert!(set(&res).is_empty());
     let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
     assert!(body.contains("<p></p>"), "{body}");
-    // With both, the `__Host-` one is the notice.
+    // With both, the `__Host-` one is the notice, and both go.
     let both = format!("corten-notice=p={}&m=Planted.; __Host-corten-notice={value}", crate::page::path_key("/done"));
     let res = read(&both, false).await.unwrap();
-    assert_eq!(set(&res), ["__Host-corten-notice=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]);
+    assert_eq!(
+        set(&res),
+        [
+            "__Host-corten-notice=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure",
+            "corten-notice=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly"
+        ]
+    );
     let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
     assert!(body.contains("<p>Saved.</p>"), "{body}");
+    // A HEAD request leaves it for the GET.
+    let req = Request::head("/done").header(header::COOKIE, plain.as_str()).body(Body::empty()).unwrap();
+    assert!(set(&router.clone().oneshot(req).await.unwrap()).is_empty(), "HEAD leaves it");
+    // A write that `Sec-Fetch-Site` says comes from a secure page keeps `__Host-`.
+    let req = Request::post("/")
+        .header("origin", "http://192.168.1.5")
+        .header("host", "192.168.1.5")
+        .header("sec-fetch-site", "same-origin");
+    let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    assert!(set(&res)[0].starts_with("__Host-corten-notice="), "{:?}", set(&res));
+    // An app that says it is HTTPS only (`Policy::hsts`) never sets nor reads the plain one.
+    let routes =
+        Router::new().route("/", axum::routing::post(|req: Req| async move { req.redirect_with_notice(&Done, "Saved.") })).route(
+            "/done",
+            get(|req: Req| async move {
+                let notice = req.notice();
+                req.test_page("Done", html! { <p>{notice}</p> })
+            }),
+        );
+    let https = App::new(Routes::from(routes)).policy(crate::security::Policy::new().hsts()).router();
+    let req = Request::post("/").header("origin", "http://192.168.1.5").header("host", "192.168.1.5");
+    let res = https.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    assert!(set(&res)[0].starts_with("__Host-corten-notice="), "{:?}", set(&res));
+    let req = Request::get("/done").header(header::COOKIE, plain.as_str()).body(Body::empty()).unwrap();
+    let res = https.clone().oneshot(req).await.unwrap();
+    assert!(set(&res).is_empty(), "{:?}", set(&res));
+}
+
+/// A `Public` page that reads a notice from the plain cookie is sent private, as for the
+/// `__Host-` one: the removal is Corten's, not a cookie the app set by mistake.
+#[tokio::test]
+async fn a_public_page_reading_a_plain_notice_is_private() {
+    let minute = std::time::Duration::from_secs(60);
+    let routes = Router::new().route(
+        "/done",
+        get(move |req: Req| async move {
+            let notice = req.notice();
+            Public::new(minute, req.test_page_for("Done", html! { <p>{notice}</p> }))
+        }),
+    );
+    let router = app(routes, None);
+    for cookie in ["corten-notice", "__Host-corten-notice"] {
+        let value = format!("{cookie}=p={}&m=Saved.", crate::page::path_key("/done"));
+        let req = Request::get("/done").header(header::COOKIE, value).body(Body::empty()).unwrap();
+        let res = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.headers()[header::CACHE_CONTROL], "private, no-cache", "{cookie}");
+        assert_eq!(res.headers().get_all(header::SET_COOKIE).iter().count(), 1, "{cookie}");
+    }
 }
 
 /// Bytes as the app names their type: private by default, and a year in any cache when the URL
