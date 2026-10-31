@@ -1849,7 +1849,9 @@ Corten is pre-1.0, so any minor version may change the API.
     its base (median of 3, callgrind, release build), within the typed build's own range of 22.5
     million, so no difference. To migrate:
     1. An app's own helper typed `FieldName` (now `FieldName<Untyped>`) takes a type parameter,
-       `fn hint<T>(f: FieldName<T>)`, and one typed `FieldName<Group>` for a group's names is now
+       `fn hint<T>(f: FieldName<T>)`, or the type when it draws one kind of control
+       (`fn whole_number(f: FieldName<String>)`; the errors point at the calls, the fix is the
+       helper's signature), and one typed `FieldName<Group>` for a group's names is now
        `FieldName<T, Group>`: the place moved to the second parameter.
     2. Names of fields of different types are different types: a list of them, or a comparison of
        two, takes `.untyped()` (`[f.email.untyped(), f.price.untyped()]`).
@@ -1864,6 +1866,18 @@ Corten is pre-1.0, so any minor version may change the API.
     load (stopping with the reason when it cannot), and logs when `perf` attaches and when the
     load starts. CI's and CONTRIBUTING's publish dry run builds in a target of its own
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
+95. A view lent to a call written in markup (`{keep_query(&at, &html! { .. })}`, a whole argument)
+    borrows what it uses, as one lent to a prop does since item 70, so the rest of the page reads
+    the same local; it was a `move` closure and a second read was E0382. A view given by value, or
+    in a closure of its own (`.map(|g| f(html! { .. }))`), still owns what it uses, and so does one
+    in a macro's arguments (`format!(..)`). A callee that needs the view `'static` or `Send` takes
+    it by value; a lent view that changes a captured `mut` local now changes the page's one (it
+    changed a copy). `{&html! { .. }}` alone is lent too. `keep_query`'s docs and the guide now
+    lend the controls, and say to clear the fields a form resets on the route it is given. The item
+    page's render runs 0.07% more instructions (median of 3, callgrind, release build:
+    35,618,729,963 against 35,592,439,055 on its base), which has no lent call: noise between
+    builds of the same markup.
+    ([#485 A view lent to a call inside markup ({keep_query(&r, &html! { .. })}) still takes ownership of the locals it uses, so a local also read elsewhere fails with E0382](https://github.com/todd-skelton/corten/issues/485)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

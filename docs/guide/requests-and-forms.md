@@ -607,16 +607,19 @@ patches the page it was sent from: a `target` or `formtarget` on it is not follo
 
 A GET form sends only its own controls, and drops its `action`'s query. On a screen whose address
 holds more than one form changes (the seller and the page, and the research a second form sets),
-each form wraps its controls in `keep_query(&at, html! { .. })`: the controls are drawn, and every
+each form wraps its controls in `keep_query(&at, &html! { .. })`: the controls are drawn, and every
 key of the route's query that none of them names (`name=`, a `#[route(query)]` set's key, a
 `#[route(prefix)]` entry's) becomes a hidden input, in the encoding the route's links use. There
 is no list of names, so a key is neither dropped nor sent twice, and a field added to the route
 later is kept by every such form. Every control the form sends goes inside, a named submit button
-included; the route can be a `&dyn Href` a shared form is given.
+included; the route can be a `&dyn Href` a shared form is given. Lent (`&html!`), the controls
+borrow what they use, so the page around the form reads the same locals. A form that starts a new
+search passes the route with the fields it resets cleared (`&url::Search { page: None, ..at.clone() }`),
+so they are not kept.
 
 ```rust,ignore
 <form method="get" action={&at}>
-    {keep_query(&at, html! {
+    {keep_query(&at, &html! {
         <select name={f.grade}>..</select>
         <button>"Price"</button>
     })}
