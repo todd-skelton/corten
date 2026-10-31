@@ -114,7 +114,7 @@ async function run(browser) {
   page.off("requestfailed", lost);
   page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the thirteen scripts load and connect", loaded === 13, `${loaded} script(s)`);
+  check("the fifteen scripts load and connect", loaded === 15, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
