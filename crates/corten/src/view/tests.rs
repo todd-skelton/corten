@@ -498,3 +498,11 @@ fn a_document_renders_each_part_and_a_swap_skips_the_layout() {
     assert_eq!(renders.get(), 1, "only the full document runs the layout");
     assert_eq!(doc().to_html(), part(Part::Full), "Render is the full document");
 }
+
+/// A spread of pairs cannot write `data-vars`, in any case: only `style={..}` does, so a full
+/// page's style block has a rule for every value the runtime would set.
+#[test]
+fn a_spread_of_pairs_skips_data_vars() {
+    let attrs = [("data-id", "7"), ("data-vars", "--x:1px"), ("DATA-VARS", "--x:1px")];
+    assert_eq!(html! { <p {..attrs}></p> }.to_html(), r#"<p data-id="7"></p>"#);
+}

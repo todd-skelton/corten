@@ -82,9 +82,9 @@ the stock's value this way:
 | You write | Corten checks or generates |
 |---|---|
 | `@property --share { syntax: "<percentage>"; .. }` | the constant `SHARE: Var<Percentage>` in the component's markup, and `--statement-table__share` everywhere in the file: the property is the component's, as its classes are |
-| `SHARE.pct(12.5)`, `GAP.px(4.0)`, `TURN.deg(90.0)`, `SPAN.set(3)` | the units the syntax allows (`<number>`, `<integer>`, `<percentage>`, `<length>`, `<length-percentage>`, `<angle>`, `<time>`); another unit, CSS text (`style={format!(..)}`) or another component's property does not compile, and a number that is not finite sets nothing, so the property keeps its `initial-value` |
+| `SHARE.pct(12.5)`, `GAP.px(4.0)`, `TURN.deg(90.0)`, `SPAN.set(3)` | a method per unit the syntax allows (every CSS unit but `in`, a Rust keyword: an inch is `px(96.0)`) (`<number>`, `<integer>`, `<percentage>`, `<length>`, `<length-percentage>`, `<angle>`, `<time>`); another unit, CSS text (`style={format!(..)}`) or another component's property does not compile, and a number that is not finite sets nothing, so the property keeps its `initial-value` |
 | `style={(SHARE.pct(s), nudge.map(|n| GAP.px(n)))}` | one attribute, `data-vars="--statement-table__share:12.5%"`; `None` sets nothing, and with nothing to set there is no attribute |
-| an `@property` without `syntax`, `inherits` or `initial-value` | a compile error: the browser would ignore the rule |
+| an `@property` without `syntax`, `inherits` or `initial-value`, or with a number syntax and an `initial-value` that is not one, or depends on the font or viewport (`1em`) | a compile error: the browser would ignore the rule; another syntax's `initial-value` (`<color>`) is left to the browser |
 
 A full page gets one `<style>` at `<Corten />`, after its stylesheets, with a rule for each
 distinct value (`[data-vars="--statement-table__share:12.5%"]{..}`), and that response's CSP

@@ -247,7 +247,8 @@
 //!   text from data reaches the page, and a number that is not finite sets nothing.
 //! - The property is the component's, as its classes are: `--fill` is `--meter__fill` everywhere
 //!   in the file, so two components can both register a `--fill`. A rule the browser would ignore
-//!   (no `syntax`, `inherits` or `initial-value`) does not compile.
+//!   (no `syntax`, `inherits` or `initial-value`, or for a number syntax an `initial-value` that
+//!   is not one, or depends on the font or viewport, `1em`) does not compile.
 //! - `style={..}` takes one value, an `Option` (`None` sets nothing) or a tuple or array of them,
 //!   and writes `data-vars`. A full page gets one `<style>` at `<Corten />` with a rule for each
 //!   distinct value (`[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%}`), allowed by its

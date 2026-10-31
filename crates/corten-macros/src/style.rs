@@ -55,7 +55,8 @@ pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
 }
 
 /// Whether `value`, an `initial-value`, is one of `kind` (a type of `SYNTAXES`): a number with a
-/// unit the syntax allows (`0` alone for a length). The browser ignores a rule whose initial
+/// unit the syntax allows (`0` alone for a length), and for a length an absolute one, as an initial
+/// value must not depend on a font or the viewport. The browser ignores a rule whose initial
 /// value does not parse as its syntax, so markup would set a property nothing registered.
 fn initial_fits(kind: &str, value: &str) -> bool {
     // The number: a sign, digits and a point, and an exponent only when digits follow its `e`
@@ -80,10 +81,9 @@ fn initial_fits(kind: &str, value: &str) -> bool {
         return false;
     }
     let unit = unit.to_ascii_lowercase();
-    const LENGTHS: &[&str] = &[
-        "px", "rem", "em", "ch", "vw", "vh", "ex", "lh", "rlh", "vmin", "vmax", "cm", "mm", "in", "pt", "pc", "q", "svw", "svh",
-        "lvw", "lvh", "dvw", "dvh", "cqw", "cqh", "cqi", "cqb",
-    ];
+    // An initial value is computationally independent: no unit that depends on a font, the
+    // viewport or a container (`1em`), only absolute lengths.
+    const LENGTHS: &[&str] = &["px", "cm", "mm", "q", "in", "pt", "pc"];
     match kind {
         "Number" => unit.is_empty(),
         "Integer" => unit.is_empty() && number.fract() == 0.0 && !value.contains(['.', 'e', 'E']),
@@ -115,6 +115,16 @@ fn rename_properties(css: &str, names: &[&str], prefix: &str) -> String {
                     i += if b[i] == b'\\' { 2 } else { 1 };
                 }
                 i += 1;
+            }
+            // An attribute selector's value, `[data-kind=--fill]`, is text.
+            b'[' => {
+                while i < b.len() && b[i] != b']' {
+                    i += match b[i] {
+                        b'\\' => 2,
+                        q @ (b'"' | b'\'') => 1 + css[i + 1..].find(q as char).map_or(b.len(), |end| end + 1),
+                        _ => 1,
+                    };
+                }
             }
             // An unquoted `url(..)` is a URL, `url(--fill.svg)` a file's name.
             b'(' if i >= 3 && css[i - 3..i].eq_ignore_ascii_case("url") && (i == 3 || !ident(b[i - 4])) => {
@@ -966,9 +976,12 @@ mod tests {
             error("@property --a { syntax: '<integer>'; inherits: false; initial-value: 1.5 }").contains("is not a <integer>")
         );
         assert!(error("@property --a { syntax: '<angle>'; inherits: false; initial-value: 0 }").contains("is not a <angle>"));
+        assert!(
+            error("@property --a { syntax: '<length>'; inherits: false; initial-value: 1.5em }").contains("is not a <length>")
+        );
         for ok in [
             "'<length>'; initial-value: 0",
-            "'<length>'; initial-value: 1.5em",
+            "'<length>'; initial-value: 1.5pt",
             "'<number>'; initial-value: -2e3",
             "'<time>'; initial-value: 150ms",
             "'<color>'; initial-value: red",
@@ -976,12 +989,12 @@ mod tests {
             assert!(scope(&format!("@property --a {{ syntax: {ok}; inherits: TRUE }}"), "m").is_ok(), "{ok}");
         }
         let url = scope(
-            "@property --fill { syntax: '*'; inherits: false }\n.a { background: url(--fill.svg); width: var(--fill) }",
+            "@property --fill { syntax: '*'; inherits: false }\n.a { background: url(--fill.svg); width: var(--fill) }\n.a[data-kind=--fill] { color: red }",
             "m",
         )
         .unwrap();
         assert!(
-            url.css.contains("url(--fill.svg)") && url.css.contains("var(--m__fill)"),
+            url.css.contains("url(--fill.svg)") && url.css.contains("var(--m__fill)") && url.css.contains("[data-kind=--fill]"),
             "a URL is not a property: {}",
             url.css
         );

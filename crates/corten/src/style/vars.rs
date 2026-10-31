@@ -18,13 +18,13 @@ pub mod syntax {
     /// `syntax: "<percentage>"`: `pct`.
     #[derive(Clone, Copy, Debug)]
     pub struct Percentage;
-    /// `syntax: "<length>"`: `px`, `rem`, `em`, `ch`, `vw`, `vh`.
+    /// `syntax: "<length>"`: a method per CSS length unit, `px`, `rem`, `vw`.., but `in` (a Rust keyword: `px(96.0)` is an inch).
     #[derive(Clone, Copy, Debug)]
     pub struct Length;
     /// `syntax: "<length-percentage>"`: a length's units and `pct`.
     #[derive(Clone, Copy, Debug)]
     pub struct LengthPercentage;
-    /// `syntax: "<angle>"`: `deg`, `turn`.
+    /// `syntax: "<angle>"`: `deg`, `grad`, `rad`, `turn`.
     #[derive(Clone, Copy, Debug)]
     pub struct Angle;
     /// `syntax: "<time>"`: `ms`, `s`.
@@ -99,9 +99,10 @@ macro_rules! units {
         }
     };
 }
-units!(Length: px, rem, em, ch, vw, vh);
-units!(LengthPercentage: px, rem, em, ch, vw, vh);
-units!(Angle: deg, turn);
+// Every unit of CSS Values 4 but `in`, a Rust keyword: an inch is `px(96.0)`.
+units!(Length: px, cm, mm, q, pt, pc, em, rem, ex, rex, cap, rcap, ch, rch, ic, ric, lh, rlh, vw, vh, vi, vb, vmin, vmax, svw, svh, lvw, lvh, dvw, dvh, cqw, cqh, cqi, cqb, cqmin, cqmax);
+units!(LengthPercentage: px, cm, mm, q, pt, pc, em, rem, ex, rex, cap, rcap, ch, rch, ic, ric, lh, rlh, vw, vh, vi, vb, vmin, vmax, svw, svh, lvw, lvh, dvw, dvh, cqw, cqh, cqi, cqb, cqmin, cqmax);
+units!(Angle: deg, grad, rad, turn);
 units!(Time: ms, s);
 
 impl Var<LengthPercentage> {
