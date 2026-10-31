@@ -247,7 +247,7 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
 }
 
 /// True when `Cache-Control` text has `directive`.
-fn has(text: &str, directive: &str) -> bool {
+pub(crate) fn has(text: &str, directive: &str) -> bool {
     text.split(',').any(|d| d.split('=').next().unwrap_or("").trim().eq_ignore_ascii_case(directive))
 }
 

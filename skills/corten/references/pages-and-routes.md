@@ -317,4 +317,4 @@ sends it `private, no-cache` when the request has a cookie or `Authorization`, t
 a cookie or the layout took `req.nonce()`; a client navigation or a data request gets `private`
 with the same lifetime. `.shared(Duration)` gives shared caches a longer lifetime than the
 browser's (`s-maxage`; a private answer drops it). Only a success or a redirect is shared. `NoStore<HtmlResult>` is for one-time
-secrets. Do not build a server-side page cache: cache the data the page reads instead.
+secrets, and holds for its failures (the error page is `no-store` too). Do not build a server-side page cache: cache the data the page reads instead.

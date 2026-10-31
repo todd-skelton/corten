@@ -1882,13 +1882,20 @@ fn no_assets(path: &'static str) -> crate::assets::AssetUrl<'static> {
 
 /// `res` with the headers of the failed response it replaces, `kept`, except the ones that
 /// described its body or that Corten sets for the answer it sends (`Cache-Control`, its own
-/// `corten-` headers); a header `res` has already wins.
+/// `corten-` headers); a header `res` has already wins. A `Cache-Control` with `no-store`
+/// (`NoStore`) is kept over `res`'s: the handler said nothing may keep its answer, a failure
+/// included.
 fn carried(kept: HeaderMap, mut res: Response) -> Response {
     if kept.is_empty() {
         return res;
     }
     use axum::http::header::Entry;
     let headers = res.headers_mut();
+    if let Some(no_store) =
+        kept.get(header::CACHE_CONTROL).filter(|v| v.to_str().is_ok_and(|text| crate::cache::has(text, "no-store")))
+    {
+        headers.insert(header::CACHE_CONTROL, no_store.clone());
+    }
     let mut kept_name = None;
     // A name comes with its first value only; the values after it have `None`.
     for (key, value) in kept {

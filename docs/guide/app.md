@@ -676,7 +676,8 @@ so, so a public answer cannot read a credential through one by accident. An `App
 stay public for clients without credentials. A cache in front of the app must key on `Vary`
 (`corten`, `accept`, `accept-encoding`, and `accept-language` with `App::messages`).
 `NoStore<..>` keeps an answer out of every cache, the browser's back/forward cache included:
-`async fn statement(req: Req) -> NoStore<HtmlResult>`. A handler cannot mark an answer public
+`async fn statement(req: Req) -> NoStore<HtmlResult>`. A failure is not kept either: the error
+page for an expired code or someone else's statement goes out with `no-store` too. A handler cannot mark an answer public
 any other way: a response it builds by hand is not an answer a route can name, and if anything
 read a caller the answer is private whatever its header says.
 

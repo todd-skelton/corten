@@ -2496,6 +2496,12 @@ Corten is pre-1.0, so any minor version may change the API.
     round that fails, or whose process dies without finishing, tries to download what it measured
     before the droplet is destroyed
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
+90. A failure under `NoStore` is sent with `Cache-Control: no-store`, as its doc says: the error
+    page that replaces the failed answer kept the default, `private, no-cache`, which let the
+    browser keep an expired code's page or someone else's statement's 404 and restore it from its
+    back/forward cache. The failure's `no-store` now goes out with the error page (a JSON failure
+    already kept it)
+    ([#519 NoStore does not apply to a failure: the error page replaces its no-store with private, no-cache](https://github.com/todd-skelton/corten/issues/519)).
 
 ### Documentation
 

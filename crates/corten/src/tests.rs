@@ -2709,6 +2709,9 @@ fn cached_routes() -> Router {
             }),
         )
         .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
+        // A one-time code that has expired, and a statement that is someone else's.
+        .route("/code", get(|| async { NoStore(Err::<StatusCode, Error>(Error::status(StatusCode::BAD_REQUEST))) }))
+        .route("/statement/other", get(|| async { NoStore(Err::<StatusCode, Error>(Error::not_found())) }))
         .route(
             "/cookies",
             // `with_cookie` on a `Public` answer does not compile; a header written by hand still
@@ -3098,6 +3101,23 @@ async fn what_the_app_renders_is_private_unless_it_says_otherwise() {
     assert_eq!(cache_control(&router, runtime_path(), &[]).await, "public, max-age=31536000, immutable");
     assert_eq!(cache_control(&router, "/health/ready", &[]).await, "no-store", "Corten's own routes keep theirs");
     assert_eq!(cache_control(&router, "/statement", &[("cookie", "s=1")]).await, "no-store");
+}
+
+/// `NoStore` holds for a failure too: the error page that replaces it is not kept either.
+#[tokio::test]
+async fn a_failure_under_no_store_is_not_stored() {
+    let router = app(cached_routes(), None);
+    for (path, status) in [("/code", StatusCode::BAD_REQUEST), ("/statement/other", StatusCode::NOT_FOUND)] {
+        for extra in [&[][..], &[("accept", "text/html")], &[("corten", "nav")], &[("accept", "application/json")]] {
+            let mut req = Request::get(path);
+            for (name, value) in extra {
+                req = req.header(*name, *value);
+            }
+            let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(res.status(), status, "{path} {extra:?}");
+            assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store", "{path} {extra:?}");
+        }
+    }
 }
 
 #[tokio::test]
