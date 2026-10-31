@@ -1153,6 +1153,16 @@ Corten is pre-1.0, so any minor version may change the API.
     job released, a loop that returns at once) on a paused clock; a request's signal still cannot
     be aborted by the app (a `compile_fail` doctest). Nothing a request does changes
     ([#489 A task's shutdown path cannot be tested: Signal::default never aborts and abort is crate-private, so the app wraps Signal in a trait of its own](https://github.com/todd-skelton/corten/issues/489)).
+152. `#[component(js = Owner)]` (`js = path::to::Owner`): a part of a component, a function of its
+    own (a sheet, a row, a field), calls its owner's handlers through `js`, so a large page splits
+    into parts without a script per part (one more request for a one-line handler) or the owner
+    drawing the part's markup and passing it down as a prop. The page loads the owner's one script;
+    the part adds none, and an owner without a script does not compile (a `compile_fail` doctest).
+    A component's `js` module is now beside it (`__corten_js_{Name}`, hidden) instead of inside
+    its `render`, which is how a part reaches it; what renders is unchanged. The item page's
+    `render_cost` (release, callgrind, 3 runs) is 35,602,516,052 instructions against
+    35,613,859,907 on main (-0.03%, layout: the page has no part)
+    ([#492 A sub-component cannot bind its page's script: #[component] has css = Other but no js = Other](https://github.com/todd-skelton/corten/issues/492)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
