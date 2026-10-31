@@ -2499,8 +2499,13 @@ Corten is pre-1.0, so any minor version may change the API.
 90. A failure under `NoStore` is sent with `Cache-Control: no-store`, as its doc says: the error
     page that replaces the failed answer kept the default, `private, no-cache`, which let the
     browser keep an expired code's page or someone else's statement's 404 and restore it from its
-    back/forward cache. The failure's `no-store` now goes out with the error page (a JSON failure
-    already kept it)
+    back/forward cache. A failure's `Cache-Control` with `no-store` (`NoStore`'s, or one written
+    by hand) now goes out with the error page (a JSON failure already kept it). A request refused
+    before the handler runs never reaches `NoStore` and keeps the default. Measured with callgrind
+    (release, in-process `oneshot`, the difference between 1,200 and 200 requests over 1,000,
+    median of three, against main at 43feffa1): a `NoStore` failure as an HTML error page runs
+    32,264 instructions a request against 30,862 (it now keeps the header), and an unknown URL's
+    404 26,751 against 26,725 (within the runs' spread)
     ([#519 NoStore does not apply to a failure: the error page replaces its no-store with private, no-cache](https://github.com/todd-skelton/corten/issues/519)).
 
 ### Documentation

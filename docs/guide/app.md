@@ -676,8 +676,10 @@ so, so a public answer cannot read a credential through one by accident. An `App
 stay public for clients without credentials. A cache in front of the app must key on `Vary`
 (`corten`, `accept`, `accept-encoding`, and `accept-language` with `App::messages`).
 `NoStore<..>` keeps an answer out of every cache, the browser's back/forward cache included:
-`async fn statement(req: Req) -> NoStore<HtmlResult>`. A failure is not kept either: the error
-page for an expired code or someone else's statement goes out with `no-store` too. A handler cannot mark an answer public
+`async fn statement(req: Req) -> NoStore<HtmlResult>`. A failure it returns is not kept either:
+the error page for an expired code or someone else's statement goes out with `no-store` too (a
+request refused before the handler runs, such as a path that does not parse, never reaches
+`NoStore` and gets the default). A handler cannot mark an answer public
 any other way: a response it builds by hand is not an answer a route can name, and if anything
 read a caller the answer is private whatever its header says.
 
@@ -1253,7 +1255,8 @@ The error page keeps the headers the failed response had (a request id, `Retry-A
 `WWW-Authenticate`, `Server-Timing`, `Allow`), so what a handler or a middleware said about a
 failure still reaches the client. The ones that described the old body (`Content-*`, `ETag`,
 `Last-Modified`) and `Cache-Control` are the error page's own, and a header the error page sets
-wins.
+wins, except a `Cache-Control` with `no-store` (`NoStore`, or one written by hand): the
+failure said nothing may keep it, so the error page goes out with that `Cache-Control`.
 
 The error page is an async function of the `Failure` and then extractors, as a handler's
 arguments are, with the state they read given beside it (`()` for none). A layout that shows

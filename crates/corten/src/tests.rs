@@ -2710,7 +2710,19 @@ fn cached_routes() -> Router {
         )
         .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
         // A one-time code that has expired, and a statement that is someone else's.
-        .route("/code", get(|| async { NoStore(Err::<StatusCode, Error>(Error::status(StatusCode::BAD_REQUEST))) }))
+        .route(
+            "/code",
+            get(|| async { NoStore(Err::<StatusCode, Error>(Error::status(StatusCode::BAD_REQUEST))) })
+                .post(|| async { NoStore(Err::<StatusCode, Error>(Error::status(StatusCode::BAD_REQUEST))) }),
+        )
+        // Two lines, as HTTP allows; the second says no-store.
+        .route(
+            "/lines",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private"), (header::CACHE_CONTROL, "no-store")];
+                (StatusCode::BAD_REQUEST, axum::response::AppendHeaders(lines), "")
+            }),
+        )
         .route("/statement/other", get(|| async { NoStore(Err::<StatusCode, Error>(Error::not_found())) }))
         .route(
             "/cookies",
@@ -3118,6 +3130,16 @@ async fn a_failure_under_no_store_is_not_stored() {
             assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store", "{path} {extra:?}");
         }
     }
+    // A form sent to the expired code: the runtime's action, answered with the error page.
+    let req = Request::post("/code").header("sec-fetch-site", "same-origin").header("corten", "action");
+    let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store", "an action");
+    // A header written by hand counts on any of its lines, and goes out as written.
+    let res =
+        router.clone().oneshot(Request::get("/lines").header("accept", "text/html").body(Body::empty()).unwrap()).await.unwrap();
+    let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
+    assert_eq!(lines, ["private", "no-store"]);
 }
 
 #[tokio::test]
