@@ -1062,13 +1062,14 @@ function focusNear(el, root, fresh) {
  * @param {AbortSignal} [signal]
  * @param {boolean} [stay] keep the user's place: the scroll position (Chromium can reset it when
  *   <main> empties), what scrolls inside the page and the `<details>` open on screen
+ * @param {Notice} [notice] the answer's, kept if the page has to load in full instead
  */
-async function swapPage(html, signal, stay) {
+async function swapPage(html, signal, stay, notice = null) {
   const content = parse(html);
   const [, styled] = await Promise.all([modulesOf(content), stylesOf(content)]);
   signal?.throwIfAborted();
   if (!styled) {
-    reload();
+    reload(notice);
     return;
   }
   const title = content.querySelector("title");
@@ -1095,22 +1096,22 @@ async function swapPage(html, signal, stay) {
 }
 
 /**
- * The notice of the page answer being drawn (`corten-notice`, form-encoded): what the write that
- * redirected to it said (`req.redirect_with_notice`) and the page did not draw. Kept across a
- * reload that draws the page in full instead (`reload`), and announced once it is drawn.
- * @type {string | null}
+ * A page answer's notice (`corten-notice`, `m=<text>`, with `&d` when the page drew it): what
+ * the write that redirected to it said (`req.redirect_with_notice`). Kept across a reload that
+ * draws the page in full instead (`reload`), where nothing draws it.
+ * @typedef {URLSearchParams | null} Notice
  */
-let notice = null;
 const NOTICE = "corten-notice";
+/** @param {Response} res @returns {Notice} */
+const noticeOf = (res) => (res.headers.has(NOTICE) ? new URLSearchParams(res.headers.get(NOTICE) ?? "") : null);
 
 /**
- * After a page answer is drawn: its notice as `corten:notice` on the document (`detail.message`),
- * for the app's toaster. The layout around `<main>` does not run for a swap.
- * @param {string | null} text
+ * After a page answer is drawn: the notice it did not draw as `corten:notice` on the document
+ * (`detail.message`), for the app's toaster. The layout around `<main>` does not run for a swap.
+ * @param {Notice} notice
  */
-function announce(text) {
-  notice = null;
-  if (text !== null) document.dispatchEvent(new CustomEvent("corten:notice", { detail: { message: decodeURIComponent(text.replaceAll("+", " ")) } }));
+function announce(notice) {
+  if (notice && !notice.has("d")) document.dispatchEvent(new CustomEvent("corten:notice", { detail: { message: notice.get("m") ?? "" } }));
 }
 
 /**
@@ -1355,7 +1356,7 @@ async function visit(url, signal, redirected, again, place, source) {
       return;
     }
     signal.throwIfAborted();
-    notice = res.headers.get(NOTICE);
+    const notice = noticeOf(res);
     // Sent to a place on a page (`route.at(id)`): the server names it here, since `fetch` follows a
     // redirect but drops its `#id`.
     const to = res.headers.get("corten-location");
@@ -1364,7 +1365,7 @@ async function visit(url, signal, redirected, again, place, source) {
       return;
     }
     if (!res.headers.has("corten-page") || shellChanged(res)) {
-      reload();
+      reload(notice);
       return;
     }
     // The server redirected (a `Caller` sending someone to sign in). Changing the address with
@@ -1384,10 +1385,9 @@ async function visit(url, signal, redirected, again, place, source) {
       readAgainLater();
       return;
     }
-    await swapPage(html, signal, again || place !== undefined);
+    await swapPage(html, signal, again || place !== undefined, notice);
     announce(notice);
   } finally {
-    notice = null;
     signal.removeEventListener("abort", idle);
     idle();
   }
@@ -1600,12 +1600,16 @@ function named(el, name) {
  * `beforeunload` prompt) drops only the submits waiting then, not every later one.
  */
 let left = 0;
-/** Loads the page again from the server, with the notice of the answer it takes the place of. */
-function reload() {
+/**
+ * Loads the page again from the server, with the notice of the answer it takes the place of: kept
+ * for that page's load, for as long as its cookie would have lasted.
+ * @param {Notice} [notice]
+ */
+function reload(notice = null) {
   left += 1;
-  if (notice !== null) {
+  if (notice) {
     try {
-      sessionStorage.setItem(NOTICE, JSON.stringify([location.pathname, notice]));
+      sessionStorage.setItem(NOTICE, JSON.stringify([location.pathname, notice.get("m"), Date.now() + 60000]));
     } catch {
       // No session storage (a sandboxed frame): the page loads without it.
     }
@@ -1721,21 +1725,16 @@ async function send(form, submitter, sends) {
       }
     } else if (res.headers.has("corten-page") && shellChanged(res)) {
       renew();
-      notice = res.headers.get(NOTICE);
-      reload();
+      reload(noticeOf(res));
     } else if (res.headers.has("corten-patch") || res.headers.has("corten-page")) {
       const body = await res.text();
       renew();
       signal.throwIfAborted();
       if (res.headers.has("corten-patch")) await apply(body, signal, sent, res.ok);
       else {
-        notice = res.headers.get(NOTICE);
-        try {
-          await swapPage(body, signal);
-          announce(notice);
-        } finally {
-          notice = null;
-        }
+        const notice = noticeOf(res);
+        await swapPage(body, signal, false, notice);
+        announce(notice);
       }
       signal.throwIfAborted();
       if (res.status === 422) focusInvalid(form);
@@ -1872,8 +1871,8 @@ try {
   const kept = sessionStorage.getItem(NOTICE);
   if (kept !== null) {
     sessionStorage.removeItem(NOTICE);
-    const [path, text] = JSON.parse(kept);
-    if (path === location.pathname && typeof text === "string") ready.then(() => setTimeout(() => announce(text)));
+    const [path, text, until] = JSON.parse(kept);
+    if (path === location.pathname && Date.now() < until) ready.then(() => setTimeout(() => announce(new URLSearchParams({ m: text }))));
   }
 } catch {
   // No session storage, or not what reload wrote: nothing to say.

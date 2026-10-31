@@ -2703,7 +2703,9 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
     assert_eq!(key("/items/a%20b"), key("/items/a b"));
     assert_eq!(key("/a%7Bb%7d"), key("/a{b}"));
     assert_ne!(key("/done"), key("/done/"));
-    assert_eq!(key("/bad%zz%4"), key("/bad%zz%4"));
+    // A broken escape is its bytes as they are.
+    assert_ne!(key("/bad%zz"), key("/bad"));
+    assert_ne!(key("/bad%4"), key("/bad"));
     let fetch = |uri: &str, mode: Option<&str>| {
         let mut req = Request::get(uri).header(header::COOKIE, format!("a=1; {cookie}"));
         if let Some(mode) = mode {
@@ -2716,7 +2718,10 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
         let res = fetch("/done", mode).await.unwrap();
         assert_eq!(set(&res), [gone], "{mode:?}");
         assert_eq!(res.headers()[header::CACHE_CONTROL], "private, no-cache");
-        assert!(res.headers().get("corten-notice").is_none(), "the page drew it");
+        // The page drew it: a navigation's answer says so (`&d`), so the runtime keeps it only for a
+        // full load in its place.
+        let header = res.headers().get("corten-notice").map(|v| v.to_str().unwrap().to_string());
+        assert_eq!(header.as_deref(), mode.map(|_| "m=Batch+3517+deleted%3B+2+left.&d"), "{mode:?}");
         let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
         assert!(body.contains("<p>Batch 3517 deleted; 2 left.</p>"), "{body}");
     }
@@ -2726,6 +2731,17 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
     let req = Request::head("/done").header(header::COOKIE, cookie.as_str()).body(Body::empty()).unwrap();
     let res = router.clone().oneshot(req).await.unwrap();
     assert!(set(&res).is_empty(), "HEAD leaves it");
+    // Also when it ends on the error page.
+    let missing = cookie.replace(&key("/done"), &key("/missing"));
+    let req = Request::head("/missing").header(header::COOKIE, missing).body(Body::empty()).unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert!(set(&res).is_empty(), "HEAD to the error page leaves it");
+    let req = Request::get("/missing")
+        .header(header::COOKIE, cookie.replace(&key("/done"), &key("/missing")))
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(set(&router.clone().oneshot(req).await.unwrap()), [gone], "the error page's GET reads it");
     // A navigation's page that does not draw it, or holds it in the layout around `<main>`, which
     // a navigation does not run: the runtime gets it. A full load draws it in the layout.
     let routes = Router::new().route("/done", get(|req: Req| async move { req.test_page("Done", "done") })).route(
@@ -2758,7 +2774,7 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
         let header = res.headers().get("corten-notice").map(|v| v.to_str().unwrap().to_string());
         let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
         if mode.is_some() {
-            assert_eq!(header.as_deref(), Some("Batch+3517+deleted%3B+2+left."), "{path}");
+            assert_eq!(header.as_deref(), Some("m=Batch+3517+deleted%3B+2+left."), "{path}");
             assert!(!body.contains("Batch 3517"), "{body}");
         } else {
             assert_eq!(header, None);

@@ -34,7 +34,7 @@ const PAGE_HEADER: HeaderName = HeaderName::from_static("corten-page");
 const PATCH_HEADER: HeaderName = HeaderName::from_static("corten-patch");
 const LOCATION_HEADER: HeaderName = HeaderName::from_static("corten-location");
 const SHELL_HEADER: HeaderName = HeaderName::from_static("corten-shell");
-/// A navigation's page with a notice it did not draw: the text, form-encoded, for the runtime.
+/// A navigation's page with a notice: `m=<text>`, form-encoded, and `&d` when the page drew it.
 const NOTICE_HEADER: HeaderName = HeaderName::from_static("corten-notice");
 /// The cookie a redirect's notice rides in: `__Host-`, so no other site on the domain can set it.
 pub(crate) const NOTICE_COOKIE: &str = "__Host-corten-notice";
@@ -555,12 +555,15 @@ impl Credentials {
 pub(crate) struct Asked {
     req: Req,
     credentials: Credentials,
+    /// A `HEAD` request, which leaves a redirect's notice for the `GET`.
+    head: bool,
 }
 
 impl Asked {
     pub(crate) fn new(req: &Request, shared: Arc<Shared>, credentials: Credentials) -> Self {
         // The error page's own `Req` reads the notice; this one only answers what was asked.
-        Asked { req: Req::new(req.headers(), req.extensions(), req.uri(), shared, false), credentials }
+        let head = req.method() == axum::http::Method::HEAD;
+        Asked { req: Req::new(req.headers(), req.extensions(), req.uri(), shared, false), credentials, head }
     }
 
     fn path(&self) -> &str {
@@ -569,9 +572,12 @@ impl Asked {
 
     /// The request again, for the error page's extractors.
     pub(crate) fn parts(self) -> Parts {
-        let Asked { req, credentials: Credentials { cookie, authorization } } = self;
+        let Asked { req, credentials: Credentials { cookie, authorization }, head } = self;
         let (mut parts, ()) = Request::new(()).into_parts();
         parts.uri = req.uri.clone();
+        if head {
+            parts.method = axum::http::Method::HEAD;
+        }
         let mode = match req.mode {
             Mode::Navigation => Some(HeaderValue::from_static("nav")),
             Mode::Action => Some(HeaderValue::from_static("action")),
@@ -1126,8 +1132,13 @@ impl Req {
                     self.uri.path()
                 );
             }
-            if swap && !self.signal.notice_drawn() {
-                let text: String = form_urlencoded::byte_serialize(notice.as_str().as_bytes()).collect();
+            if swap {
+                // Drawn or not (`&d`): the runtime keeps it across a reload in the page's place,
+                // and announces only one the page did not draw.
+                let mut text = form_urlencoded::Serializer::new(String::new()).append_pair("m", notice.as_str()).finish();
+                if self.signal.notice_drawn() {
+                    text.push_str("&d");
+                }
                 if let Ok(value) = HeaderValue::from_str(&text) {
                     res.headers_mut().insert(NOTICE_HEADER, value);
                 }
