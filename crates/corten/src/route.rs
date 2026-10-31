@@ -1318,27 +1318,25 @@ fn a_route_path_has_the_shape_the_derive_writes() {
 /// `path`: of those that match, the one whose segments are most specific from the left, text
 /// before `{name}` before `{*rest}`, as matchit tries them.
 pub(crate) fn chosen(routes: &[(&'static str, bool)], path: &str) -> Option<(&'static str, bool)> {
-    let preference = |pattern: &str| -> Vec<u8> {
-        pattern
-            .split('/')
-            .map(|s| {
-                if s.starts_with("{*") {
-                    0
-                } else if s.starts_with('{') {
-                    1
-                } else {
-                    2
-                }
-            })
-            .collect()
-    };
+    // Each segment's rank, compared from the left without collecting them.
+    fn preference(pattern: &str) -> impl Iterator<Item = u8> + '_ {
+        pattern.split('/').map(|s| {
+            if s.starts_with("{*") {
+                0
+            } else if s.starts_with('{') {
+                1
+            } else {
+                2
+            }
+        })
+    }
     // The router picks by each segment's shape (it matches `{page}.xml` as `{page}`); a route with
     // text after a parameter then answers 404 when the segment lacks it, so the path is not served.
     routes
         .iter()
         .copied()
         .filter(|(pattern, _)| segments_match(pattern, path, false))
-        .max_by_key(|(pattern, _)| preference(pattern))
+        .max_by(|(a, _), (b, _)| preference(a).cmp(preference(b)))
         .filter(|(pattern, _)| routes_path(pattern, path))
 }
 
