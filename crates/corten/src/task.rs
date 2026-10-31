@@ -33,7 +33,7 @@ impl Running {
         let tasks = tasks
             .into_iter()
             .map(|task| {
-                let run = Logged { name: task.name, run: (task.start)(signal.clone()) };
+                let run = Logged { name: task.name, run: (task.start)(signal.clone()), signal: signal.clone() };
                 (task.name, tokio::spawn(run))
             })
             .collect();
@@ -116,10 +116,14 @@ impl Drop for Counted {
     }
 }
 
-/// A task's future, which logs a panic with the task's name instead of tokio's anonymous one.
+/// A task's future, which logs a panic with the task's name instead of tokio's anonymous one, and
+/// a task that returns before shutdown began: one that could not start (its database out of
+/// reach) or gave up, which would otherwise end without a trace.
 struct Logged {
     name: &'static str,
     run: Pin<Box<dyn Future<Output = ()> + Send>>,
+    /// The app's, which aborts when shutdown begins.
+    signal: Signal,
 }
 
 impl Future for Logged {
@@ -128,7 +132,13 @@ impl Future for Logged {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let name = self.name;
         match std::panic::catch_unwind(AssertUnwindSafe(|| self.run.as_mut().poll(cx))) {
-            Ok(polled) => polled,
+            Ok(Poll::Ready(())) => {
+                if !self.signal.is_aborted() {
+                    tracing::warn!("corten: task {name:?} returned before shutdown began");
+                }
+                Poll::Ready(())
+            }
+            Ok(Poll::Pending) => Poll::Pending,
             Err(panic) => {
                 let message = panic_message(&*panic);
                 tracing::error!("corten: task {name:?} panicked: {message}");
@@ -145,4 +155,48 @@ pub(crate) fn panic_message(panic: &(dyn std::any::Any + Send)) -> &str {
         .copied()
         .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
         .unwrap_or("a panic with no message")
+}
+
+#[cfg(all(test, feature = "log"))]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// The log lines `run` writes.
+    fn logged(run: impl FnOnce()) -> String {
+        #[derive(Clone)]
+        struct Lines(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Lines {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let lines = Lines(Arc::default());
+        let writer = lines.clone();
+        let subscriber = tracing_subscriber::fmt().with_ansi(false).with_writer(move || writer.clone()).finish();
+        tracing::subscriber::with_default(subscriber, run);
+        let text = String::from_utf8(lines.0.lock().unwrap().clone()).unwrap();
+        text
+    }
+
+    /// A task that returns before shutdown began is logged with its name (it could not start,
+    /// or gave up); one that returns once shutdown began, as it should, is not.
+    #[test]
+    fn a_task_that_returns_before_shutdown_is_logged_with_its_name() {
+        let poll = |signal: &Signal| {
+            let mut run = Logged { name: "pricing worker", run: Box::pin(async {}), signal: signal.clone() };
+            let waker = std::task::Waker::noop();
+            assert!(Pin::new(&mut run).poll(&mut Context::from_waker(waker)).is_ready());
+        };
+        let early = logged(|| poll(&Signal::default()));
+        assert!(early.contains("corten: task \"pricing worker\" returned before shutdown began"), "{early}");
+        let (signal, shutdown) = Signal::task();
+        shutdown.begin();
+        let late = logged(|| poll(&signal));
+        assert!(late.is_empty(), "{late}");
+    }
 }

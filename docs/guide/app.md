@@ -155,7 +155,25 @@ streams end and the listeners close, and `serve` returns once requests in progre
 tasks have finished, waiting for the tasks up to `App::shutdown_grace` (5 seconds unless set),
 and then, within the same grace, for work handlers finish ([`Signal::finish`](cancellation.md#work-that-must-finish)).
 A task still running then is ended and logged by name, so a stuck one cannot hold the process,
-and so is one that panics; whether to restart it is the app's choice.
+and so is one that panics; whether to restart it is the app's choice. A task that returns before
+shutdown began (it could not reach its database, or gave up) is logged by name as well
+(`corten: task "pricing worker" returned before shutdown began`), so the log tells a task that
+stopped from one that runs. A task the configuration turns off is not registered, and what it
+needs from the configuration is read there and passed in, so the task never returns at once.
+The builder chain ends before the switched tasks:
+
+```rust,ignore
+let app = App::new(routes).middleware(Stamp).area::<Admin>(admin).task("sales", sales);
+let app = match config.pricing_worker {
+    Some(settings) => app.task("pricing worker", move |signal| worker::run(settings, signal)),
+    None => {
+        tracing::info!("task \"pricing worker\" is off");
+        app
+    }
+};
+```
+
+Work that runs once at start (a migration) is done before `serve`, not in a task.
 
 Three things in the loop matter. `biased` polls the signal first, so no run starts once shutdown
 has begun (`select!` otherwise picks among ready branches at random). A run in progress is
