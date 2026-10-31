@@ -191,9 +191,9 @@ fn zone_only(cookie: &HeaderValue) -> bool {
     cookie.starts_with(b"corten-zone=") && !cookie.contains(&b';')
 }
 
-/// Corten's removal of a redirect's notice, on the page it was for: that page is private, by the
-/// request's cookie, but not the app's mistake.
-const NOTICE_GONE: &[u8] = b"__Host-corten-notice=;";
+/// Corten's removal of a redirect's notice, on the page it was for (either cookie it rides in): that
+/// page is private, by the request's cookie, but not the app's mistake.
+const NOTICE_GONE: [&[u8]; 2] = [b"__Host-corten-notice=;", b"corten-notice=;"];
 
 /// Sets the response's `Cache-Control`: the default when it has none, and a private one instead
 /// of a shared one when the response may differ between users.
@@ -213,7 +213,11 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     }
     let bug = if seen.nonce {
         Some("its HTML has this request's CSP nonce (req.nonce() in the layout, or a handler that takes Nonce)")
-    } else if headers.get_all(header::SET_COOKIE).iter().any(|cookie| !cookie.as_bytes().starts_with(NOTICE_GONE)) {
+    } else if headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .any(|cookie| !NOTICE_GONE.iter().any(|gone| cookie.as_bytes().starts_with(gone)))
+    {
         Some("it sets a cookie")
     } else {
         None

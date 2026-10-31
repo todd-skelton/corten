@@ -2377,6 +2377,19 @@ Corten is pre-1.0, so any minor version may change the API.
     still fails. One helper, `scripts/steady.mjs`, wraps each smoke's browser at launch. Test code
     only
     ([#497 Browser CI fails at random on net::ERR_NETWORK_CHANGED during a smoke navigation, blocking merges until a rerun](https://github.com/todd-skelton/corten/issues/497)).
+85. `req.redirect_with_notice` from a write on a plain `http://` origin that is not loopback (a LAN
+    tool at `http://automation.lan:3001`) reaches its page: a browser refuses the `Secure`
+    `__Host-corten-notice` cookie there, so the notice was dropped without a trace. Corten reads
+    the write (an `Origin` of this host over `http://`, no `Sec-Fetch-Site`) and sets a plain
+    `corten-notice` cookie instead (`HttpOnly`, `SameSite=Lax`, a minute), which a page reads
+    only from a request without `Sec-Fetch-Site`, so on HTTPS another site on the domain cannot
+    plant one in a current browser; an app with `Policy::hsts()` never sets or reads it, and
+    `localhost` and `127.0.0.1` keep `__Host-`. The ui-gallery smoke renames from the machine's
+    LAN address in each engine (it fails on the image before this change). The item page's
+    `render_cost` (release, callgrind, 3 runs) is 35,612,123,545 instructions against
+    35,603,094,486 on main (+0.03%, within the runs' spread: a page's GET only compares the
+    method and looks at its cookies once, as before)
+    ([#498 redirect_with_notice is lost without a trace on a plain-HTTP LAN deployment: __Host- cookies need a secure origin](https://github.com/todd-skelton/corten/issues/498)).
 
 ### Documentation
 
