@@ -28,6 +28,7 @@ if (runs("fixture")) step("run-ssr.mjs", round, "fixture", "300", all, "json");
 if (runs("api")) step("run-ssr.mjs", round, "api", "150", all, "page");
 if (runs("api")) step("run-ssr.mjs", round, "api", "150", all, "json");
 if (runs("count") && process.platform === "linux") step("count.mjs", round, "3");
+console.log(new Date().toISOString(), "starting every app for parity, bytes and browser timing");
 for (const [name, app] of Object.entries(apps)) {
   docker("rm", "-f", `fsw-${name}`);
   docker(...runArgs(name, app, "api", join(here, "fixtures")));
