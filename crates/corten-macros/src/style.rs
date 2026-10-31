@@ -294,15 +294,38 @@ fn rename_properties(css: &str, names: &[&str], prefix: &str) -> String {
                 }
             }
             b'-' if b.get(i + 1) == Some(&b'-') && (i == 0 || !ident(b[i - 1])) => {
+                // The whole name, escapes included: `--f\69 ll` is `--fill` to the browser.
                 let mut end = i + 2;
-                while end < b.len() && ident(b[end]) {
-                    end += 1;
+                while end < b.len() {
+                    if b[end] == b'\\' {
+                        if matches!(b.get(end + 1), None | Some(b'\n' | b'\r' | b'\x0c')) {
+                            break;
+                        }
+                        let hex = b[end + 1..].iter().take(6).take_while(|c| c.is_ascii_hexdigit()).count();
+                        end += 1 + hex.max(1);
+                        if hex > 0 && b.get(end) == Some(&b'\r') && b.get(end + 1) == Some(&b'\n') {
+                            end += 2;
+                        } else if hex > 0 && matches!(b.get(end), Some(b' ' | b'\t' | b'\n' | b'\r' | b'\x0c')) {
+                            end += 1;
+                        }
+                        // A multi-byte character after the `\` is one code point.
+                        while end < b.len() && !css.is_char_boundary(end) {
+                            end += 1;
+                        }
+                    } else if ident(b[end]) {
+                        end += 1;
+                    } else {
+                        break;
+                    }
                 }
-                if names.contains(&&css[i + 2..end]) {
+                let written = &css[i + 2..end];
+                let name = if written.contains('\\') { unescape(written) } else { written.to_string() };
+                if names.contains(&name.as_str()) {
                     out.push_str(&css[copied..i + 2]);
                     out.push_str(prefix);
                     out.push_str("__");
-                    copied = i + 2;
+                    out.push_str(&name);
+                    copied = end;
                 }
                 i = end;
             }
@@ -1221,6 +1244,11 @@ mod tests {
             scope("@property --x { syntax: '\\3c percentage>'; inherits: false; initial-value: 0% }", "m").unwrap().properties,
             [("x".to_string(), Some("Percentage"))],
             "the syntax is read with its escapes decoded, as the browser reads it"
+        );
+        assert_eq!(
+            scope(".a { width: var(--f\\69 ll); height: var(--\\66ill); color: var(--fill\\é); }\n@property --fill { syntax: '*'; inherits: false }", "m").unwrap().css,
+            ".m__a{width:var(--m__fill);height:var(--m__fill);color:var(--fill\\é)}@property --m__fill{syntax:'*';inherits:false}",
+            "a name written with escapes is the same name to the browser"
         );
         assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: 1. }").contains("is not a <number>"));
         assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: . }").contains("is not a <number>"));
