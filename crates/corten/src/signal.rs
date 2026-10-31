@@ -107,6 +107,14 @@ struct Inner {
     callers: AtomicU64,
     /// The app's error page is answering it.
     error_page: AtomicBool,
+    /// Its answer is `Public`, the same for everyone: written as for a visitor whose zone is not
+    /// known, its live part's fragments too.
+    #[cfg(feature = "zones")]
+    for_everyone: AtomicBool,
+    /// With [`crate::App::client_zone`]: the zone the browser reported, read from its cookie once
+    /// for the request, for its page and its live part's fragments alike.
+    #[cfg(feature = "zones")]
+    zone: Option<crate::client::ZoneName>,
     /// The page rendered the request's notice ([`crate::Req::notice`]), so a navigation's answer
     /// does not send it to the runtime as well.
     notice_drawn: AtomicBool,
@@ -122,6 +130,13 @@ impl Signal {
     /// A request's signal in an app.
     pub(crate) fn for_app(shared: Arc<crate::page::Shared>) -> Signal {
         Signal(Arc::new(Inner { shared: Some(shared), ..Inner::default() }))
+    }
+
+    /// A request's signal in an app that learns its visitors' zones, with the one the browser
+    /// reported.
+    #[cfg(feature = "zones")]
+    pub(crate) fn for_app_in(shared: Arc<crate::page::Shared>, zone: Option<crate::client::ZoneName>) -> Signal {
+        Signal(Arc::new(Inner { shared: Some(shared), zone, ..Inner::default() }))
     }
 
     /// A task's signal and the handle that begins its shutdown, for a test of an app's task: the
@@ -322,6 +337,25 @@ impl Signal {
         self.0.personal.store(true, Ordering::Relaxed);
     }
 
+    /// The request's answer is `Public` (its route says so when the crate compiles).
+    #[cfg(feature = "zones")]
+    pub(crate) fn mark_for_everyone(&self) {
+        self.0.for_everyone.store(true, Ordering::Relaxed);
+    }
+
+    /// True when the request's answer is `Public`.
+    #[cfg(feature = "zones")]
+    pub(crate) fn is_for_everyone(&self) -> bool {
+        self.0.for_everyone.load(Ordering::Relaxed)
+    }
+
+    /// The zone the request's answer is written in: the browser's, but none for a `Public`
+    /// answer, the same for everyone (its error page, which is not, has it).
+    #[cfg(feature = "zones")]
+    pub(crate) fn zone(&self) -> Option<crate::client::ZoneName> {
+        self.0.zone.filter(|_| !self.is_for_everyone() || self.is_error_page())
+    }
+
     /// The page drew the request's notice.
     pub(crate) fn mark_notice_drawn(&self) {
         self.0.notice_drawn.store(true, Ordering::Relaxed);
@@ -390,18 +424,30 @@ impl Drop for Watch {
 /// which are in memory) counts as sent, so the signal aborts with [`Abort::Responded`] now, without a
 /// wrapper. A stream takes `watch` along: [`Abort::Responded`] after its last frame, or
 /// [`Abort::Disconnected`] if it is dropped before (the client left).
-pub(crate) fn follow(res: Response, watch: Watch) -> Response {
+///
+/// `zoned`: the app writes dates in its visitors' zones (`App::zoned_dates`, `zones` feature), so
+/// a stream's fragments (a live part, rendered as the stream is read) are written in the
+/// request's, as the page was.
+pub(crate) fn follow(res: Response, watch: Watch, #[cfg_attr(not(feature = "zones"), allow(unused))] zoned: bool) -> Response {
     if res.body().size_hint().exact().is_some() {
         watch.0.abort(Abort::Responded);
         return res;
     }
+    #[cfg(feature = "zones")]
+    let zone = zoned.then(|| crate::i18n::Scope::of(watch.0.zone(), &watch.0));
+    #[cfg(not(feature = "zones"))]
+    let zone = None;
     let (parts, body) = res.into_parts();
-    Response::from_parts(parts, Body::new(Followed { body, watch }))
+    Response::from_parts(parts, Body::new(Followed { body, watch, zone }))
 }
 
 struct Followed {
     body: Body,
     watch: Watch,
+    /// With `App::zoned_dates`: the zone the stream's fragments are written in, kept
+    /// between polls once it has been looked up.
+    #[cfg_attr(not(feature = "zones"), allow(dead_code))]
+    zone: Option<crate::i18n::Scope>,
 }
 
 impl HttpBody for Followed {
@@ -409,7 +455,14 @@ impl HttpBody for Followed {
     type Error = axum::Error;
 
     fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, axum::Error>>> {
+        // Inside this poll only: the fragments the stream renders as it is read.
+        #[cfg(feature = "zones")]
+        let entered = self.zone.take().map(crate::i18n::ZoneScope::enter);
         let polled = Pin::new(&mut self.body).poll_frame(cx);
+        #[cfg(feature = "zones")]
+        if let Some(entered) = entered {
+            self.zone = Some(entered.leave());
+        }
         if let Poll::Ready(None) = polled {
             self.watch.0.abort(Abort::Responded);
         }
@@ -454,19 +507,19 @@ mod tests {
     async fn a_body_read_to_its_end_was_sent_and_one_dropped_early_was_not() {
         use http_body_util::BodyExt;
         let page = Signal::default();
-        drop(follow(Response::new(Body::from("hello")), Watch(page.clone())));
+        drop(follow(Response::new(Body::from("hello")), Watch(page.clone()), false));
         assert_eq!(page.reason(), Some(Abort::Responded), "a body in memory is the whole response");
 
         let sent = Signal::default();
         let stream = futures_util::stream::iter([Ok::<_, std::io::Error>(Bytes::from("a")), Ok(Bytes::from("b"))]);
-        let res = follow(Response::new(Body::from_stream(stream)), Watch(sent.clone()));
+        let res = follow(Response::new(Body::from_stream(stream)), Watch(sent.clone()), false);
         assert_eq!(sent.reason(), None, "a stream is running until its last frame");
         assert_eq!(res.into_body().collect().await.unwrap().to_bytes(), "ab");
         assert_eq!(sent.reason(), Some(Abort::Responded));
 
         let left = Signal::default();
         let stream = futures_util::stream::pending::<Result<Bytes, std::io::Error>>();
-        drop(follow(Response::new(Body::from_stream(stream)), Watch(left.clone())));
+        drop(follow(Response::new(Body::from_stream(stream)), Watch(left.clone()), false));
         assert_eq!(left.reason(), Some(Abort::Disconnected));
     }
 }

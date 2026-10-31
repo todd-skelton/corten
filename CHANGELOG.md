@@ -1163,6 +1163,33 @@ Corten is pre-1.0, so any minor version may change the API.
     `render_cost` (release, callgrind, 3 runs) is 35,602,516,052 instructions against
     35,613,859,907 on main (-0.03%, layout: the page has no part)
     ([#492 A sub-component cannot bind its page's script: #[component] has css = Other but no js = Other](https://github.com/todd-skelton/corten/issues/492)).
+153. The `zones` feature: the visitor's time zone with its rules, from Corten. With
+    `App::zoned_dates()` (which the app sets: the feature alone, which another crate may turn on,
+    changes no app's dates), while Corten renders a request's answer (a page, a patch), `t.date`,
+    `t.time` and `t.date_time` write in the zone the browser reported, with its daylight saving
+    rules (jiff and its bundled tz database, so an image without `/usr/share/zoneinfo` has them),
+    and the answer is private; a live part's fragments too. A value that names a day (a due date
+    kept as UTC midnight, a chart's axis) takes `.zone(Utc)`, or it reads a day early west of UTC.
+    A `Public` answer, the same for everyone, is written as for an unknown zone (UTC, `LocalTime`
+    written again in the browser) and stays shared; the route knows it when the crate compiles.
+    No handler takes the zone and no component is given it, where an app added a tz crate, a `Zone` newtype, `Option<ClientZone>` on each handler that draws a date and
+    a prop down to it. `.zone(..)` still chooses another; outside a request's render a date is in
+    UTC. `req.zone()` is the zone (`corten::i18n::Visitor`, a `Zone`), for a picked date, UTC
+    until the browser has reported it. corten-ui's `LocalTime` draws a date the first page shows:
+    there the server does not know the zone yet and writes UTC, and its script writes it again in
+    the browser's zone with the server's own format (`DateFormat` takes an offset,
+    `format(at, { offset })`); later pages are the server's. `When` has `datetime()`, `format()` and
+    `zone_unknown()`. A date rendered once and kept across requests takes `.zone(..)`, or it is in
+    the zone of the request that rendered it. Each `LocalTime` whose script runs carries its format
+    (about 850 bytes before compression against about 70 for the date alone). The minified format
+    module grows by 18 bytes (3,008 to 3,026); the runtime is unchanged. The item page's
+    `render_cost` (release, callgrind, 3 runs, without the feature, which card-market does not
+    turn on) is 35,621,122,132 instructions against 35,603,094,486 on main (+0.05%). A page that
+    writes ten dates (callgrind, release, per request) runs 34,952 instructions without the
+    feature, 36,363 with it in an app that sets neither setting, and 42,854 with
+    `zoned_dates` and a zone cookie (the zone looked up once per request, about 380 per date for
+    its offset)
+    ([#387 Dates in the visitor's zone need a tz crate, a ClientZone argument on every handler and a prop through every component, and the first page is UTC](https://github.com/todd-skelton/corten/issues/387)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

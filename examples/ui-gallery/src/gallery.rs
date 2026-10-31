@@ -1,16 +1,16 @@
 //! The page: a seller's draft listing for one card, built from every corten-ui component, wrapped
 //! and styled as a design system would.
-use corten::i18n::RelativeStyle;
+use corten::i18n::{DateStyle, RelativeStyle, TimeStyle};
 use corten::prelude::*;
 use corten_ui::{
-    CheckboxGroup, Choice, ChoiceGroup, ChoiceOption, Chosen, ComboBox, Copied, CopyButton, MenuButton, Number, NumberField,
-    Picker, PrintButton, RelativeTime, RequiredWhen, ShownFor, Tab, TabGroup, dialog,
+    CheckboxGroup, Choice, ChoiceGroup, ChoiceOption, Chosen, ComboBox, Copied, CopyButton, LocalTime, MenuButton, Number,
+    NumberField, Picker, PrintButton, RelativeTime, RequiredWhen, ShownFor, Tab, TabGroup, dialog,
 };
 use serde::Deserialize;
 use std::time::SystemTime;
 
 use crate::{
-    app::{EXPIRES_IN, LISTED_AGO, Msg, NO_REGION, RenameForm, SellForm, url},
+    app::{CREATED, EXPIRES_IN, LISTED_AGO, Msg, NO_REGION, RenameForm, SellForm, url},
     field::Field,
 };
 
@@ -252,6 +252,10 @@ pub fn Gallery<'a>(
                     <p>
                         "The best offer expires "
                         <RelativeTime when={t.relative(now + EXPIRES_IN, now, RelativeStyle::Long)} />
+                    </p>
+                    <p>
+                        "Drafted "
+                        <LocalTime when={t.date_time(SystemTime::UNIX_EPOCH + CREATED, DateStyle::Medium, TimeStyle::Short)} />
                     </p>
                 </section>
                 <section class={(Card, Actions)}>

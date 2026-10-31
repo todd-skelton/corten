@@ -27,11 +27,11 @@
 /**
  * The function a format argument is.
  * @param {Spec} spec
- * @returns {(value: any) => string}
+ * @returns {(value: any, options?: { offset?: number }) => string}
  */
 export function formatter(spec) {
   if (spec.m) return plural(spec, /** @type {string} */ (spec.c), spec.m);
-  if (spec.f) return (at) => date(spec, at);
+  if (spec.f) return (at, options) => date(spec, at, options?.offset);
   if (spec.d !== undefined) {
     const d = spec.d;
     return (minor) => {
@@ -133,9 +133,12 @@ function plural(spec, table, forms) {
   };
 }
 
-/** @param {Spec} spec @param {Date | number | string} at */
-function date(spec, at) {
-  const offset = spec.o ?? 0;
+/**
+ * @param {Spec} spec @param {Date | number | string} at
+ * @param {number} [east] the offset to write it at, in seconds east, instead of the format's
+ */
+function date(spec, at, east) {
+  const offset = east ?? spec.o ?? 0;
   const t = new Date(new Date(at).getTime() + offset * 1000);
   if (Number.isNaN(t.getTime())) return String(at);
   const [y, mo, d, h, mi, s] = [t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), t.getUTCHours(), t.getUTCMinutes(), t.getUTCSeconds()];

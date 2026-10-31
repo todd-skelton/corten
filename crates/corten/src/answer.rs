@@ -1306,7 +1306,46 @@ impl<A: IntoResponse> IntoResponse for NoStore<A> {
     }
 }
 
-impl<A: Answer> Answer for NoStore<A> {
+/// Not around a [`Public`] answer, which is the same for everyone and kept by shared caches: an
+/// answer cannot be both, so it does not compile.
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+/// use std::time::Duration;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/", get = home)]
+///     pub struct Home;
+/// }
+///
+/// async fn home(req: Req) -> NoStore<Public<HtmlResult>> {
+///     let page = req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> });
+///     NoStore(Public::new(Duration::from_secs(60), page))
+/// }
+/// # fn main() { let _ = url::router(); }
+/// ```
+///
+/// Around any other answer it does:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/", get = home)]
+///     pub struct Home;
+/// }
+///
+/// async fn home(req: Req) -> NoStore<HtmlResult> {
+///     NoStore(req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> }))
+/// }
+/// # fn main() { let _ = url::router(); }
+/// ```
+impl<A: Answer> Answer for NoStore<A>
+where
+    A::Inputs: Unshared,
+{
     const FORMAT: Format = A::FORMAT;
     type Inputs = A::Inputs;
     type Rows = A::Rows;
@@ -1327,6 +1366,11 @@ pub struct AnyInputs;
 
 /// A handler may read only [`Anonymous`] inputs.
 pub struct AnonymousInputs;
+
+/// The inputs of an answer that is not shared ([`AnyInputs`]): what [`NoStore`] wraps.
+#[doc(hidden)]
+pub trait Unshared {}
+impl Unshared for AnyInputs {}
 
 /// An input that cannot tell who is asking: no cookie, no credential header, no `Caller`. A
 /// [`Public`] answer's handler takes only these. Implement it for an extractor of the app's own
@@ -1363,9 +1407,14 @@ pub trait AllAnonymous {}
 
 /// Whether an answer's [`Answer::Inputs`] allows the handler's arguments.
 #[doc(hidden)]
-pub trait Accepts<Args> {}
+pub trait Accepts<Args> {
+    /// The answer is the same for everyone ([`Public`], the only one with [`AnonymousInputs`]).
+    const SHARED: bool = false;
+}
 impl<A> Accepts<A> for AnyInputs {}
-impl<A: AllAnonymous> Accepts<A> for AnonymousInputs {}
+impl<A: AllAnonymous> Accepts<A> for AnonymousInputs {
+    const SHARED: bool = true;
+}
 
 /// A handler's arguments and result, by the shapes axum's `Handler` uses.
 #[doc(hidden)]
@@ -1756,11 +1805,19 @@ pub(crate) struct Answered;
 pub struct Endpoint<H, O> {
     pub(crate) handler: H,
     pub(crate) answer: PhantomData<fn() -> O>,
+    /// The answer is [`Public`] (its inputs are [`AnonymousInputs`]).
+    #[cfg(feature = "zones")]
+    pub(crate) shared: bool,
 }
 
 impl<H: Clone, O> Clone for Endpoint<H, O> {
     fn clone(&self) -> Self {
-        Endpoint { handler: self.handler.clone(), answer: PhantomData }
+        Endpoint {
+            handler: self.handler.clone(),
+            answer: PhantomData,
+            #[cfg(feature = "zones")]
+            shared: self.shared,
+        }
     }
 }
 
@@ -1798,6 +1855,14 @@ where
 
     #[inline]
     fn call(self, req: Request, state: S) -> Self::Future {
+        // A `Public` answer is the same for everyone: written as for a visitor whose zone is not
+        // known, its live part's fragments too.
+        #[cfg(feature = "zones")]
+        if self.shared {
+            if let Some(signal) = req.extensions().get::<crate::Signal>() {
+                signal.mark_for_everyone();
+            }
+        }
         Marked { inner: self.handler.call(req, state), answer: PhantomData }
     }
 }

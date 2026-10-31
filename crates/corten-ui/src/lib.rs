@@ -12,6 +12,7 @@
 //! | [`CopyButton`] | copies an element's text to the clipboard, says so politely, and tells the page ([`Copied`]) | no button; the text is on the page to select |
 //! | [`PrintButton`] | opens the browser's print dialog; the page's print styles say what prints | no button; the browser's Print command prints the page |
 //! | [`RelativeTime`] | a time relative to now ("in 10 hours") that stays current, on one timer for the page | the time as the server wrote it |
+//! | [`LocalTime`] | a date in the visitor's zone on their first page too, before the browser has reported it to the server | the first page's date in UTC |
 //! | [`CheckboxGroup`] | checkboxes of one name of which one must be checked; the browser says so before sending | the form is sent, and the handler refuses it |
 //! | [`ChoiceGroup`] | one choice (a radio group) whose value shows and hides [`ShownFor`] parts anywhere on the page; options can be links, and the address follows | links to the page with each choice, where the server draws it |
 //! | [`RequiredWhen`] | fields required only for some values of another field, disabled for the rest | the fields are optional, and the handler checks the rule |
@@ -154,6 +155,7 @@ mod checkbox_group;
 mod choice_group;
 mod combo_box;
 mod copy_button;
+mod local_time;
 mod menu_button;
 mod number_field;
 mod print_button;
@@ -166,6 +168,7 @@ pub use checkbox_group::CheckboxGroup;
 pub use choice_group::{ChoiceGroup, ChoiceOption, Chosen, ShownFor};
 pub use combo_box::{Choice, ComboBox, Picker};
 pub use copy_button::{Copied, CopyButton};
+pub use local_time::LocalTime;
 pub use menu_button::MenuButton;
 pub use number_field::{Number, NumberField, Numeric, Step};
 pub use print_button::PrintButton;
@@ -189,6 +192,7 @@ pub const COMPONENTS: &[Component] = &[
     CopyButton,
     PrintButton,
     RelativeTime,
+    LocalTime,
     CheckboxGroup,
     RequiredWhen,
     choice::COMPONENT,

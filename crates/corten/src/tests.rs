@@ -3122,6 +3122,181 @@ async fn a_handler_reads_the_visitors_time_zone_once_the_app_asks_for_it() {
     }
 }
 
+/// With the `zones` feature and `App::zoned_dates`, a date is written in the visitor's zone while
+/// Corten renders the request's answer, which is then private; the first page, before the browser has reported its
+/// zone, is in UTC and says so (`zone_unknown`); `.zone(..)` still chooses. `req.zone()` is the
+/// zone with its rules.
+#[cfg(feature = "zones")]
+#[tokio::test]
+async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer() {
+    use crate::i18n::{DateStyle, Messages as _, TimeStyle, Utc, Zone as _};
+    use std::time::{Duration, UNIX_EPOCH};
+    crate::i18n::messages! { struct ZoneMsg { "en" => "src/i18n/en.json" } }
+    // 2026-03-22T15:04:05Z: Chicago is on daylight time (UTC-5) since March 8.
+    let at = UNIX_EPOCH + Duration::from_secs(1_774_191_845);
+    let routes = move || {
+        Routes::from(
+            Router::new()
+                .route(
+                    "/",
+                    get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let when = t.date_time(at, DateStyle::Medium, TimeStyle::Short);
+                        // Asked while the answer renders, as LocalTime asks it.
+                        req.test_page(
+                            "Zone",
+                            html! {
+                                <p>{when}</p>
+                                <p>{if when.zone_unknown() { "unknown" } else { "known" }}</p>
+                                <p>{when.zone(Utc)}</p>
+                            },
+                        )
+                    }),
+                )
+                .route("/offset", get(move |req: Req| async move { req.zone().offset(at).to_string() }))
+                // Shared by its own header: a date written for one visitor would make it private.
+                .route(
+                    "/shared",
+                    get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let page =
+                            req.test_page("Shared", html! { <p>{t.date_time(at, DateStyle::Medium, TimeStyle::Short)}</p> })?;
+                        Ok::<_, Error>(([(axum::http::header::CACHE_CONTROL, "public, max-age=60")], page))
+                    }),
+                )
+                // Through Corten's handler check, which knows the answer is `Public`.
+                .route(
+                    "/public",
+                    crate::route::get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let when = t.date_time(at, DateStyle::Medium, TimeStyle::Short);
+                        let offset = req.zone().offset(at);
+                        let page = req.test_page_for(
+                            "Shared",
+                            html! {
+                                <p>{when}</p>
+                                <p>{if when.zone_unknown() { "unknown" } else { "known" }}</p>
+                                <p>{offset}</p>
+                            },
+                        );
+                        Public::new(std::time::Duration::from_secs(60), page)
+                    })
+                    .0,
+                )
+                .route(
+                    "/public-live",
+                    crate::route::get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let live = crate::live(futures_util::StreamExt::map(futures_util::stream::iter([()]), move |()| {
+                            let when = t.date_time(at, DateStyle::Medium, TimeStyle::Short);
+                            crate::Fragment::new(format!(r#"<p id="n">{when}</p>"#))
+                        }));
+                        Public::new(std::time::Duration::from_secs(60), live)
+                    })
+                    .0,
+                )
+                .route(
+                    "/live",
+                    get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        // Rendered as the stream is read, after the handler returned.
+                        crate::live(futures_util::StreamExt::map(futures_util::stream::iter([()]), move |()| {
+                            let when = t.date_time(at, DateStyle::Medium, TimeStyle::Short);
+                            crate::Fragment::new(format!(r#"<p id="n">{when}</p>"#))
+                        }))
+                    }),
+                ),
+        )
+    };
+    let get_with = |router: Router, uri: &'static str, cookie: Option<&'static str>| async move {
+        let mut req = Request::get(uri);
+        if let Some(cookie) = cookie {
+            req = req.header("cookie", cookie);
+        }
+        let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let cache = res.headers().get("cache-control").map(|v| v.to_str().unwrap().to_string()).unwrap_or_default();
+        (cache, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+    };
+    let utc = "<p>Mar 22, 2026, 3:04 PM UTC</p>";
+    let zoned = App::new(routes()).zoned_dates().router();
+    let (cache, page) = get_with(zoned.clone(), "/", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains(&format!("<p>Mar 22, 2026, 10:04 AM GMT-5</p><p>known</p>{utc}")), "{page}");
+    assert!(cache.contains("private"), "written for this visitor: {cache}");
+    for cookie in [None, Some("corten-zone=Mars/Olympus")] {
+        let (_, page) = get_with(zoned.clone(), "/", cookie).await;
+        assert!(page.contains(&format!("{utc}<p>unknown</p>{utc}")), "{cookie:?}: {page}");
+    }
+    assert_eq!(get_with(zoned.clone(), "/offset", Some("corten-zone=America/Chicago")).await.1, "-18000");
+    assert_eq!(get_with(zoned.clone(), "/offset", None).await.1, "0");
+    // A `Public` answer is the same for everyone: written as for a visitor whose zone is not
+    // known (UTC, its LocalTimes written again in the browser), and it stays shared.
+    let (cache, page) = get_with(zoned.clone(), "/public", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains(&format!("{utc}<p>unknown</p><p>0</p>")), "{page}");
+    assert!(cache.starts_with("public"), "{cache}");
+    // Its live part's fragments too, as the stream is read after the handler returned.
+    let (cache, live) = get_with(zoned.clone(), "/public-live", Some("corten-zone=America/Chicago")).await;
+    assert!(live.contains("3:04 PM UTC") && cache.starts_with("public"), "{cache}: {live}");
+    // A middleware that builds a response of its own around the answer (no extensions kept)
+    // cannot lose that it is `Public`: the request's signal holds it.
+    struct Rebuild;
+    impl crate::Middleware for Rebuild {
+        async fn call(&self, req: axum::extract::Request, next: impl crate::Next) -> Response {
+            let (parts, body) = next.run(req).await.into_parts();
+            let mut res = Response::new(body);
+            *res.status_mut() = parts.status;
+            *res.headers_mut() = parts.headers;
+            res
+        }
+    }
+    let rebuilt = App::new(routes()).zoned_dates().middleware(Rebuild).router();
+    for uri in ["/public", "/public-live"] {
+        let (cache, page) = get_with(rebuilt.clone(), uri, Some("corten-zone=America/Chicago")).await;
+        assert!(page.contains("3:04 PM UTC") && cache.starts_with("public"), "{uri}: {cache}: {page}");
+    }
+    // A live part's fragments are written in the zone, as its page was.
+    let (_, live) = get_with(zoned, "/live", Some("corten-zone=America/Chicago")).await;
+    assert!(live.contains("10:04 AM GMT-5"), "{live}");
+    // A `Public` route's error page is not the same for everyone: written in the zone.
+    async fn dated_error(_: Failure, req: Req) -> HtmlResult {
+        let t: ZoneMsg = req.t();
+        let at = UNIX_EPOCH + Duration::from_secs(1_774_191_845);
+        req.test_page("Failed", html! { <p>{t.date_time(at, DateStyle::Medium, TimeStyle::Short)}</p> })
+    }
+    let failing = Routes::from(
+        Router::new().route(
+            "/public-fails",
+            crate::route::get(|| async {
+                Public::new(std::time::Duration::from_secs(60), Err::<&'static str, _>(Error::not_found()))
+            })
+            .0,
+        ),
+    );
+    let failing = App::new(failing).zoned_dates().error_page(dated_error, ()).router();
+    let (cache, page) = get_with(failing, "/public-fails", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains("10:04 AM GMT-5") && cache.contains("private"), "{cache}: {page}");
+    // An app that does not learn zones writes UTC and knows it is meant to.
+    let (plain, page) = get_with(App::new(routes()).router(), "/", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains(&format!("{utc}<p>known</p>{utc}")), "{page}");
+    // Nor does one that learns them for `ClientZone` and `req.zone()` alone: the feature, which
+    // another crate may turn on, does not change an app's dates; `zoned_dates` does.
+    let learns = App::new(routes()).client_zone().router();
+    let (cache, page) = get_with(learns.clone(), "/", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains(&format!("{utc}<p>known</p>{utc}")), "{page}");
+    assert_eq!(cache, plain, "answered as the app that does not learn zones");
+    let (_, page) = get_with(learns.clone(), "/", None).await;
+    assert!(page.contains(&format!("{utc}<p>known</p>{utc}")), "no LocalTime script before the cookie: {page}");
+    let (cache, page) = get_with(learns.clone(), "/shared", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains(utc) && cache.starts_with("public"), "{cache}: {page}");
+    let (cache, page) = get_with(App::new(routes()).zoned_dates().router(), "/shared", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains("10:04 AM GMT-5") && cache.contains("private"), "{cache}: {page}");
+    assert_eq!(get_with(learns, "/offset", Some("corten-zone=America/Chicago")).await.1, "-18000");
+    // Outside a request's render: UTC.
+    assert_eq!(
+        ZoneMsg::for_locale("en").date_time(at, DateStyle::Medium, TimeStyle::Short).to_string(),
+        "Mar 22, 2026, 3:04 PM UTC"
+    );
+}
+
 #[tokio::test]
 async fn only_a_swap_says_it_is_a_page_swap() {
     let (_, headers, _) = call(app(routes(), None), "GET", None).await;

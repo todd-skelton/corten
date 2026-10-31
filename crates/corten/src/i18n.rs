@@ -184,9 +184,11 @@
 //!   `March 22, 2026`, `Full` with the weekday) and a time with its zone (`3:04 PM UTC`, `Medium`
 //!   with seconds). `at` is a `SystemTime` or anything that converts to one (`chrono`'s, `jiff`'s
 //!   and `time`'s timestamps do), and [`parse_timestamp`] reads RFC 3339 text. The zone is UTC,
-//!   so a page reads the same wherever it is rendered; `.zone(z)` takes a [`Zone`]: an
-//!   [`Offset`], or a zone with daylight saving time (from `chrono-tz` or `jiff`) that gives its
-//!   offset at the instant. Another zone is written as its offset (`GMT-5`).
+//!   so a page reads the same wherever it is rendered, except that with the `zones` feature and
+//!   `App::zoned_dates` it is the visitor's while Corten renders a request's answer
+//!   (`req.zone()`); `.zone(z)` takes a [`Zone`]: an [`Offset`], or a zone with daylight
+//!   saving time that gives its offset at the instant (`Visitor`). Another zone is written as its
+//!   offset (`GMT-5`).
 //! - `t.date(at, MonthStyle)`: the month and year without the day (`Short` is `Mar 2026`, `Long`
 //!   `March 2026`), in the locale's order and words, for a "Member since" line or a release
 //!   month. It has no time, so `t.date_time` does not take one.
@@ -330,6 +332,13 @@ use crate::view::{escape_display, escape_into, AttrValue, Render};
 
 mod display_digits;
 mod format;
+mod visitor;
+
+pub(crate) use visitor::Scope;
+#[cfg(feature = "zones")]
+pub use visitor::Visitor;
+#[cfg(feature = "zones")]
+pub(crate) use visitor::ZoneScope;
 
 pub use format::{
     parse_timestamp, Amount, Count, Currency, DateFormat, DateOnly, DateStyle, Datetime, DayStyle, Decimal, Formatted,

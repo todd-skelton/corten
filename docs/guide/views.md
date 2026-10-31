@@ -321,15 +321,36 @@ the year (`Mar 2`, `2 mars`), for a chart's axis or a week's row whose year the 
 neither has a time, so `t.date_time` takes neither. A date is in UTC unless `.zone(Offset::hours(-5))` or a zone
 of your own (`corten::i18n::Zone`, for one with daylight saving time) says otherwise, so a page
 reads the same wherever it is rendered; `parse_timestamp` reads the RFC 3339 text APIs send.
-For dates where the visitor is ("your listings come back on Nov 2"), the app sets
-`App::client_zone()` and a handler takes `Option<ClientZone>`: the browser's IANA name
-(`America/Chicago`), which the runtime keeps in a cookie from the first page it loads, so the
-form posts and pages after it carry it. `None` is a first load or a browser without
-JavaScript. The app's time zone library (`jiff`, `chrono-tz`) turns the name into its `Zone`
-(a newtype that implements `corten::i18n::Zone`) and a picked date into the instant it means
-there, with no script per form. A handler that takes it answers privately (`Cache-Control:
-private`), so a `Public` one cannot; the layout around `<main>` is the same in every zone, so
-reading it does not make the runtime load the next page in full.
+For dates where the visitor is ("your listings come back on Nov 2"), the app turns on Corten's
+`zones` feature (jiff and its bundled tz database) and sets `App::zoned_dates()`; the feature
+alone changes no app's dates, so a library that turns it on does not change yours.
+The runtime keeps the browser's zone (`America/Chicago`) in a cookie from the first page it
+loads, so the form posts and pages after it carry it, and while Corten renders a request's
+answer, `t.date`, `t.time` and `t.date_time` write in that zone, with its daylight saving
+rules: no handler takes the zone and no component is given it. `.zone(..)` still chooses
+another (a store's own zone). A page that writes a date in the visitor's zone answers privately
+(`Cache-Control: private`), and the zone is not part of the page's key, so it does not make the
+runtime load the next page in full; a date the layout writes is drawn in `LocalTime` for that
+reason (a navigation keeps the layout's text from the first page). `req.zone()` is the zone itself (a
+`corten::i18n::Visitor`, a `Zone`), for turning a picked date into the instant it means there;
+`Option<ClientZone>` is its name. Both are UTC (`None`) on a browser's first page, before it
+has reported its zone, and without JavaScript; draw a date the first page shows in
+`corten_ui::LocalTime`, whose script writes it again in the browser's zone there, in the
+server's own format, so it is right on the first page too. A date in an attribute
+(`title={..}`) has no element to write again and stays in UTC on that page. A live part's
+fragments, rendered as the stream is read, are in the zone too. A value that names a day rather
+than an instant (a release month, a chart's axis, a due date kept as UTC midnight) takes
+`.zone(Utc)`, or it reads a day early west of UTC. A script's `t.js().date(..)` writes UTC unless
+it is given an offset (`format(at, { offset })`, the browser's at that instant), and `to_string()`
+or `format!` in a handler is UTC: only Corten's render knows the zone, and a `req.screen`'s data
+takes `.zone(req.zone())` where it formats a date itself. A `Public` answer is the same for
+everyone, so it is written as for a visitor whose zone is not known (UTC, `req.zone()` too) and
+stays shared; its `LocalTime`s are written again in the browser. The zone rules are the bundled database's
+(`jiff-tzdb`), updated with `cargo update -p jiff-tzdb`. A date rendered once and kept across
+requests (a footer in a `OnceLock`, a fragment a cache shares) takes `.zone(..)`, as a value a
+cache keeps never holds one visitor's data: rendered during a request, it would be in that
+visitor's zone for everyone. `App::client_zone()` alone learns the zone for `req.zone()` and
+`Option<ClientZone>` and writes dates as before.
 
 A time relative to now ("resets in 10 hours", "updated 3 min. ago") is `t.relative(at, now,
 RelativeStyle::Long)` (or `Short`, `Narrow`): in the largest unit it has a whole one of, rounded
