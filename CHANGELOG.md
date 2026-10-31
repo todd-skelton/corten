@@ -2457,6 +2457,15 @@ Corten is pre-1.0, so any minor version may change the API.
     `any_change_changes_the_version` had passed only because an earlier fixture was still on disk,
     and now writes the files it compares. Nothing an app does changes
     ([#511 Corten's unit tests leave a directory in the temp directory for each asset fixture on every run](https://github.com/todd-skelton/corten/issues/511)).
+89. `bench/fullstack/droplet.mjs` no longer stalls a night. Its `ssh` and `scp` calls do not
+    inherit stdin: started hidden on Windows, `ssh` sometimes waited on that console after the
+    remote command finished, and the r7, r8 and r9 rounds each hung for hours in one such call
+    (r9 never measured anything). Every call has a time limit, the steps that can run again are
+    retried, and a droplet that stops answering for 15 minutes (`--stall`) mid-round is
+    power-cycled and the round goes on from the step after the one it was in, at most twice, with
+    "step <name> skipped" in its log; a round whose process dies without finishing fails instead
+    of being polled forever
+    ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
 
 ### Documentation
 

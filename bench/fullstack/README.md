@@ -433,7 +433,9 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
 
 1. Machine: a DigitalOcean CPU-optimized droplet (`c-8`: 8 dedicated vCPUs, Intel Xeon Platinum
    8168 at 2.7 GHz in r8, 16 GB), Ubuntu 24.04, kernel 6.8, Docker 29.9, Node 24, created for the run
-   and destroyed after it (`droplet.mjs`). Droplets of one size are not all the same CPU (r1's,
+   and destroyed after it (`droplet.mjs`). If the droplet stops answering mid-round,
+   `droplet.mjs` power-cycles it and goes on from the next step; the skipped step is named in
+   `run.log` ("step <name> skipped"), and its results are missing from the round. Droplets of one size are not all the same CPU (r1's,
    r4's, r5's and r8's were a Platinum 8168, r2's, r3's, r6's and r7's a Platinum 8280), so times are compared within a
    round, never across rounds.
 2. Cores: the app under test pinned to core 1 with 1 GiB of memory, the item API to cores 2-3,
