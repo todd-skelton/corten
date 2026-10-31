@@ -839,12 +839,13 @@ fn content_type(path: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::Scratch;
     use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt;
 
-    fn dir(name: &str, files: &[(&str, &str)]) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("corten-assets-{name}-{}", std::process::id()));
+    fn dir(name: &str, files: &[(&str, &str)]) -> Scratch {
+        let root = Scratch::new(&format!("assets-{name}"));
         for (path, body) in files {
             let path = root.join(path);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1236,6 +1237,10 @@ mod tests {
         let c = Assets::load(dir("v3", &[("b.css", "x")]), "/assets").unwrap();
         assert_ne!(a.version(), b.version());
         assert_ne!(a.version(), c.version());
-        assert_eq!(a.version(), Assets::load(dir("v1", &[]), "/assets").unwrap().version(), "same files, same version");
+        assert_eq!(
+            a.version(),
+            Assets::load(dir("v1-again", &[("a.css", "x")]), "/assets").unwrap().version(),
+            "same files, same version"
+        );
     }
 }
