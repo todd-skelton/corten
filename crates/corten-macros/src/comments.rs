@@ -46,7 +46,9 @@ const BEFORE_REGEX: &[&str] = &[
 ];
 
 /// `source` without its comments: a line comment is removed to its line's end, a block comment
-/// becomes the line breaks it held, or a space when it held none and code follows it. Strings, template literals and regular expressions are copied as they are.
+/// becomes the line breaks it held, or a space when it held none and code follows it. Strings,
+/// template literals and regular expressions are copied as they are. A script with a `/` only a
+/// parser could read is returned as it is.
 pub fn strip(source: &str) -> String {
     let bytes = source.as_bytes();
     let mut out = String::with_capacity(source.len());
@@ -62,6 +64,10 @@ pub fn strip(source: &str) -> String {
     // start a regular expression and only a parser could say which: the script is then served as
     // it is.
     let mut unsure = false;
+    // Whether a line ended since the last token: a `/` starting a line after a value may begin a
+    // regular expression (`continue\n/re/`, `let t\n/re/`, where the line's end ends the
+    // statement) or divide (`a\n/ 2`), and only a parser could say which.
+    let mut new_line = false;
     // Set when a template literal's text is being copied (at its start or after a `}`).
     let mut in_template = false;
     while at < bytes.len() {
@@ -75,7 +81,9 @@ pub fn strip(source: &str) -> String {
         }
         let b = bytes[at];
         if b >= 0x80 && source[at..].chars().next().is_some_and(space) {
-            at += source[at..].chars().next().map_or(1, char::len_utf8);
+            let c = source[at..].chars().next().unwrap_or(' ');
+            new_line |= matches!(c, '\u{2028}' | '\u{2029}');
+            at += c.len_utf8();
             continue;
         }
         // What this token leaves for the next `(`, word and `/`; most tokens clear them.
@@ -83,6 +91,7 @@ pub fn strip(source: &str) -> String {
         match b {
             // JavaScript's whitespace includes the vertical tab, which Rust's ASCII whitespace does not.
             _ if b.is_ascii_whitespace() || b == 0x0b => {
+                new_line |= matches!(b, b'\n' | b'\r');
                 at += 1;
                 continue;
             }
@@ -100,6 +109,7 @@ pub fn strip(source: &str) -> String {
             b'/' if bytes.get(at + 1) == Some(&b'*') => {
                 let end = source[at + 2..].find("*/").map_or(bytes.len(), |n| at + 2 + n + 2);
                 let comment = &source[at..end];
+                new_line |= comment.contains(['\n', '\r', '\u{2028}', '\u{2029}']);
                 if !kept(comment) {
                     out.push_str(&source[copied..at]);
                     let breaks = line_breaks(comment);
@@ -125,7 +135,7 @@ pub fn strip(source: &str) -> String {
                 at = end;
                 continue;
             }
-            b'/' if unsure => return source.to_string(),
+            b'/' if unsure || (new_line && before == Before::Value) => return source.to_string(),
             // Only where a value is expected is a `/` looked at as a regular expression's start, so a
             // line of divisions stays linear.
             b'/' => match (before == Before::Operator).then(|| regex(source, at)).flatten() {
@@ -219,6 +229,7 @@ pub fn strip(source: &str) -> String {
         condition = next_condition;
         dot = next_dot;
         unsure = next_unsure;
+        new_line = false;
     }
     out.push_str(&source[copied..]);
     out
@@ -403,6 +414,12 @@ mod tests {
             "if (a) { b() }\n/\"/.test(s); const u = \"//kept\"; // c",
             "x\n++/[//]/.a; // c",
             "a++ / 2; // c",
+            "for (const c of s) {\n  if (c) continue\n  /'/.test(c); const u = '//kept' // c\n}",
+            "for (;;) { break\n/'/.test(c); const u = '//kept' } // c",
+            "let t\n/`/.test(s); const u = '//kept' // c",
+            "import \"./x.mjs\"\n/'/.test(s); const u = '//kept' // c",
+            "x = a /* c\n */ / 2 + \"//kept\"; // c",
+            "x = a\u{2028}/ 2 + \"//kept\"; // c",
         ] {
             assert_eq!(strip(source), source, "{source:?}");
         }

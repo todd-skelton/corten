@@ -1993,8 +1993,9 @@ Corten is pre-1.0, so any minor version may change the API.
     (`\r\n`, `\r`, `\n`, U+2028, U+2029), a comment's own included. Checked against esbuild: the
     repo's 62 JS files, each with LF and with CRLF endings, minify to the same code with and
     without their comments, and keep their line count. A script with a `/` after a
-    statement-level `}` or after `++`/`--`, where only a parser could tell a division from a
-    regular expression, is served as written (none of the repo's scripts has one).
+    statement-level `}`, after `++`/`--`, or starting a line after a value, where only a parser
+    could tell a division from a regular expression, is served as written (none of the repo's
+    scripts has one; 161 of 1,230 third-party files with comments, mostly minified, would be).
     Measured on the 24 scripts it strips (corten-ui's, the examples' and the template's), brotli
     11 as Corten stores them: 30,779 to 15,855 bytes (-48.5%); gzip 9 36,371 to 18,651 (-48.7%).
     The item page (`bench/fullstack/bytes.mjs`, card-market images of main and this change): its
