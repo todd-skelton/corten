@@ -489,6 +489,17 @@ pub use vars::{syntax, Declaration, Var, Vars};
 /// ```
 ///
 /// ```compile_fail
+/// // An sRGB color's `hex` is its components at 8 bits: `#ff0000` and `[0.1137, 0.1059, 0.149]`
+/// // (`#1d1b26`) are two colors.
+/// corten::style::tokens!("src/style/tokens/hex-disagrees.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // A hex alone is not a color in the format; the error is the object to write.
+/// corten::style::tokens!("src/style/tokens/hex-alone.tokens.json");
+/// ```
+///
+/// ```compile_fail
 /// // `.2xl\:gap-1` is no CSS class without escapes: a breakpoint or utility starts with a letter.
 /// corten::style::tokens!("src/style/tokens/digit-breakpoint.tokens.json");
 /// ```
