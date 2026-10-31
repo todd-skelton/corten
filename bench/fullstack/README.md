@@ -464,10 +464,11 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
    time; it does not see waiting (I/O, locks) or how well the instructions run.
    `node count.mjs <round> 3 <apps> page,json api` counts with items from the item API instead,
    so the count includes fetching and parsing each 55 KB response (keys `<app>/<target>/api`).
-   It first writes the running kernel to `count-kernel.txt` and has `perf` count an idle second,
-   stopping with the reason when `perf` does not fit that kernel; `droplet.mjs` turns off the
-   droplet's automatic package updates before provisioning, so the kernel stays the one the round
-   starts on.
+   It first writes the running kernel (and any package waiting for a reboot) to
+   `count-kernel.txt` and has `perf` count an idle second, stopping with the reason when `perf`
+   does not fit that kernel or cannot count; `droplet.mjs` turns off the droplet's automatic
+   package updates before provisioning, so a reboot comes back on the kernel `perf` was installed
+   for.
 6. Browser (`browser.mjs`): every app running at once on the app core, items from the item API,
    one app measured at a time; Playwright
    Chromium, cache disabled, 10 runs per app and profile, each cold load starting on a page

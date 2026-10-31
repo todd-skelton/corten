@@ -1806,9 +1806,10 @@ Corten is pre-1.0, so any minor version may change the API.
        hand or the field's type spelled out
     ([#358 A form's FieldName carries no type, so a Picker<Condition> can name another field](https://github.com/todd-skelton/corten/issues/358)).
 94. `bench/fullstack`: `droplet.mjs` turns off the droplet's automatic package updates before
-    provisioning, so a round runs on the kernel it starts on, and `count.mjs` writes that kernel to
-    `count-kernel.txt` and has `perf` count an idle second before any load, stopping with the
-    reason when it cannot
+    provisioning, so a reboot comes back on the kernel `perf` was installed for, and `count.mjs`
+    writes the running kernel to `count-kernel.txt`, has `perf` count an idle second before any
+    load (stopping with the reason when it cannot), and logs when `perf` attaches and when the
+    load starts. CI's and CONTRIBUTING's publish dry run builds in a target of its own
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

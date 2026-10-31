@@ -110,8 +110,8 @@ building each from its `.crate` file, as crates.io will (`cargo publish --dry-ru
 sources into a throwaway `--tmpfs` over the registry's `src`: the dry run unpacks Corten's own
 crates there too, and since their version never changes, a shared copy would be the first one
 any checkout unpacked. It builds them in a target directory of its own for the same reason:
-cargo takes a crate of a registry as unchanged while its version is, so the checkout's target
-volume would hand the dry run the build of an earlier run's `corten`. The third
+cargo treats a registry crate as unchanged as long as its version stays the same, so the
+checkout's target volume would hand the dry run an earlier run's build of `corten`. The third
 builds on the oldest supported Rust, `rust-version` in the root `Cargo.toml`. The `CI` workflow
 (`.github/workflows/ci.yml`) runs the same checks on every pull request and push to `main`.
 A browser smoke that goes five minutes without finishing a check stops itself (`scripts/stall.mjs`),
