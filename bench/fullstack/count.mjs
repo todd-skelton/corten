@@ -36,8 +36,12 @@ async function counted(container, work) {
   const id = docker("inspect", "-f", "{{.Id}}", container).stdout.trim();
   const cgroup = `system.slice/docker-${id}.scope`;
   const out = join("/tmp", `perf-${id}.csv`);
+  // Timed lines in the round's log: when a step hangs the machine (#466), the log says whether
+  // `perf` attached to the cgroup with no load yet or the load had started.
+  console.log(new Date().toISOString(), "perf stat -G", container);
   const perf = spawn("perf", ["stat", "-a", "-x", ",", "-o", out, "-e", "instructions:u,instructions:k", "-G", `${cgroup},${cgroup}`]);
   await sleep(500);
+  console.log(new Date().toISOString(), "counting", container);
   await work();
   perf.kill("SIGINT");
   await new Promise((r) => perf.on("exit", r));
@@ -47,6 +51,21 @@ async function counted(container, work) {
     if (event?.startsWith("instructions:")) counts[event.slice(-1)] = Number(value);
   }
   return counts;
+}
+
+// Before any load: the kernel this runs on, and `perf` counting an idle second on it, so a `perf`
+// that does not fit the running kernel or cannot count stops the step here with the reason. r8's
+// droplet locked up as counting started (#466); this probe has no `-G`, so it would not have
+// caught that, but the round's log now says how far counting got (`counted`).
+const kernel = spawnSync("uname", ["-r"], { encoding: "utf8" }).stdout.trim();
+const waiting = existsSync("/var/run/reboot-required.pkgs") ? readFileSync("/var/run/reboot-required.pkgs", "utf8").trim().split("\n").join(", ") : "";
+const pending = waiting ? ` (installed, waiting for a reboot: ${waiting})` : "";
+writeFileSync(join(dir, "count-kernel.txt"), `${kernel}${pending}\n`);
+console.log(`counting on kernel ${kernel}${pending}`);
+const probe = spawnSync("perf", ["stat", "-a", "-x", ",", "-e", "instructions:u", "--", "sleep", "1"], { encoding: "utf8", timeout: 30_000 });
+// A counter the CPU or the VM does not expose prints `<not supported>` and still exits 0.
+if (probe.status !== 0 || !/^\d+,[^,]*,instructions:u/m.test(probe.stderr)) {
+  throw new Error(`perf cannot count on kernel ${kernel}: ${probe.error?.message ?? probe.stderr.trim()}`);
 }
 
 // Merged into the round's earlier counts, so one app can be counted again on its own.
