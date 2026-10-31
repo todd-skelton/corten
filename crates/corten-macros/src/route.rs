@@ -136,10 +136,15 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         body.extend(query_writes(&query));
     }
     let keys_check = check_keys(&item, &query);
+    let (matched, suffixes) = suffixed(&path);
+    // The path as written, when axum matches less of it (`{page}.xml` as `{page}`).
+    let written =
+        if suffixes.is_empty() { TokenStream::new() } else { q("const WRITTEN: &'static str = __A0;", &[string(&path).into()]) };
     let mut out = item.impl_block(
         "::corten::route::Route",
         q(
             "const PATH: &'static str = __A0;
+            __A3
             const PREFETCH: bool = __A2;
             #[allow(unused_variables)]
             fn write_href(&self, __OUT: &mut ::std::string::String, __corten_html: bool) {
@@ -147,7 +152,12 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
                 use ::corten::route::__private::{QueryOption as _, QueryValue as _, SegmentText as _, SegmentValue as _};
                 __A1
             }",
-            &[string(&path).into(), body, TokenTree::Ident(Ident::new(if prefetch { "true" } else { "false" }, span)).into()],
+            &[
+                string(&matched).into(),
+                body,
+                TokenTree::Ident(Ident::new(if prefetch { "true" } else { "false" }, span)).into(),
+                written,
+            ],
         ),
     );
     out.extend(item.impl_block(
@@ -168,7 +178,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         ),
     ));
     out.extend(keys_check);
-    out.extend(from_url(&item, &fields, &segments)?);
+    out.extend(from_url(&item, &fields, &segments, &suffixes)?);
     out.extend(item.impl_block(
         "::std::fmt::Display",
         q(
@@ -184,7 +194,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
 /// `FromUrl`, for `corten::Params`: the struct's fields, owned (`__ItemParams`), read back from a
 /// request. Only for a struct with fields and no type parameters whose fields are each owned or a
 /// reference (`&'a str`, `&'a [T]`, `&'a T`); for another, `Params` does not compile and says so.
-fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<TokenStream, Error> {
+fn from_url(item: &Item, fields: &[Field], segments: &[Segment], suffixes: &[(String, String)]) -> Result<TokenStream, Error> {
     if fields.is_empty() || !only_lifetimes(&item.impl_generics) {
         return Ok(TokenStream::new());
     }
@@ -248,7 +258,12 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<Token
     for segment in segments {
         if let Segment::Param(name) | Segment::Rest(name) = segment {
             let at = fields.iter().position(|f| f.name == *name).expect("checked by expand");
-            path_types.extend(types[at].clone());
+            // A parameter followed by text is read as text, the text removed, then as its type.
+            if suffixes.iter().any(|(n, _)| n == name) {
+                path_types.extend(q("::std::string::String", &[]));
+            } else {
+                path_types.extend(types[at].clone());
+            }
             path_types.extend(q(",", &[]));
             path_names.extend([TokenTree::Ident(fields[at].ident.clone())]);
             path_names.extend(q(",", &[]));
@@ -266,7 +281,13 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<Token
     let mut bounds = TokenStream::new();
     let mut query = Vec::new();
     for (field, ty) in fields.iter().zip(&types) {
-        if in_path(field) {
+        if let Some((_, suffix)) = suffixes.iter().find(|(n, _)| *n == field.name) {
+            let ident = TokenTree::Ident(field.ident.clone());
+            reads.extend(q(
+                "__A0: ::corten::route::__private::unsuffixed::<__A1>(&__A0, __A2)?,",
+                &[ident.into(), ty.clone(), string(suffix).into()],
+            ));
+        } else if in_path(field) {
             reads.extend([TokenTree::Ident(field.ident.clone())]);
             reads.extend(q(",", &[]));
         } else {
@@ -836,6 +857,21 @@ pub fn parse_path(path: &str) -> Result<Vec<Segment>, String> {
         if n > 0 {
             push_static(&mut segments, "/");
         }
+        // `{page}.xml`: a parameter, then text of the same segment (a file's extension).
+        let (part, suffix) = match part.strip_prefix('{').and_then(|p| p.split_once('}')) {
+            Some((inner, suffix)) if !suffix.is_empty() => {
+                if inner.starts_with('*') {
+                    return Err(format!("{{{inner}}} takes the rest of the path, so no text follows it: {part:?}"));
+                }
+                if let Some(c) = suffix.chars().find(|c| !plain(*c) || *c == '{' || *c == '}') {
+                    return Err(format!(
+                        "after {{{inner}}} comes text, {c:?} is not allowed in it: a parameter is a whole segment or followed by plain text, like /sitemap/{{page}}.xml"
+                    ));
+                }
+                (&part[..inner.len() + 2], Some(suffix))
+            }
+            _ => (*part, None),
+        };
         if let Some(inner) = part.strip_prefix('{').and_then(|p| p.strip_suffix('}')) {
             let (rest, name) = match inner.strip_prefix('*') {
                 Some(name) => (true, name),
@@ -854,8 +890,13 @@ pub fn parse_path(path: &str) -> Result<Vec<Segment>, String> {
             }
             names.push(name.to_string());
             segments.push(if rest { Segment::Rest(name.into()) } else { Segment::Param(name.into()) });
+            if let Some(suffix) = suffix {
+                push_static(&mut segments, suffix);
+            }
         } else if part.contains(['{', '}']) {
-            return Err(format!("a parameter is a whole segment, like /items/{{id}}: {part:?}"));
+            return Err(format!(
+                "a parameter is a whole segment, or one followed by plain text: /items/{{id}} or /sitemap/{{page}}.xml, not {part:?}"
+            ));
         } else if let Some(c) = part.chars().find(|c| !plain(*c)) {
             return Err(format!("{c:?} is not allowed in a route path; write the path as it is matched"));
         } else {
@@ -863,6 +904,24 @@ pub fn parse_path(path: &str) -> Result<Vec<Segment>, String> {
         }
     }
     Ok(segments)
+}
+
+/// The path axum matches (`/sitemap/{kind}/{page}`) and each parameter followed by text in its
+/// segment, with that text (`("page", ".xml")`): axum's router has a parameter end at a `/`, so
+/// the text is checked and removed when the request is read.
+pub fn suffixed(path: &str) -> (String, Vec<(String, String)>) {
+    let mut matched = Vec::new();
+    let mut suffixes = Vec::new();
+    for part in path.split('/') {
+        match part.strip_prefix('{').and_then(|p| p.split_once('}')) {
+            Some((name, suffix)) if !suffix.is_empty() => {
+                matched.push(format!("{{{name}}}"));
+                suffixes.push((name.to_string(), suffix.to_string()));
+            }
+            _ => matched.push(part.to_string()),
+        }
+    }
+    (matched.join("/"), suffixes)
 }
 
 fn push_static(segments: &mut Vec<Segment>, text: &str) {
@@ -885,7 +944,19 @@ mod tests {
         );
         assert_eq!(parse_path("/files/{*path}").unwrap()[1], Segment::Rest("path".into()));
         assert!(parse_path("items").is_err());
-        assert!(parse_path("/items/item_{id}").is_err());
+        assert!(parse_path("/items/item_{id}").is_err(), "text before a parameter");
+        assert_eq!(
+            parse_path("/sitemap/{page}.xml").unwrap(),
+            vec![Segment::Static("/sitemap/".into()), Segment::Param("page".into()), Segment::Static(".xml".into())]
+        );
+        assert_eq!(
+            suffixed("/sitemap/{kind}/{page}.xml"),
+            ("/sitemap/{kind}/{page}".into(), vec![("page".into(), ".xml".into())])
+        );
+        assert_eq!(suffixed("/items/{id}"), ("/items/{id}".into(), vec![]));
+        assert!(parse_path("/{*path}.xml").is_err(), "the rest of the path has nothing after it");
+        assert!(parse_path("/{page}.{ext}").is_err(), "one parameter a segment");
+        assert!(parse_path("/{page} x").is_err());
         assert!(parse_path("/{*path}/x").is_err());
         assert!(parse_path("/{id}/{id}").is_err());
         assert!(parse_path("/a b").is_err());

@@ -2309,6 +2309,23 @@ mod params_url {
     pub struct File<'a> {
         pub rest: std::borrow::Cow<'a, str>,
     }
+
+    /// A parameter followed by text in its segment: a sitemap's pages.
+    #[route("/sitemap/{kind}/{page}.xml", get = params_sitemap)]
+    pub struct SitemapPage<'a> {
+        pub kind: &'a str,
+        pub page: u32,
+        pub gz: Option<bool>,
+    }
+}
+
+paths! { Feeds = "/feeds" }
+
+/// A route of an area with the same, added by hand (no `Params` in its handler).
+#[derive(crate::Route)]
+#[route("/feeds/{name}.rss")]
+struct Rss<'a> {
+    name: &'a str,
 }
 
 /// A value a link prints but nothing reads back: neither `Clone`, `Send` nor `Deserialize`.
@@ -2347,6 +2364,41 @@ async fn params_item(item: crate::Params<params_url::Item<'_>>) -> String {
 
 async fn params_file(file: crate::Params<params_url::File<'_>>) -> String {
     file.rest.clone()
+}
+
+async fn params_sitemap(page: crate::Params<params_url::SitemapPage<'_>>) -> String {
+    format!("{}|{}|{:?}", page.kind, page.page, page.gz)
+}
+
+#[tokio::test]
+async fn a_parameter_followed_by_text_is_read_without_it() {
+    use crate::route::Route as _;
+    assert_eq!(<params_url::SitemapPage<'_> as crate::Route>::PATH, "/sitemap/{kind}/{page}", "axum matches the segment");
+    let link = params_url::SitemapPage { kind: "items", page: 3, gz: None };
+    assert_eq!(link.href(), "/sitemap/items/3.xml");
+    let router = App::new(params_url::router()).router();
+    let (status, _, body) = call_with(router.clone(), "GET", &link.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "items|3|None"));
+    let (_, _, body) = call_with(router.clone(), "GET", "/sitemap/items/12.xml?gz=true", None, None).await;
+    assert_eq!(body, "items|12|Some(true)", "with a query");
+    // The text is the route's: without it, or with nothing before it, no route matches.
+    for path in ["/sitemap/items/3", "/sitemap/items/3.json", "/sitemap/items/.xml", "/sitemap/items/3.xml.bak"] {
+        let (status, _, _) = call_with(router.clone(), "GET", path, None, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+    }
+    // A value that is not the parameter's type is refused as any path parameter is.
+    let (status, _, body) = call_with(router.clone(), "GET", "/sitemap/items/x.xml", None, Some("text/plain")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.starts_with("Invalid URL: Cannot parse `x` to a `u32`"), "{body}");
+
+    // A route added to an area by hand is checked the same, with no `Params` to do it.
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let area = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Rss>(rss));
+    let router = area.router();
+    let (status, _, body) = call_with(router.clone(), "GET", &Rss { name: "news" }.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "rss"));
+    let (status, _, _) = call_with(router, "GET", "/feeds/news.atom", None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

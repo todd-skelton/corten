@@ -26,11 +26,22 @@ pub struct FormError {
     /// A word a unit-variant enum does not have: a query value written by an older version of
     /// the app, or by hand.
     unknown_word: bool,
+    /// A path parameter's, read with the query (one followed by text in its segment).
+    in_path: bool,
 }
 
 impl FormError {
     fn new(message: impl Into<String>) -> Self {
-        FormError { message: message.into(), unknown_word: false }
+        FormError { message: message.into(), unknown_word: false, in_path: false }
+    }
+
+    /// A path parameter that did not read.
+    pub(crate) fn in_path(message: impl Into<String>) -> Self {
+        FormError { message: message.into(), unknown_word: false, in_path: true }
+    }
+
+    pub(crate) fn is_in_path(&self) -> bool {
+        self.in_path
     }
 }
 
@@ -51,7 +62,7 @@ impl de::Error for FormError {
     fn unknown_variant(variant: &str, expected: &'static [&'static str]) -> Self {
         // serde's own wording, marked so a query parameter can read the word as missing.
         let message = <de::value::Error as de::Error>::unknown_variant(variant, expected).to_string();
-        FormError { message, unknown_word: true }
+        FormError { message, unknown_word: true, in_path: false }
     }
 }
 

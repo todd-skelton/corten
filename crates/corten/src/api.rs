@@ -112,7 +112,7 @@ impl<P: Prefix> Api<P> {
                 "corten: a route of an API is at or under its prefix (the note below names the API's prefix and the route)"
             )
         };
-        self.routes = self.routes.route(R::PATH, methods.0);
+        self.routes = self.routes.route(R::PATH, crate::route::with_suffixes::<R, _>(methods.0));
         self
     }
 

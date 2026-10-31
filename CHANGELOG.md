@@ -1205,6 +1205,14 @@ Corten is pre-1.0, so any minor version may change the API.
     The item page's `render_cost` (release, callgrind, 3 runs) is 35,607,619,833 instructions
     against 35,621,122,132 for the zones change it builds on (-0.04%; the page writes no date).
     ([#502 i18n: no way to write a calendar date (no instant behind it) that never shifts with the zone](https://github.com/todd-skelton/corten/issues/502)).
+158. A route parameter may be followed by plain text in its segment, a file's extension:
+    `#[route("/sitemap/{kind}/{page}.xml")]` with `page: u32` links to `/sitemap/items/3.xml`, and
+    `Params` reads `page` as `3`. A segment that does not end in the text, or is only the text, is
+    a 404 before the handler runs (the router matches the segment whole and Corten checks the
+    text), and a value that is not the type is a 400 as for any parameter. Two routes of a module
+    that differ only in that text (`{name}.rss`, `{name}.atom`) do not compile, and
+    `Req::serves` knows such a path. A route without such text generates the code it did
+    ([#514 A route parameter cannot be followed by fixed text in its segment, so /sitemap/{kind}/{page}.xml has no typed route](https://github.com/todd-skelton/corten/issues/514)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

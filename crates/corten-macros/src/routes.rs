@@ -139,6 +139,18 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
                 format!("{} and {} have the same path, {}: a request could only reach one", b.name, a.name, a.path),
             );
         }
+        // axum matches `{page}.xml` as `{page}`, so two paths that differ only in such text are one
+        // to it.
+        let matched = crate::route::suffixed(&a.path).0;
+        if let Some(b) = routed[..i].iter().find(|b| same_pattern(&matched, &crate::route::suffixed(&b.path).0)) {
+            return err(
+                a.span,
+                format!(
+                    "{} ({}) and {} ({}) differ only in the text after a parameter, which the router does not tell apart: give one a segment of its own, like /feeds/rss/{{name}}",
+                    b.name, b.path, a.name, a.path
+                ),
+            );
+        }
     }
     // The area's or API's prefix, when its route is in the module: each route is checked against
     // it here, where the error can point at the route (`Area::route` and `Api::route` check every

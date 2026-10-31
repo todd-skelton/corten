@@ -17,8 +17,38 @@
 //! [`Params`] reads back into a `Vec`); a map marked `#[route(prefix = "dim.")]` is a parameter
 //! per entry, `?dim.form=graded` ([`Pairs`]). Field types only need `Display`, so a
 //! link borrows (`&str`) and copies nothing. The derive checks the path when it compiles: a
-//! parameter without a field, a parameter that is not a whole segment, or a character that would
+//! parameter without a field, text before a parameter in its segment, or a character that would
 //! need escaping is an error. Renaming the route's path changes every link with it.
+//!
+//! A parameter may be followed by plain text in its segment, a file's extension: `{page}.xml`.
+//! A request whose segment does not end in the text, or is only the text, is a 404 before the
+//! handler runs, and [`Params`] reads the parameter without it, as its type:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[derive(Route)]
+//! #[route("/sitemap/{kind}/{page}.xml")]
+//! struct SitemapPage<'a> { kind: &'a str, page: u32 }
+//!
+//! assert_eq!(SitemapPage { kind: "items", page: 3 }.href(), "/sitemap/items/3.xml");
+//! ```
+//!
+//! The router matches such a segment whole, so two routes of one module that differ only in the
+//! text after a parameter do not compile:
+//!
+//! ```compile_fail
+//! #[corten::routes]
+//! mod url {
+//!     #[route("/feeds/{name}.rss", get = super::feed)]
+//!     pub struct Rss<'a> { pub name: &'a str }
+//!
+//!     #[route("/feeds/{name}.atom", get = super::feed)]
+//!     pub struct Atom<'a> { pub name: &'a str }
+//! }
+//! async fn feed() -> &'static str { "" }
+//! # fn main() {}
+//! ```
 //!
 //! A route's handler reads the same parameters back as [`Params`]: the struct's fields, owned, so a
 //! link and its handler cannot disagree about a parameter. A route struct says where a link goes;
@@ -476,8 +506,16 @@ pub use corten_macros::routes;
 /// A URL built from a typed value. Implemented by `#[derive(Route)]`, together with `Render`,
 /// `AttrValue` (so `href={route}` works) and `Display` (the plain URL).
 pub trait Route {
-    /// The path as axum matches it: `"/items/{id}"`.
+    /// The path as axum matches it: `"/items/{id}"`. A parameter followed by text in its segment
+    /// (`#[route("/sitemap/{page}.xml")]`) is matched as the whole segment (`"/sitemap/{page}"`),
+    /// and the path as written is [`Route::WRITTEN`].
     const PATH: &'static str;
+
+    /// The path as written, `"/sitemap/{page}.xml"`, when a parameter is followed by text in its
+    /// segment; otherwise [`Route::PATH`]. A request whose segment does not end in the text is a 404
+    /// before the handler runs, and `Params` reads the parameter without it.
+    #[doc(hidden)]
+    const WRITTEN: &'static str = Self::PATH;
 
     /// Whether the runtime may fetch the page ahead of a click (on a hover): `false` for a route
     /// declared `#[route("/..", prefetch = false)]`, a page costly to draw, so a link to it
@@ -596,6 +634,7 @@ pub trait Route {
 /// (`ReadAgain::from(route)`) takes `&route` as well.
 impl<R: Route + ?Sized> Route for &R {
     const PATH: &'static str = R::PATH;
+    const WRITTEN: &'static str = R::WRITTEN;
 
     fn write_href(&self, out: &mut String, html: bool) {
         (**self).write_href(out, html);
@@ -1279,9 +1318,10 @@ pub(crate) fn chosen(routes: &[(&'static str, bool)], path: &str) -> Option<(&'s
 
 /// Whether `path` is one `pattern` routes, as axum (matchit) matches it: `{name}` is one segment,
 /// which may be empty when another follows (`/items//edit` is `/items/{id}/edit`) but not when it
-/// is the last; `{*rest}` is the rest of the path (not empty); and the text is compared as it is
-/// written, so `/items/` is not `/items`. A route macro only takes a parameter as a whole
-/// segment, so these are all the shapes a pattern has.
+/// is the last; `{*rest}` is the rest of the path (not empty); `{name}text` is a segment that
+/// ends in the text with something before it (Corten checks the text, as axum matches `{name}`);
+/// and the text is compared as it is written, so `/items/` is not `/items`. These are all the
+/// shapes a route macro takes.
 pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
     let (mut pattern, mut path) = (pattern.split('/'), path.split('/'));
     loop {
@@ -1291,7 +1331,11 @@ pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
                 return !got.is_empty() || path.next().is_some();
             }
             (Some(want), Some(got)) if want.starts_with('{') => {
-                if got.is_empty() && pattern.clone().next().is_none() {
+                let text = want.split_once('}').map_or("", |(_, text)| text);
+                if text.is_empty() && got.is_empty() && pattern.clone().next().is_none() {
+                    return false;
+                }
+                if !text.is_empty() && !(got.len() > text.len() && got.ends_with(text)) {
                     return false;
                 }
             }
@@ -1328,6 +1372,11 @@ mod local_tests {
             ("/{*rest}", "/a", true),
             ("/items/{id}", "/items/%2F", true),
             ("/check", "/%63heck", false),
+            ("/sitemap/{page}.xml", "/sitemap/3.xml", true),
+            ("/sitemap/{page}.xml", "/sitemap/3", false),
+            ("/sitemap/{page}.xml", "/sitemap/.xml", false),
+            ("/sitemap/{page}.xml", "/sitemap/3.xml.bak", false),
+            ("/sitemap/{page}.xml/x", "/sitemap/3.xml/x", true),
         ] {
             assert_eq!(routes_path(pattern, path), want, "{pattern} {path}");
         }
@@ -1941,7 +1990,9 @@ impl ParamsRejection {
     fn query(error: crate::form::FormError) -> Self {
         use axum::response::IntoResponse as _;
         let status = axum::http::StatusCode::BAD_REQUEST;
-        let rejection = crate::form::FormRejection::invalid(status, "Failed to deserialize query string", error);
+        // A parameter followed by text is read here rather than by axum's `Path`: said as axum says it.
+        let what = if error.is_in_path() { "Invalid URL" } else { "Failed to deserialize query string" };
+        let rejection = crate::form::FormRejection::invalid(status, what, error);
         ParamsRejection(Box::new(rejection.into_response()))
     }
 
@@ -2120,9 +2171,27 @@ impl Routes {
     #[doc(hidden)]
     pub fn __route<R: Route>(self, methods: Methods) -> Self {
         let mut paths = self.1;
-        paths.push((R::PATH, methods.1));
-        Routes(self.0.route(R::PATH, methods.0), paths)
+        paths.push((R::WRITTEN, methods.1));
+        Routes(self.0.route(R::PATH, with_suffixes::<R, ()>(methods.0)), paths)
     }
+}
+
+/// `methods` for `R`'s path: when a parameter of it is followed by text (`{page}.xml`), a request
+/// whose segment does not end in that text is a 404 before a handler runs, as a path that does not
+/// match is. A route with none is `methods` as it is.
+pub(crate) fn with_suffixes<R: Route + ?Sized, S: Clone + Send + Sync + 'static>(
+    methods: axum::routing::MethodRouter<S>,
+) -> axum::routing::MethodRouter<S> {
+    if R::WRITTEN == R::PATH {
+        return methods;
+    }
+    methods.route_layer(axum::middleware::from_fn(|req: axum::extract::Request, next: axum::middleware::Next| async move {
+        if routes_path(R::WRITTEN, req.uri().path()) {
+            next.run(req).await
+        } else {
+            axum::response::IntoResponse::into_response(axum::http::StatusCode::NOT_FOUND)
+        }
+    }))
 }
 
 /// The crate's tests build routers by hand, to test what `App` does with any response.
@@ -2199,6 +2268,15 @@ pub mod __private {
 
     pub use crate::form::de::{sorted_pairs, Pair};
     use crate::form::FormError;
+
+    /// A path parameter followed by text in its segment (`{page}.xml`), read without the text,
+    /// then as its type. The router has checked the text is there.
+    pub fn unsuffixed<T: serde::de::DeserializeOwned>(text: &str, suffix: &str) -> Result<T, FormError> {
+        let value =
+            text.strip_suffix(suffix).ok_or_else(|| FormError::in_path(format!("`{text}` does not end in `{suffix}`")))?;
+        crate::form::de::one(value)
+            .map_err(|e| FormError::in_path(format!("Cannot parse `{value}` to a `{}`: {e}", std::any::type_name::<T>())))
+    }
 
     /// `T`, named with a lifetime of the `FromUrl` impl, so a bound on it (that a field reads
     /// back) is checked where `Params` is used, not where the route is declared: a link needs

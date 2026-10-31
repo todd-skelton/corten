@@ -133,8 +133,8 @@ impl<P: Prefix> Area<P> {
                 "corten: a route's path has the shape #[derive(Route)] writes: whole-segment parameters like /items/{{id}} and plain text (the note below names the route)"
             );
         };
-        self.routes = self.routes.route(R::PATH, methods.0);
-        self.pages.push((R::PATH, methods.1));
+        self.routes = self.routes.route(R::PATH, crate::route::with_suffixes::<R, _>(methods.0));
+        self.pages.push((R::WRITTEN, methods.1));
         self
     }
 
