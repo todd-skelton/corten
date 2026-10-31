@@ -2069,6 +2069,20 @@ export function f(a, b, c, d, e) {}"#;
         assert!(whole < bound, "{name}: {whole:?} at {n}, {quarter:?} at {}", n / 4);
     }
 
+    /// The growth check fails a case that grows with the square of its size once it takes a
+    /// second: 16 times the time at a quarter of the size, past the bound of 10.
+    #[test]
+    #[should_panic(expected = "quadratic")]
+    fn linear_fails_a_quadratic_case() {
+        linear("quadratic", 1_000, |n| std::thread::sleep(std::time::Duration::from_micros((n * n) as u64 * 11 / 10)));
+    }
+
+    /// And passes one that grows with its size, however slow the machine makes it.
+    #[test]
+    fn linear_passes_a_linear_case() {
+        linear("linear", 1_000, |n| std::thread::sleep(std::time::Duration::from_micros(n as u64 * 1_100)));
+    }
+
     #[test]
     fn a_message_parameter_is_checked_by_its_argument_names() {
         let (handlers, _) = parse(
