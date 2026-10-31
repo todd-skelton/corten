@@ -684,7 +684,8 @@ the error page for an expired code or someone else's statement goes out with `no
 Three failures never reach `NoStore` and get the default: a request refused before the handler
 runs (a path that does not parse), a handler that panics, and one past its deadline. A
 `Cache-Control` written by hand counts on any of its lines, and only a plain `private` makes it
-private (`private="set-cookie"` lets a shared cache keep the rest). A handler cannot mark an
+private (`private="set-cookie"` lets a shared cache keep the rest); one Corten cannot read (a line
+that is not text) is sent `private, no-cache`. A handler cannot mark an
 answer public any other way: a response it builds by hand is not an answer a route can name, and if anything
 read a caller the answer is private whatever its header says.
 

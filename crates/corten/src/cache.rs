@@ -204,15 +204,16 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
             entry.insert(PRIVATE);
             return;
         }
-        header::Entry::Occupied(entry) => {
+        header::Entry::Occupied(mut entry) => {
             // The directives of every line count, as HTTP joins them (a second line is rare: only
             // a header written by hand has one). Only a plain `private` makes the answer private:
-            // `private="set-cookie"` still lets a shared cache keep the rest. A line that is not
-            // text is taken as private.
-            let kept = |line: &HeaderValue| {
-                line.to_str().is_err() || plain(line.as_bytes(), b"private") || has(line.as_bytes(), b"no-store")
-            };
-            if entry.iter().any(kept) {
+            // `private="set-cookie"` still lets a shared cache keep the rest.
+            if entry.iter().any(|line| plain(line.as_bytes(), b"private") || has(line.as_bytes(), b"no-store")) {
+                return;
+            }
+            // A line that is not text cannot be read, so the answer is not shared.
+            if entry.iter().any(|line| line.to_str().is_err()) {
+                entry.insert(PRIVATE);
                 return;
             }
             entry.get().to_str().unwrap_or("private").to_string()
@@ -258,12 +259,31 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
 /// True when a `Cache-Control` line has `directive`, with or without a value. Bytes, not text: the
 /// whitespace HTTP allows around a directive (spaces and tabs) is ASCII.
 pub(crate) fn has(line: &[u8], directive: &[u8]) -> bool {
-    line.split(|&b| b == b',').any(|d| d.split(|&b| b == b'=').next().unwrap_or(d).trim_ascii().eq_ignore_ascii_case(directive))
+    directives(line).any(|d| d.split(|&b| b == b'=').next().unwrap_or(d).trim_ascii().eq_ignore_ascii_case(directive))
 }
 
 /// True when a `Cache-Control` line has `directive` without a value.
 fn plain(line: &[u8], directive: &[u8]) -> bool {
-    line.split(|&b| b == b',').any(|d| d.trim_ascii().eq_ignore_ascii_case(directive))
+    directives(line).any(|d| d.trim_ascii().eq_ignore_ascii_case(directive))
+}
+
+/// A `Cache-Control` line's directives, split at the commas outside a quoted value
+/// (`no-cache="a, b"` is one directive, RFC 9110 5.6.4).
+fn directives(line: &[u8]) -> impl Iterator<Item = &[u8]> {
+    let mut quoted = false;
+    let mut escaped = false;
+    line.split(move |&b| {
+        if escaped {
+            escaped = false;
+        } else if quoted && b == b'\\' {
+            escaped = true;
+        } else if b == b'"' {
+            quoted = !quoted;
+        } else if b == b',' && !quoted {
+            return true;
+        }
+        false
+    })
 }
 
 /// The same lifetime for the browser alone: `public` and `s-maxage` become `private`.

@@ -3174,6 +3174,48 @@ async fn a_failure_under_no_store_is_not_stored() {
     assert_eq!(res.headers()[header::CACHE_CONTROL].as_bytes(), b"no-store, x=\"\xE9\"");
 }
 
+/// A `Cache-Control` Corten cannot read (a line that is not text) or that names `no-store` only
+/// inside a quoted value is not taken as private or `no-store`: an answer that sets a cookie goes
+/// out `private, no-cache`.
+#[tokio::test]
+async fn an_unreadable_or_quoted_cache_control_is_not_shared() {
+    let router = Router::new()
+        .route(
+            "/odd-line",
+            get(|| async {
+                let odd = HeaderValue::from_bytes(b"x=\"\xE9\"").unwrap();
+                let lines = [
+                    (header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=600")),
+                    (header::CACHE_CONTROL, odd),
+                    (header::SET_COOKIE, HeaderValue::from_static("seen=1")),
+                ];
+                (axum::response::AppendHeaders(lines), "odd")
+            }),
+        )
+        .route(
+            "/quoted",
+            get(|| async {
+                let lines =
+                    [(header::CACHE_CONTROL, "public, max-age=600, no-cache=\"a, no-store, b\""), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "quoted")
+            }),
+        )
+        .route(
+            "/quoted-failure",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "public, max-age=600, no-cache=\"a, no-store, b\"")];
+                (StatusCode::BAD_REQUEST, line, "")
+            }),
+        );
+    let router = app(router, Some("ann"));
+    for path in ["/odd-line", "/quoted", "/quoted-failure"] {
+        let req = Request::get(path).header("accept", "text/html").header("cookie", "s=1");
+        let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.as_bytes().to_vec()).collect();
+        assert_eq!(lines, [b"private, no-cache".to_vec()], "{path}");
+    }
+}
+
 /// `private="set-cookie"` limits only that header: a shared cache may still keep the rest, so it
 /// does not stand for a plain `private` on an answer that sets a cookie.
 #[tokio::test]
