@@ -181,8 +181,12 @@ try {
   check("the browser reads the manifest without errors", read.errors.length === 0, JSON.stringify(read.errors));
   const images = [...manifest.screenshots.map((s) => s.src), ...manifest.shortcuts.flatMap((s) => s.icons.map((i) => i.src))];
   const served = await page.evaluate(async (urls) => Promise.all(urls.map(async (u) => (await fetch(u)).status)), images);
-  check("the manifest's screenshot and shortcut icon are served", images.length === 2 && served.every((s) => s === 200), JSON.stringify(served));
-  check("a shortcut opens a page of the app", manifest.shortcuts[0]?.url === "/categories/cards", manifest.shortcuts[0]?.url);
+  check("the manifest's screenshots and shortcut icon are served", images.length === 3 && served.every((s) => s === 200), JSON.stringify(served));
+  const shortcut = await page.evaluate(async (url) => {
+    const r = await fetch(url);
+    return { status: r.status, type: r.headers.get("content-type") ?? "", title: /<title>([^<]*)/.exec(await r.text())?.[1] ?? "" };
+  }, manifest.shortcuts[0]?.url ?? "/none");
+  check("a shortcut opens a page of the app", shortcut.status === 200 && shortcut.type.startsWith("text/html") && /ember.reach/i.test(shortcut.title), JSON.stringify(shortcut));
   await manifestCdp.detach();
 
   // Push: the app's worker script (Pwa::import_script) handles a push sent through DevTools.

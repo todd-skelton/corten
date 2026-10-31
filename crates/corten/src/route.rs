@@ -1498,7 +1498,7 @@ impl<R: Route + ?Sized> Href for R {
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a page of this app",
     label = "not a typed route, `route.at(id)`, `Local` or `#[derive(Href)]` enum of those",
-    note = "only a page of this app fits here: name it by its route (another site's URL is not one)"
+    note = "only a page of this app fits here: name it by its route (to send a request to another site, use `req.redirect`)"
 )]
 pub trait OnSite: Href + on_site::Sealed {}
 

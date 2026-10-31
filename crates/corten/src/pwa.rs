@@ -174,15 +174,19 @@ impl Dir {
 }
 
 /// A screenshot the browser's install dialog shows: a file of the static directory
-/// (`Static::SHOTS_CART_PNG`) or a `Uri`, its size, and, for the richer dialog, the screen it
-/// shows and a label.
+/// (`Static::SHOTS_CART_PNG`) or a `Uri` of another site, its size, and, for the richer dialog, the
+/// screen it shows and a label. Chrome's richer dialog shows a PNG, JPEG or WebP between 320 and
+/// 3840 pixels a side, its longer side at most 2.3 times its shorter: `Wide` ones on a desktop,
+/// `Narrow` ones (or ones with no form factor) on a phone. The browser checks the image, not
+/// Corten.
 ///
 /// ```
 /// use corten::pwa::{FormFactor, Manifest, Screenshot};
 /// # use axum::http::Uri;
-/// let shot = Screenshot::new(Uri::from_static("/shots/cart.png"), "1280x720").form_factor(FormFactor::Wide).label("Your cart");
+/// let src = Uri::from_static("https://cdn.example.com/shots/cart.png");
+/// let shot = Screenshot::new(src, "1280x720").form_factor(FormFactor::Wide).label("Your cart");
 /// let json = Manifest::new("Shop", "Shop").screenshot(shot).to_json();
-/// assert!(json.contains(r#""screenshots":[{"src":"/shots/cart.png","sizes":"1280x720","type":"image/png","form_factor":"wide","label":"Your cart"}]"#));
+/// assert!(json.contains(r#""screenshots":[{"src":"https://cdn.example.com/shots/cart.png","sizes":"1280x720","type":"image/png","form_factor":"wide","label":"Your cart"}]"#));
 /// ```
 #[derive(Clone, Debug)]
 pub struct Screenshot {

@@ -24,7 +24,7 @@ use corten::{
     },
     i18n::Minor,
     prelude::*,
-    pwa::{Manifest, Orientation, Pwa, Screenshot, Shortcut},
+    pwa::{FormFactor, Manifest, Pwa, Screenshot, Shortcut},
     security::Policy,
     seo::{self, SitemapUrl},
 };
@@ -69,10 +69,19 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App {
         .icon(views::Static::ICONS_192_PNG, "192x192")
         .icon(views::Static::ICONS_512_PNG, "512x512")
         .maskable_icon(views::Static::ICONS_512_PNG, "512x512")
-        .orientation(Orientation::Portrait)
         .categories(&["shopping"])
-        .screenshot(Screenshot::new(views::Static::CARDS_ITEM_1_SVG, "250x350").label("A card for sale"))
-        .shortcut(Shortcut::new("All cards", &routes::Category { slug: "cards" }).icon(views::Static::ICONS_192_PNG, "192x192"));
+        // Screenshots of the home page, one for each form factor Chrome's install dialog shows.
+        .screenshot(
+            Screenshot::new(views::Static::SCREENSHOTS_WIDE_JPG, "1280x720").form_factor(FormFactor::Wide).label("Popular items"),
+        )
+        .screenshot(
+            Screenshot::new(views::Static::SCREENSHOTS_NARROW_JPG, "540x960")
+                .form_factor(FormFactor::Narrow)
+                .label("Popular items"),
+        )
+        .shortcut(
+            Shortcut::new("Ember Reach", &routes::Category { slug: "ember-reach" }).icon(views::Static::ICONS_192_PNG, "192x192"),
+        );
     // Agents in a browser on another site (AGENT_ORIGINS, comma separated) may call the tools.
     let origins = std::env::var("AGENT_ORIGINS").unwrap_or_default();
     let tools = tools(source.clone(), tokens).route();

@@ -1238,8 +1238,9 @@ Corten is pre-1.0, so any minor version may change the API.
     (Chrome's richer install dialog), and `shortcut(Shortcut::new(name, &Route))`, a page named by
     its typed route. A screenshot or a shortcut's icon is a static file's constant or a `Uri`,
     resolved to its versioned URL as an icon is. A manifest that sets none of them is written as
-    before. `examples/card-market` sets orientation, categories, a screenshot and a shortcut, and
-    its smoke checks that Chromium reads the manifest without errors
+    before. `examples/card-market` sets categories, a wide and a narrow screenshot of its home page
+    and a shortcut, and its smoke checks that Chromium reads the manifest without errors, that the
+    images are served and that the shortcut opens a page
     ([#515 pwa::Manifest cannot set the manifest's other members (orientation, categories, id, screenshots, shortcuts)](https://github.com/todd-skelton/corten/issues/515)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
