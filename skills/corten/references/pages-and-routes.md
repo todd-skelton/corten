@@ -201,7 +201,10 @@ A date the visitor picks, or a time shown where they are, needs their time zone:
 `App::client_zone()` and Corten's `zones` feature. Dates then render in the visitor's zone on
 their own (no zone argument, no zone prop); a picked date converts with `req.zone()`; a date the
 first page shows goes in `corten_ui::LocalTime`. A `Public` page is the same for everyone, so its
-dates are UTC: draw each in `LocalTime`, which writes it again in the browser's zone. Never add a
+dates are UTC: draw each in `LocalTime`, which writes it again in the browser's zone. A value that
+is a day, not an instant (a report window, a week's start, an API's `"2026-09-02"`), is a
+`corten::i18n::Day` (it parses, and reads JSON and serde, as that text), which `t.date(day, style)`
+writes as that day in every zone; never turn it into midnight UTC to format it. Never add a
 time zone crate, a `Zone` newtype or a page script that converts dates.
 
 ## Routes only some callers may use

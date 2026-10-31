@@ -2994,6 +2994,15 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
                     }),
                 )
                 .route("/offset", get(move |req: Req| async move { req.zone().offset(at).to_string() }))
+                // A calendar day: the same day in every zone (#502).
+                .route(
+                    "/day",
+                    get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let day = crate::i18n::Day::new(2026, 3, 22).unwrap();
+                        req.test_page("Day", html! { <p>{t.date(day, DateStyle::Medium)}</p> })
+                    }),
+                )
                 // Through Corten's handler check, which knows the answer is `Public`.
                 .route(
                     "/public",
@@ -3058,6 +3067,10 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
     }
     assert_eq!(get_with(zoned.clone(), "/offset", Some("corten-zone=America/Chicago")).await.1, "-18000");
     assert_eq!(get_with(zoned.clone(), "/offset", None).await.1, "0");
+    for zone in ["corten-zone=America/Chicago", "corten-zone=Pacific/Kiritimati", "corten-zone=Pacific/Pago_Pago"] {
+        let (_, page) = get_with(zoned.clone(), "/day", Some(zone)).await;
+        assert!(page.contains("<p>Mar 22, 2026</p>"), "{zone}: {page}");
+    }
     // A `Public` answer is the same for everyone: written as for a visitor whose zone is not
     // known (UTC, its LocalTimes written again in the browser), and it stays shared.
     let (cache, page) = get_with(zoned.clone(), "/public", Some("corten-zone=America/Chicago")).await;

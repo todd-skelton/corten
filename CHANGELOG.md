@@ -1181,6 +1181,17 @@ Corten is pre-1.0, so any minor version may change the API.
     `zone_unknown()`. The minified format module grows by 18 bytes (3,008 to 3,026); the runtime
     is unchanged. RENDER_TBD
     ([#387 Dates in the visitor's zone need a tz crate, a ClientZone argument on every handler and a prop through every component, and the first page is UTC](https://github.com/todd-skelton/corten/issues/387)).
+154. `corten::i18n::Day`: a calendar date with no instant behind it (a report's window, a week's
+    start, a due date, an API's `"2026-09-02"`). `t.date(day, style)` writes it as that day in every
+    zone, as an `OnDay`, which has no `.zone(..)` and no time (`t.time` and `t.date_time` take an
+    instant), so a day cannot be written as an instant by mistake (`compile_fail` doctests). With
+    `App::client_zone` a day kept as midnight UTC read a day early west of UTC. `Day` parses
+    `YYYY-MM-DD` only (what `<input type="date">` sends), reads and writes JSON and serde as that
+    text, renders as it in `html!` (`<time datetime={on_day.datetime()}>`), and has `plus(n)` and
+    `midnight_utc()`. `t.date` takes a `DateValue`: an instant as before, or a `Day`. A script's
+    `format("2026-09-02")` with no offset writes the same day (checked by `npm run check`).
+    RENDER_TBD
+    ([#502 i18n: no way to write a calendar date (no instant behind it) that never shifts with the zone](https://github.com/todd-skelton/corten/issues/502)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

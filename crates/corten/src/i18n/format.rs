@@ -360,8 +360,9 @@ pub enum DateStyle {
 /// The month and year without the day, for [`t.date`](super) (`en`): a "Member since" line, a
 /// set's release month, a statement's period. Written as Intl writes `{ year, month }`, in the
 /// locale's order and with its month names (which some languages inflect differently here).
-/// A month kept as an instant at UTC midnight is written `.zone(Utc)`, or with
-/// [`crate::App::client_zone`] it reads a month early west of UTC on its first day.
+/// A month that is a calendar value is a [`Day`] (its first), written in no zone; one kept as an
+/// instant at UTC midnight is written `.zone(Utc)`, or with [`crate::App::client_zone`] it reads
+/// a month early west of UTC on its first day.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MonthStyle {
     /// `Mar 2026`
@@ -372,9 +373,9 @@ pub enum MonthStyle {
 
 /// The month and day without the year, for [`t.date`](super) (`en`): a chart's axis, a week's row
 /// ("Week of Mar 2"), a timeline whose year the page says once. Written as Intl writes
-/// `{ month, day }`, in the locale's order and with its month names (`2 mars` in `fr`). A day
-/// kept as an instant at UTC midnight is written `.zone(Utc)`, or with
-/// [`crate::App::client_zone`] it reads a day early west of UTC.
+/// `{ month, day }`, in the locale's order and with its month names (`2 mars` in `fr`). A
+/// calendar day is a [`Day`], written in no zone; one kept as an instant at UTC midnight is
+/// written `.zone(Utc)`, or with [`crate::App::client_zone`] it reads a day early west of UTC.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DayStyle {
     /// `Mar 2`
@@ -1306,6 +1307,240 @@ impl AttrValue for When {
 impl Display for When {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.write(f)
+    }
+}
+
+/// A calendar date with no instant behind it: a report's window, a week's start, a due date, an
+/// API's `"2026-09-02"`. `t.date(day, style)` writes it as that day in every zone, so a page that
+/// writes instants in the visitor's zone does not show it as the day before west of UTC. It has
+/// no `.zone(..)` and no time: `t.time` and `t.date_time` take an instant only.
+///
+/// ```
+/// use corten::i18n::{Day, DateStyle, Messages as _};
+/// corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+///
+/// let day: Day = "2026-09-02".parse().unwrap();
+/// assert_eq!(Msg::for_locale("en").date(day, DateStyle::Medium).to_string(), "Sep 2, 2026");
+/// assert_eq!(day.to_string(), "2026-09-02");
+/// ```
+///
+/// A day is not in a zone:
+///
+/// ```compile_fail,E0599
+/// use corten::i18n::{Day, DateStyle, Messages as _, Offset};
+/// corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+///
+/// let day = Day::new(2026, 9, 2).unwrap();
+/// let _ = Msg::for_locale("en").date(day, DateStyle::Medium).zone(Offset::hours(-5));
+/// ```
+///
+/// and has no time:
+///
+/// ```compile_fail,E0277
+/// use corten::i18n::{Day, Messages as _, TimeStyle};
+/// corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+///
+/// let _ = Msg::for_locale("en").time(Day::new(2026, 9, 2).unwrap(), TimeStyle::Short);
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Day {
+    /// Days since 1970-01-01.
+    days: i32,
+}
+
+impl Day {
+    /// The day `year`-`month`-`day` (proleptic Gregorian, years 0 to 9999), or `None` for a
+    /// date that does not exist (`2026, 2, 30`).
+    pub fn new(year: i32, month: u32, day: u32) -> Option<Day> {
+        let valid =
+            (0..=9999).contains(&year) && (1..=12).contains(&month) && day >= 1 && day <= days_in_month(i64::from(year), month);
+        valid.then(|| Day { days: days_from_civil(i64::from(year), month, day) as i32 })
+    }
+
+    pub fn year(self) -> i32 {
+        civil_from_days(i64::from(self.days)).0 as i32
+    }
+
+    /// 1 to 12.
+    pub fn month(self) -> u32 {
+        civil_from_days(i64::from(self.days)).1
+    }
+
+    /// 1 to 31.
+    pub fn day(self) -> u32 {
+        civil_from_days(i64::from(self.days)).2
+    }
+
+    /// The day after it, or `n` days on (back for a negative `n`): a week's end is
+    /// `start.plus(6)`. `None` past the years `Day::new` takes.
+    pub fn plus(self, n: i32) -> Option<Day> {
+        let days = self.days.checked_add(n)?;
+        let year = civil_from_days(i64::from(days)).0;
+        (0..=9999).contains(&year).then_some(Day { days })
+    }
+
+    /// Midnight UTC of the day, for something that needs an instant (a query's bound); writing
+    /// it is `t.date(day, ..)`, not this.
+    pub fn midnight_utc(self) -> SystemTime {
+        let seconds = i64::from(self.days) * 86_400;
+        match u64::try_from(seconds) {
+            Ok(after) => UNIX_EPOCH + Duration::from_secs(after),
+            Err(_) => UNIX_EPOCH - Duration::from_secs(seconds.unsigned_abs()),
+        }
+    }
+}
+
+fn days_in_month(year: i64, month: u32) -> u32 {
+    match month {
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+/// What [`Day`]'s `parse` refused: not `YYYY-MM-DD`, or no such day.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InvalidDay;
+
+impl Display for InvalidDay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("not a day as YYYY-MM-DD")
+    }
+}
+
+impl std::error::Error for InvalidDay {}
+
+impl std::str::FromStr for Day {
+    type Err = InvalidDay;
+
+    /// `2026-09-02`, as `<input type="date">` sends it and ISO 8601 writes it: four digits, two and
+    /// two. Nothing else (a time, a zone, `2026-9-2`).
+    fn from_str(text: &str) -> Result<Day, InvalidDay> {
+        let b = text.as_bytes();
+        if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+            return Err(InvalidDay);
+        }
+        let digits = |range: std::ops::Range<usize>| {
+            b[range].iter().try_fold(0u32, |n, &c| c.is_ascii_digit().then(|| n * 10 + u32::from(c - b'0')))
+        };
+        let (Some(year), Some(month), Some(day)) = (digits(0..4), digits(5..7), digits(8..10)) else { return Err(InvalidDay) };
+        Day::new(year as i32, month, day).ok_or(InvalidDay)
+    }
+}
+
+impl Display for Day {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (year, month, day) = civil_from_days(i64::from(self.days));
+        write!(f, "{year:04}-{month:02}-{day:02}")
+    }
+}
+
+impl fmt::Debug for Day {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Day({self})")
+    }
+}
+
+impl serde::Serialize for Day {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Day {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Day, D::Error> {
+        struct Visit;
+        impl serde::de::Visitor<'_> for Visit {
+            type Value = Day;
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a day as YYYY-MM-DD")
+            }
+            fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Day, E> {
+                text.parse().map_err(|_| E::invalid_value(serde::de::Unexpected::Str(text), &self))
+            }
+        }
+        deserializer.deserialize_str(Visit)
+    }
+}
+
+impl Render for Day {
+    fn render(&self, out: &mut String) {
+        let _ = write!(out, "{self}");
+    }
+}
+
+impl AttrValue for Day {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        out.push_str(name);
+        out.push_str("=\"");
+        self.render(out);
+        out.push('"');
+    }
+}
+
+/// What [`t.date`](super) takes: an instant (a `SystemTime`, or what converts into one), written
+/// as a [`When`] in a zone, or a [`Day`], written as an [`OnDay`] in none.
+pub trait DateValue: Sized {
+    /// What `t.date` gives for it.
+    type Text;
+    #[doc(hidden)]
+    fn date_text(self, data: &'static __private::LocaleData, style: impl DateOnly) -> Self::Text;
+}
+
+impl<T: Into<SystemTime>> DateValue for T {
+    type Text = When;
+    #[inline]
+    fn date_text(self, data: &'static __private::LocaleData, style: impl DateOnly) -> When {
+        When::date(data, self.into(), style)
+    }
+}
+
+impl DateValue for Day {
+    type Text = OnDay;
+    #[inline]
+    fn date_text(self, data: &'static __private::LocaleData, style: impl DateOnly) -> OnDay {
+        // Its midnight in UTC, written at offset 0 whatever zone the answer is written in.
+        OnDay { when: When { data, at: self.midnight_utc(), offset: 0, style: style.index(), zoned: true }, day: self }
+    }
+}
+
+/// A [`Day`] in a locale: what `t.date(day, style)` returns, the same day in every zone. It
+/// renders in `html!` as text or an attribute value, and is a message argument.
+#[derive(Clone, Copy)]
+pub struct OnDay {
+    when: When,
+    day: Day,
+}
+
+impl OnDay {
+    /// The day as `<time datetime>` takes it: `2026-09-02`.
+    pub fn datetime(&self) -> Day {
+        self.day
+    }
+
+    /// Its locale and style as a script's format (`t.js().date(..)`'s): `format("2026-09-02")`
+    /// with no `offset` writes the same day.
+    pub fn format(&self) -> DateFormat {
+        self.when.format()
+    }
+}
+
+impl Render for OnDay {
+    fn render(&self, out: &mut String) {
+        self.when.render(out)
+    }
+}
+
+impl AttrValue for OnDay {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        self.when.write_attr(name, out)
+    }
+}
+
+impl Display for OnDay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.when, f)
     }
 }
 

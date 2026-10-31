@@ -338,8 +338,12 @@ has reported its zone, and without JavaScript; draw a date the first page shows 
 server's own format, so it is right on the first page too. A date in an attribute
 (`title={..}`) has no element to write again and stays in UTC on that page. A live part's
 fragments, rendered as the stream is read, are in the zone too. A value that names a day rather
-than an instant (a release month, a chart's axis, a due date kept as UTC midnight) takes
-`.zone(Utc)`, or it reads a day early west of UTC. A script's `t.js().date(..)` writes UTC unless
+than an instant (a report's window, a week's start, a due date, an API's `"2026-09-02"`) is a
+`corten::i18n::Day`, which `t.date(day, style)` writes as that day in every zone; it has no
+`.zone(..)` and no time, so the compiler keeps it from being written as an instant. `Day` parses
+`YYYY-MM-DD` (what `<input type="date">` sends), reads and writes JSON and serde as that text,
+and `day.midnight_utc()` is the instant where a query needs one. A day already kept as an
+instant at UTC midnight takes `.zone(Utc)`, or it reads a day early west of UTC. A script's `t.js().date(..)` writes UTC unless
 it is given an offset (`format(at, { offset })`, the browser's at that instant), and `to_string()`
 or `format!` in a handler is UTC: only Corten's render knows the zone, and a `req.screen`'s data
 takes `.zone(req.zone())` where it formats a date itself. A `Public` answer is the same for
