@@ -14,7 +14,7 @@ pub fn StatementTable<'a>(t: Msg, sets: &'a [(&'a str, usize, u64)]) -> impl Ren
     let items: usize = sets.iter().map(|(_, items, _)| items).sum();
     let cents: u64 = sets.iter().map(|(_, _, cents)| cents).sum();
     // A set's share of the total in thousandths: the text shows one decimal of a percent.
-    let share = move |part: u64| if cents == 0 { 0 } else { part * 1000 / cents };
+    let share = move |part: u64| (part * 1000).checked_div(cents).unwrap_or(0);
     html! {
         <table class={Table}>
             <thead>
