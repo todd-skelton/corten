@@ -54,10 +54,13 @@ pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
     Ok(Sheet { css, classes: s.classes, properties: s.properties })
 }
 
-/// Whether `syntax` (the text of an `@property`'s `syntax`) is one the browser reads: `*`, or
-/// components joined by `|`, each a data type (`<length>`) or a keyword, either followed by `+`
-/// (a list) or `#` (a comma list), but `<transform-list>`, which is a list already
-/// (CSS Properties and Values API Level 1, its supported names: no `<string>`). A rule with another is ignored.
+/// Whether `syntax` (the text of an `@property`'s `syntax`, its escapes decoded) is one the
+/// browser reads, by the algorithm of CSS Properties and Values API Level 1 (5.4, consume a syntax
+/// definition): `*`, or components joined by `|`, each a supported data type name (`<length>`,
+/// no `<string>`) or a keyword, either followed by `+` (a list) or `#` (a comma list), but
+/// `<transform-list>`, which is a list already. A keyword is an identifier that starts with a
+/// letter, `_`, a non-ASCII character or an escape (not `-`) and is not a CSS-wide keyword or
+/// `default`. The browser ignores a rule with another syntax.
 fn syntax_valid(syntax: &str) -> bool {
     const TYPES: &[&str] = &[
         "angle",
@@ -75,36 +78,129 @@ fn syntax_valid(syntax: &str) -> bool {
         "transform-list",
         "url",
     ];
-    if syntax.trim() == "*" {
+    let space = |c: &char| matches!(c, ' ' | '\t' | '\n');
+    let chars: Vec<char> = preprocess(syntax).chars().collect();
+    let (mut start, mut end) = (0, chars.len());
+    while start < end && space(&chars[start]) {
+        start += 1;
+    }
+    while end > start && space(&chars[end - 1]) {
+        end -= 1;
+    }
+    let chars = &chars[start..end];
+    if chars.is_empty() {
+        return false;
+    }
+    if chars == ['*'] {
         return true;
     }
-    syntax.split('|').all(|component| {
-        let component = component.trim();
-        if let Some(rest) = component.strip_prefix('<') {
-            let (name, multiplier) = match rest.strip_suffix(['+', '#']) {
-                Some(name) => (name, true),
-                None => (rest, false),
-            };
-            let Some(name) = name.strip_suffix('>') else { return false };
-            TYPES.contains(&name) && !(multiplier && name == "transform-list")
-        } else {
-            // A keyword: an identifier, not one of the CSS-wide keywords, which may take a
-            // multiplier too (`open+`).
-            let component = component.strip_suffix(['+', '#']).unwrap_or(component);
-            let mut chars = component.chars();
-            // An identifier starts with a letter or `_`, or `-` and then one of those or `-`.
-            let starts = match chars.next() {
-                Some('-') => chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '-'),
-                Some(c) => c.is_ascii_alphabetic() || c == '_',
-                None => false,
-            };
-            starts
-                && component.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-                && !["initial", "inherit", "unset", "revert", "revert-layer", "default"]
-                    .iter()
-                    .any(|k| component.eq_ignore_ascii_case(k))
+    let mut i = 0;
+    loop {
+        while chars.get(i).is_some_and(space) {
+            i += 1;
         }
-    })
+        match chars.get(i) {
+            Some('<') => {
+                let Some(len) = chars[i..].iter().position(|&c| c == '>') else { return false };
+                let name: String = chars[i + 1..i + len].iter().collect();
+                if !TYPES.contains(&name.as_str()) {
+                    return false;
+                }
+                i += len + 1;
+                if name != "transform-list" && matches!(chars.get(i), Some('+' | '#')) {
+                    i += 1;
+                }
+            }
+            Some(&c) if starts_ident(c) || (c == '\\' && chars.get(i + 1) != Some(&'\n')) => {
+                let mut name = String::new();
+                loop {
+                    match chars.get(i) {
+                        Some(&c) if starts_ident(c) || c.is_ascii_digit() || c == '-' => {
+                            name.push(c);
+                            i += 1;
+                        }
+                        Some('\\') if chars.get(i + 1) != Some(&'\n') => {
+                            let (c, next) = escaped(chars, i + 1);
+                            name.push(c);
+                            i = next;
+                        }
+                        _ => break,
+                    }
+                }
+                if ["initial", "inherit", "unset", "revert", "revert-layer", "default"]
+                    .iter()
+                    .any(|k| name.eq_ignore_ascii_case(k))
+                {
+                    return false;
+                }
+                if matches!(chars.get(i), Some('+' | '#')) {
+                    i += 1;
+                }
+            }
+            _ => return false,
+        }
+        while chars.get(i).is_some_and(space) {
+            i += 1;
+        }
+        match chars.get(i) {
+            None => return true,
+            Some('|') => i += 1,
+            Some(_) => return false,
+        }
+    }
+}
+
+/// Whether `c` starts an identifier: a letter, `_` or a non-ASCII character (CSS Syntax Level 3,
+/// ident-start code point).
+fn starts_ident(c: char) -> bool {
+    c.is_ascii_alphabetic() || c == '_' || !c.is_ascii()
+}
+
+/// `text` as CSS reads it: each line break (`\r\n`, `\r`, form feed) one `\n`, and NUL the
+/// replacement character (CSS Syntax Level 3, preprocessing the input stream).
+fn preprocess(text: &str) -> String {
+    text.replace("\r\n", "\n").replace(['\r', '\u{c}'], "\n").replace('\0', "\u{fffd}")
+}
+
+/// A CSS string's contents with its escapes decoded (CSS Syntax Level 3, consume a string token):
+/// `\` and a line break is nothing, and `\` before anything else is the code point it escapes.
+fn unescape(text: &str) -> String {
+    let chars: Vec<char> = preprocess(text).chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        match (chars[i], chars.get(i + 1)) {
+            ('\\', None) => i += 1,
+            ('\\', Some('\n')) => i += 2,
+            ('\\', Some(_)) => {
+                let (c, next) = escaped(&chars, i + 1);
+                out.push(c);
+                i = next;
+            }
+            (c, _) => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// The code point the escape whose `\` is just before `at` stands for, and where the escape
+/// ends (CSS Syntax Level 3, consume an escaped code point): one to six hex digits and one
+/// whitespace after them, the replacement character for zero, a surrogate or past U+10FFFF, or
+/// else the next character itself.
+fn escaped(chars: &[char], at: usize) -> (char, usize) {
+    let hex = chars[at..].iter().take(6).take_while(|c| c.is_ascii_hexdigit()).count();
+    if hex == 0 {
+        return match chars.get(at) {
+            Some(&c) => (c, at + 1),
+            None => ('\u{fffd}', at),
+        };
+    }
+    let value = chars[at..at + hex].iter().fold(0u32, |value, c| value * 16 + c.to_digit(16).unwrap_or(0));
+    let end = at + hex + usize::from(matches!(chars.get(at + hex), Some(' ' | '\t' | '\n')));
+    (if value == 0 { '\u{fffd}' } else { char::from_u32(value).unwrap_or('\u{fffd}') }, end)
 }
 
 /// Whether `value`, an `initial-value`, is one of `kind` (a type of `SYNTAXES`): a number with a
@@ -387,7 +483,7 @@ impl Scoper<'_> {
                             ),
                         ));
                     }
-                    syntax = Some(value[1..value.len() - 1].trim().to_string());
+                    syntax = Some(unescape(&value[1..value.len() - 1]).trim_matches([' ', '\t', '\n']).to_string());
                 }
                 Some(("inherits", value)) if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false") => {
                     inherits = true
@@ -1083,6 +1179,12 @@ mod tests {
             "'<length> |'",
             "'- | <length>'",
             "'<string>'",
+            // A keyword starts like an identifier but not with `-` (Chromium drops `-foo` and `--foo`).
+            "'--foo | compact'",
+            "'-foo | compact'",
+            "'-_x'",
+            "'a b'",
+            "'\\64 efault'",
         ] {
             assert!(
                 error(&format!("@property --a {{ syntax: {bad}; inherits: false; initial-value: 0 }}"))
@@ -1090,7 +1192,21 @@ mod tests {
                 "{bad}"
             );
         }
-        for good in ["'*'", "'<color>+'", "'<length>#'", "'auto | <length>'", "'small | medium'", "'open+'"] {
+        for good in [
+            "'*'",
+            "'<color>+'",
+            "'<length>#'",
+            "'auto | <length>'",
+            "'small | medium'",
+            "'open+'",
+            "'é | compact'",
+            "'_x'",
+            "'\\\\61 b | compact'",
+            "'\\61 b | compact'",
+            "'\\3c color>'",
+            "'x\\\\2d y'",
+            "' auto\t|  <length> '",
+        ] {
             assert!(
                 scope(&format!("@property --a {{ syntax: {good}; inherits: false; initial-value: x }}"), "m").is_ok(),
                 "{good}"
@@ -1100,6 +1216,11 @@ mod tests {
             scope("@PROPERTY --x { SYNTAX: \"<number>\"; INHERITS: false; INITIAL-VALUE: 0 }", "m").unwrap().properties,
             [("x".to_string(), Some("Number"))],
             "at-rule and descriptor names are case-insensitive"
+        );
+        assert_eq!(
+            scope("@property --x { syntax: '\\3c percentage>'; inherits: false; initial-value: 0% }", "m").unwrap().properties,
+            [("x".to_string(), Some("Percentage"))],
+            "the syntax is read with its escapes decoded, as the browser reads it"
         );
         assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: 1. }").contains("is not a <number>"));
         assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: . }").contains("is not a <number>"));
