@@ -1157,7 +1157,14 @@ Corten is pre-1.0, so any minor version may change the API.
     distinct value, allowed by its hash in that response's `style-src`, so it paints with the
     sizes, needs no script or nonce and allows no style attribute; the runtime sets the values a
     patch, navigation or live fragment brings through the CSSOM. `examples/seller-desk`'s
-    statement draws each set's share as a bar. MEASURED
+    statement draws each set's share as a bar. The minified runtime grows by 302 bytes (27,428 to
+    27,730), 83 gzipped, 85 with brotli. Measured with callgrind (release build, in-process
+    `oneshot`, the difference between 1,200 and 200 requests over 1,000, median of three): a page
+    that sets no value runs 22,976 instructions a request against 22,842 on its base (base runs
+    22,829 to 22,842, branch 22,975 to 22,976), the empty collection around the render and the
+    look in the security headers; a page of four meters with three distinct values runs 40,115
+    against 21,911 for the same markup without them, about 8,400 of it the SHA-256 of its block
+    (which now hashes the input in place rather than copying it)
     ([#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

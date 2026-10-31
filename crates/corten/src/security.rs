@@ -735,7 +735,13 @@ impl Csp {
             .find_map(|(i, part)| part.find(STYLE_AT).map(|at| (i, at + STYLE_AT.len())))
             .expect("every policy writes style-src 'self'");
         let without_nonce = HeaderValue::try_from(text).expect("CSP sources are checked tokens");
-        Csp { parts, without_nonce, style_at: (at, part, offset), opener: policy.sources.opener.header(), referrer: policy.sources.referrer }
+        Csp {
+            parts,
+            without_nonce,
+            style_at: (at, part, offset),
+            opener: policy.sources.opener.header(),
+            referrer: policy.sources.referrer,
+        }
     }
 
     /// The header with `nonce` (when there is one) and `hash`, a page's style block's, among its
@@ -850,7 +856,9 @@ impl Applied {
             (Some((None, csp)), None) => Some(csp.without_nonce.clone()),
             // A hash that made no header value (it cannot: base64 is header text) leaves the block
             // blocked, never the page without a policy.
-            (Some((None, csp)), Some(StyleBlock(hash))) => csp.with_style(None, &hash).or_else(|| Some(csp.without_nonce.clone())),
+            (Some((None, csp)), Some(StyleBlock(hash))) => {
+                csp.with_style(None, &hash).or_else(|| Some(csp.without_nonce.clone()))
+            }
             (Some((Some(nonce), csp)), None) => HeaderValue::try_from(csp.parts.join(&*nonce.0)).ok(),
             (Some((Some(nonce), csp)), Some(StyleBlock(hash))) => {
                 csp.with_style(Some(&nonce.0), &hash).or_else(|| HeaderValue::try_from(csp.parts.join(&*nonce.0)).ok())

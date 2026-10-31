@@ -591,7 +591,12 @@ fn meters() -> Router {
     Router::new().route(
         "/",
         get(|req: Req| async move {
-            let meters = html! { <Meter used={42.5} /><Meter used={7.0} /><Meter used={42.5} /><Meter used={f64::NAN} /> };
+            let meters = html! {
+                <Meter used={42.5} />
+                <Meter used={7.0} />
+                <Meter used={42.5} />
+                <Meter used={f64::NAN} />
+            };
             req.test_page("Meters", meters)
         }),
     )
@@ -609,7 +614,11 @@ async fn a_page_s_custom_properties_are_one_style_block_its_csp_allows_by_hash()
     assert!(csp.contains(&format!("style-src 'self' {};", security::hash_source(rules))), "{csp}");
     assert!(!csp.contains("style-src-attr") && !csp.contains("unsafe"), "{csp}");
     let (_, again, same) = call(app(meters(), None), "GET", None).await;
-    assert_eq!((&again["content-security-policy"], &same), (&headers["content-security-policy"], &body), "the same bytes, so a cache can keep it");
+    assert_eq!(
+        (&again["content-security-policy"], &same),
+        (&headers["content-security-policy"], &body),
+        "the same bytes, so a cache can keep it"
+    );
 
     let (_, headers, body) = call(app(meters(), None), "GET", Some("nav")).await;
     assert!(body.contains(r#"data-vars="--meter__fill:42.5%""#) && !body.contains("<style>"), "{body}");
@@ -4729,4 +4738,3 @@ fn keep_query_keeps_every_key_the_controls_do_not_name() {
         "x"
     );
 }
-

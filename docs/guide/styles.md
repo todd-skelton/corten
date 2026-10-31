@@ -97,6 +97,13 @@ a script copies out of a `<template>` holds the server's values for the template
 own: a script that fills rows draws their sizes itself. A property registered with another syntax
 (`<color>`, to animate it) is scoped the same way and has no constant.
 
+The block costs a page that uses it the hash of its text: measured with callgrind (release
+build, in process), four meters with three distinct values took a page from 21,911 instructions a
+request to 40,115, about 8,400 of it the SHA-256. A page that sets none runs about 130 more than
+before. Each distinct value is written twice in the block and once in its attribute, which
+compresses well when values repeat; a chart of hundreds of distinct values belongs in SVG
+attributes, which need no CSS at all.
+
 An area that allows style attributes, `.policy(|p| p.allow_style_attributes())`
 ([app guide](app.md#a-policy-for-part-of-the-app)), is for markup the app does not write as
 `html!`, such as rich text from a CMS.

@@ -225,11 +225,14 @@ impl Scoper<'_> {
     /// `syntax`, `inherits`, or (for any syntax but `*`) `initial-value`, so each is required.
     fn property(&mut self, prelude: &str, body: usize, at: usize) -> Result<(), String> {
         let prelude = prelude.trim();
-        let name = prelude.strip_prefix("--").filter(|name| {
-            !name.is_empty() && name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
-        });
+        let name = prelude
+            .strip_prefix("--")
+            .filter(|name| !name.is_empty() && name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')));
         let Some(name) = name else {
-            return Err(self.error(at, format!("@property {prelude}: a custom property's name starts with -- and has letters, digits, - and _")));
+            return Err(self.error(
+                at,
+                format!("@property {prelude}: a custom property's name starts with -- and has letters, digits, - and _"),
+            ));
         };
         if name.contains("__") {
             return Err(self.error(at, format!("--{name}: __ separates the component's name from the property; use - or _")));
@@ -249,10 +252,18 @@ impl Scoper<'_> {
             }
         }
         let Some(syntax) = syntax else {
-            return Err(self.error(at, format!("@property --{name} needs a syntax, such as syntax: \"<percentage>\"; the browser ignores it without one")));
+            return Err(self.error(
+                at,
+                format!(
+                    "@property --{name} needs a syntax, such as syntax: \"<percentage>\"; the browser ignores it without one"
+                ),
+            ));
         };
         if !inherits {
-            return Err(self.error(at, format!("@property --{name} needs inherits: true or inherits: false; the browser ignores it without one")));
+            return Err(self.error(
+                at,
+                format!("@property --{name} needs inherits: true or inherits: false; the browser ignores it without one"),
+            ));
         }
         if !initial && syntax != "*" {
             return Err(self.error(at, format!("@property --{name} needs an initial-value; the browser ignores it without one")));
@@ -891,7 +902,8 @@ mod tests {
         assert!(scope("@property --a { syntax: '*'; inherits: false }", "m").is_ok(), "* needs no initial value");
         assert!(error("@property --a__b { syntax: '*'; inherits: false }").contains("__ separates"));
         assert!(error("@property fill { syntax: '*'; inherits: false }").contains("starts with --"));
-        assert!(error("@property --a { syntax: '*'; inherits: false }\n@property --a { syntax: '*'; inherits: false }").contains("twice"));
+        assert!(error("@property --a { syntax: '*'; inherits: false }\n@property --a { syntax: '*'; inherits: false }")
+            .contains("twice"));
     }
 
     #[test]
