@@ -2,6 +2,7 @@
 // other, a third bids without JavaScript, and the house ends the lot.
 // Usage: node examples/auction-room/smoke.mjs http://localhost:18486 <house key>
 import { chromium } from "@playwright/test";
+import { steady } from "../../scripts/steady.mjs";
 import { stall } from "../../scripts/stall.mjs";
 
 const [base, houseKey] = process.argv.slice(2);
@@ -15,7 +16,7 @@ const check = (name, ok, detail = "") => {
 };
 
 const LOT = "/lots/ashen-drake";
-const browser = await chromium.launch({ headless: true });
+const browser = steady(await chromium.launch({ headless: true }));
 /** @type {string[]} */
 const errors = [];
 

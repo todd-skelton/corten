@@ -2,6 +2,7 @@
 // Usage: node scripts/smoke-dev.mjs http://localhost:18483 corten-watchlist-dev
 // (the watchlist image, run with -e CORTEN_DEV=1 in a container of that name).
 import { chromium } from "@playwright/test";
+import { steady } from "./steady.mjs";
 import { execFileSync } from "node:child_process";
 import { stall } from "./stall.mjs";
 
@@ -14,7 +15,7 @@ const check = (name, ok, detail = "") => {
   if (!ok) failures.push(name);
 };
 
-const browser = await chromium.launch({ headless: true });
+const browser = steady(await chromium.launch({ headless: true }));
 try {
   const page = await browser.newPage();
   await page.goto(base);

@@ -2,6 +2,7 @@
 // Firefox and WebKit (Playwright's builds: `npx playwright install chromium firefox webkit`).
 // Usage: node examples/ui-gallery/smoke.mjs [http://localhost:18482] [chromium|firefox|webkit ...]
 import { chromium, firefox, webkit } from "@playwright/test";
+import { steady } from "../../scripts/steady.mjs";
 import { stall } from "../../scripts/stall.mjs";
 import { browserBug } from "../../scripts/browser-bugs.mjs";
 import { networkInterfaces } from "node:os";
@@ -84,7 +85,7 @@ function pending() {
 }
 
 for (engine of names) {
-  const browser = await engines[engine].launch({ headless: true });
+  const browser = steady(await engines[engine].launch({ headless: true }));
   track(browser);
   try {
     await run(browser);

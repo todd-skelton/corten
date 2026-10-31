@@ -116,7 +116,9 @@ builds on the oldest supported Rust, `rust-version` in the root `Cargo.toml`. Th
 (`.github/workflows/ci.yml`) runs the same checks on every pull request and push to `main`.
 A browser smoke that goes five minutes without finishing a check stops itself (`scripts/stall.mjs`),
 printing the last check it finished and, for the runtime's smoke, the requests still loading; give a
-new smoke script's `check` the same watchdog.
+new smoke script's `check` the same watchdog. Each smoke launches its browser through `steady` (`scripts/steady.mjs`), which
+retries a page's `goto` or `reload` once on `net::ERR_NETWORK_CHANGED` alone: Chromium aborts a
+navigation when Docker changes the machine's network interfaces, which says nothing about the app.
 
 ## Cluster integration tests
 
