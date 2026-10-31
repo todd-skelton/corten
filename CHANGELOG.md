@@ -1239,8 +1239,13 @@ Corten is pre-1.0, so any minor version may change the API.
     the route takes every path of its shape, and Corten checks the text), and a value that is not
     the type is a 400 as for any parameter. Two routes of a module that differ only in that text
     (`{name}.rss`, `{name}.atom`) do not compile, and `Req::serves` agrees with the router. A
-    field after which text comes needs only `Display` for a link, as any field. A route without
-    such text generates the code it did
+    field after which text comes needs only `Display` for a link, as any field, and two routes
+    anywhere in the app (modules, areas, APIs) that differ only in that text stop it at startup.
+    A route without such text generates the code it did (the expanded card-market is identical).
+    Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
+    requests over 1,000, median of three): `/file/37.xml` with `{page}.xml` runs 20,993
+    instructions a request, against 21,083 for the workaround (the segment as text, the handler
+    stripping `.xml` and parsing) and 18,533 for `/plain/37` with a plain `{page}`
     ([#514 A route parameter cannot be followed by fixed text in its segment, so /sitemap/{kind}/{page}.xml has no typed route](https://github.com/todd-skelton/corten/issues/514)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
