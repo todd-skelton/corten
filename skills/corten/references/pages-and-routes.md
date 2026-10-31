@@ -74,8 +74,9 @@ built by hand. A parameter whose URL name is not the field's (`?priceMin=`) is r
 implement `QueryParams` by hand for it.
 
 A GET form that changes some of a route's query fields wraps its controls in
-`{keep_query(&at, html! { <select name={f.grade}>..</select> })}` (from `corten::form`): every
-query key the controls do not name is kept as a hidden input. Never write the other fields as
+`{keep_query(&at, &html! { <select name={f.grade}>..</select> })}` (from `corten::form`): every
+query key the controls do not name is kept as a hidden input. Lent, the controls borrow the locals
+they use. Fields the form resets are cleared on the route it is given (`..at.clone()`). Never write the other fields as
 hidden inputs by hand.
 
 ## A component

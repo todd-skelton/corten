@@ -45,7 +45,7 @@
 //!   handlers and `on:click={js::confirm(event, dialog)}` calls one of them.
 //! - A view owns what it uses and renders once, so it can be returned from a function and markup
 //!   can move or match the values it captured. A view lent to a prop inside another view
-//!   (`action={&html! { .. }}`) renders inside it, so it borrows what it uses and the rest of the
+//!   (`action={&html! { .. }}`) or to a call in its markup (`{f(&html! { .. })}`) renders inside it, so it borrows what it uses and the rest of the
 //!   markup can read the same locals.
 //! - `<Card title="x" compact>children</Card>` builds the struct `Card` (from [`component`] or
 //!   written by hand) with those fields, `compact` meaning `compact: true`, and the children in
@@ -99,7 +99,9 @@ pub use corten_macros::html;
 ///
 /// `#[component(css)]` gives the component the stylesheet named after it, next to it
 /// (`panel.css`), and `#[component(css = Panel)]` shares another component's; see
-/// [`crate::style`].
+/// [`crate::style`]. `#[component(js)]` gives it the script named after it, and
+/// `#[component(js = Panel)]` another component's handlers, for a part of it; see
+/// [`crate::script`].
 pub use corten_macros::component;
 
 /// Something that writes HTML. Strings and numbers escape themselves; views from `html!` write
@@ -117,8 +119,8 @@ pub trait Render {
 
 /// A view from `html!`: markup that renders when it is used, once. It owns what it captured
 /// (references are copied in), so markup can move and match those values freely, except a view
-/// lent to a prop inside another (`action={&html! { .. }}`), which borrows from the view around
-/// it; build the view again to render it again.
+/// lent to a prop or a call inside another (`action={&html! { .. }}`, `{f(&html! { .. })}`), which
+/// borrows from the view around it; build the view again to render it again.
 pub struct Html<F> {
     render: Cell<Option<F>>,
     /// The size this `html!` call last rendered to on its own, so the next string it renders into

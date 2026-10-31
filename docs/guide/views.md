@@ -154,8 +154,8 @@ With the `let` outside the `html!`, the view would borrow a local of a function 
 returned (E0515). `let`s and a layout component are a document, like the layout alone, and `let`s and a patch
 component are a patch.
 
-A view lent to a prop inside another view (`action={&html! { .. }}`) is built and rendered inside
-the view around it, so it borrows what it uses instead of owning it: a step bar's action and the
+A view lent to a prop inside another view (`action={&html! { .. }}`), or to a call written in its
+markup (`{keep_query(&at, &html! { .. })}`), is built and rendered inside the view around it, so it borrows what it uses instead of owning it: a step bar's action and the
 panel below it read the same `name`, without `let name = name.as_ref();` first. A view given by
 value (`view={html! { .. }}`) still owns what it uses, since the component may keep it, and so
 does one inside a closure of its own (`.map(|row| html! { .. })`) and one lent to a prop of the

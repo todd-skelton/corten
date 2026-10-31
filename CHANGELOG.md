@@ -1153,6 +1153,16 @@ Corten is pre-1.0, so any minor version may change the API.
     job released, a loop that returns at once) on a paused clock; a request's signal still cannot
     be aborted by the app (a `compile_fail` doctest). Nothing a request does changes
     ([#489 A task's shutdown path cannot be tested: Signal::default never aborts and abort is crate-private, so the app wraps Signal in a trait of its own](https://github.com/todd-skelton/corten/issues/489)).
+152. `#[component(js = Owner)]` (`js = path::to::Owner`): a part of a component, a function of its
+    own (a sheet, a row, a field), calls its owner's handlers through `js`, so a large page splits
+    into parts without a script per part (one more request for a one-line handler) or the owner
+    drawing the part's markup and passing it down as a prop. The page loads the owner's one script;
+    the part adds none, and an owner without a script does not compile (a `compile_fail` doctest).
+    A component's `js` module is now beside it (`__corten_js_{Name}`, hidden) instead of inside
+    its `render`, which is how a part reaches it; what renders is unchanged. The item page's
+    `render_cost` (release, callgrind, 3 runs) is 35,602,516,052 instructions against
+    35,613,859,907 on main (-0.03%, layout: the page has no part)
+    ([#492 A sub-component cannot bind its page's script: #[component] has css = Other but no js = Other](https://github.com/todd-skelton/corten/issues/492)).
 153. The `zones` feature: the visitor's time zone with its rules, from Corten. With
     `App::client_zone()`, while Corten renders a request's answer (a page, a patch), `t.date`,
     `t.time` and `t.date_time` write in the zone the browser reported, with its daylight saving
@@ -1867,7 +1877,9 @@ Corten is pre-1.0, so any minor version may change the API.
     its base (median of 3, callgrind, release build), within the typed build's own range of 22.5
     million, so no difference. To migrate:
     1. An app's own helper typed `FieldName` (now `FieldName<Untyped>`) takes a type parameter,
-       `fn hint<T>(f: FieldName<T>)`, and one typed `FieldName<Group>` for a group's names is now
+       `fn hint<T>(f: FieldName<T>)`, or the type when it draws one kind of control
+       (`fn whole_number(f: FieldName<String>)`; the errors point at the calls, the fix is the
+       helper's signature), and one typed `FieldName<Group>` for a group's names is now
        `FieldName<T, Group>`: the place moved to the second parameter.
     2. Names of fields of different types are different types: a list of them, or a comparison of
        two, takes `.untyped()` (`[f.email.untyped(), f.price.untyped()]`).
@@ -1882,6 +1894,18 @@ Corten is pre-1.0, so any minor version may change the API.
     load (stopping with the reason when it cannot), and logs when `perf` attaches and when the
     load starts. CI's and CONTRIBUTING's publish dry run builds in a target of its own
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
+95. A view lent to a call written in markup (`{keep_query(&at, &html! { .. })}`, a whole argument)
+    borrows what it uses, as one lent to a prop does since item 70, so the rest of the page reads
+    the same local; it was a `move` closure and a second read was E0382. A view given by value, or
+    in a closure of its own (`.map(|g| f(html! { .. }))`), still owns what it uses, and so does one
+    in a macro's arguments (`format!(..)`). A callee that needs the view `'static` or `Send` takes
+    it by value; a lent view that changes a captured `mut` local now changes the page's one (it
+    changed a copy). `{&html! { .. }}` alone is lent too. `keep_query`'s docs and the guide now
+    lend the controls, and say to clear the fields a form resets on the route it is given. The item
+    page's render runs 0.07% more instructions (median of 3, callgrind, release build:
+    35,618,729,963 against 35,592,439,055 on its base), which has no lent call: noise between
+    builds of the same markup.
+    ([#485 A view lent to a call inside markup ({keep_query(&r, &html! { .. })}) still takes ownership of the locals it uses, so a local also read elsewhere fails with E0382](https://github.com/todd-skelton/corten/issues/485)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -2360,6 +2384,11 @@ Corten is pre-1.0, so any minor version may change the API.
     parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
     and a form's body are still refused. Links write what they did
     ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
+82. A `corten-macros` script test bounded three parses on the wall clock (under 2 or 3 s), so check 1
+    failed on a busy machine with nothing wrong. Each case now passes in one run under a second, and
+    otherwise is checked by its growth (at a size about four times as long as at a quarter of it,
+    not sixteen), so load slows both runs alike
+    ([#495 A corten-macros script test's wall-clock bound (under 2 s) fails when the machine is busy, so check 1 goes red without a cause](https://github.com/todd-skelton/corten/issues/495)).
 
 ### Documentation
 
