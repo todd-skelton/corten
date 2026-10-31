@@ -1579,9 +1579,13 @@ fn color(value: &Value, at: &str) -> Result<String, String> {
     };
     if let Some(text) = written_hex {
         // An `alpha` beside the hex is kept as written; `#rrggbbaa` carries its own.
+        // It is checked as a color's is, so the object to write compiles.
         let alpha = match alpha {
-            Some(Value::Number(alpha)) => Some(alpha.as_str()),
-            _ => None,
+            None => None,
+            Some(alpha) => match number(alpha, &format!("{at}.alpha"))? {
+                (text, a) if (0.0..=1.0).contains(&a) => Some(text),
+                (text, _) => return Err(format!("{at}.alpha: {text} is not from 0 to 1")),
+            },
         };
         return Err(match hex_object(text, alpha) {
             Some(object) => format!("{at}: a color is its components, with the hex as a fallback; write {object}"),
@@ -1803,6 +1807,8 @@ mod tests {
         let half = error(one("color", r##"{"hex": "#000000", "alpha": 0.5}"##));
         assert!(half.ends_with(r##"[0, 0, 0], "alpha": 0.5, "hex": "#000000"}"##), "an alpha beside the hex is kept: {half}");
         assert_eq!(one("color", half.split("write ").nth(1).unwrap()).unwrap(), "rgb(0 0 0 / 0.5)");
+        assert!(error(one("color", r##"{"hex": "#000000", "alpha": 2}"##)).contains("not from 0 to 1"));
+        assert!(error(one("color", r##"{"hex": "#000000", "alpha": "0.5"}"##)).contains("alpha is a number"));
         assert!(error(one("color", r#""red""#)).contains("\"red\" is not a color"));
         assert!(error(c("hsl", "[360, 0, 0]", "")).contains("outside hsl's range, [0, 360)"));
         assert!(error(c("srgb", "[1.2, 0, 0]", "")).contains("outside srgb's range"));
