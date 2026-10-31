@@ -2,7 +2,8 @@
 // Toaster (toaster.rs). A patch replaces the message (#ui-toast) inside the toaster's live region,
 // which stays rendered so the new message is announced. This shows the close button while there
 // is a message and hides the message after `seconds` (0: until closed), waiting while the pointer
-// is over the toaster, focus is in it or the page is hidden.
+// is over the toaster, focus is in it or the page is hidden. A redirect's notice the runtime
+// brings after a navigation (`corten:notice`) replaces the message the same way.
 
 /** The message element: what the last patch put in the live region. @param {HTMLDivElement} status */
 const message = (status) => /** @type {HTMLElement | null} */ (status.firstElementChild);
@@ -60,6 +61,19 @@ export function connect(root, status, close, seconds, signal) {
     observer.disconnect();
     stop();
   });
+  // A redirect's notice the runtime brought: a navigation's page, whose layout did not run.
+  document.addEventListener(
+    "corten:notice",
+    (event) => {
+      const m = message(status);
+      if (!m) return;
+      const next = /** @type {HTMLElement} */ (m.cloneNode(false));
+      next.hidden = false;
+      next.textContent = /** @type {CustomEvent<{ message: string }>} */ (event).detail.message;
+      m.replaceWith(next);
+    },
+    { signal },
+  );
   // The page came with a message: an answer without the runtime, or a first load.
   show();
 }

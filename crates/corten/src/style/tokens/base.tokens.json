@@ -1,0 +1,29 @@
+{
+  "color": {
+    "$type": "color",
+    "ink": {
+      "$value": { "colorSpace": "srgb", "components": [0.1137, 0.1059, 0.149], "hex": "#1d1b26" }
+    },
+    "accent": {
+      "$value": { "colorSpace": "srgb", "components": [0.4196, 0.2471, 0.8314], "hex": "#6b3fd4" }
+    }
+  },
+  "space": {
+    "$type": "dimension",
+    "1": { "$value": { "value": 4, "unit": "px" } },
+    "2": { "$value": { "value": 8, "unit": "px" } },
+    "4": { "$value": { "value": 16, "unit": "px" } }
+  },
+  "$extensions": {
+    "run.corten": {
+      "breakpoints": { "md": { "value": 48, "unit": "rem" } },
+      "utilities": {
+        "gap": { "property": "gap", "group": "space" },
+        "direction": {
+          "property": "flex-direction",
+          "values": { "row": "row", "column": "column" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "type": {
+    "$type": "typography",
+    "body": {
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": { "value": 1, "unit": "rem" },
+        "fontWeight": 400,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.5
+      }
+    }
+  }
+}

@@ -10,6 +10,7 @@ mod assets;
 mod component;
 mod derive;
 mod dom;
+mod dtcg;
 mod event;
 mod from_json;
 mod from_ref;

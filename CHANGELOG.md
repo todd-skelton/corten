@@ -1129,7 +1129,26 @@ Corten is pre-1.0, so any minor version may change the API.
     keys its tabs differ in, so selecting a tab keeps a choice's key (it took the tab link's whole
     query)
     ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
-150. `Signal::task()`: a task's signal and its `Shutdown` handle, whose `begin()` aborts the signal
+150. `req.redirect_with_notice(&to, text)` and `req.notice()`: a redirect after a write says what
+    it did ("Batch 3517 deleted.") once, on the page it lands on, without a query field that a
+    reload, a copied link or Back says again. The text rides in a `__Host-` cookie for that page's
+    path (a minute, cut at 500 bytes, the path hashed with its escapes decoded), which the page's
+    answer removes and which a `HEAD` request leaves. The page renders it (`Notice`, escaped,
+    corten-ui's `Toast { message: req.notice() }` in the layout) and is private. A navigation's page
+    that did not draw it, its layout not run, hands it to the runtime in `corten-notice`, and the
+    runtime dispatches `corten:notice` (`detail.message`), which the `Toaster` shows; when the
+    navigation loads the page in full instead (its layout changed), the runtime keeps the notice in
+    session storage and dispatches it after the load. A debug build warns about a full load that
+    did not draw it. `OnSite` (sealed): the links a notice may go to, a route, `route.at(id)`, a
+    `Local` and a `#[derive(Href)]` enum whose variants all are; another site's URL does not compile.
+    The watchlist's subscribe and the gallery's rename use it, and the gallery's toaster moved into
+    its layout. A write forgets what was prefetched while it was on its way, which could predate
+    it or use up its notice. The minified runtime grows by 637 bytes (26,791 to 27,428), 240
+    gzipped (9,707 to 9,947), 216 with brotli (8,771 to 8,987). The item page's render runs
+    0.08% more instructions (median of 3, callgrind, release build: 35,619,673,804 against
+    35,592,439,055 on its base), the look for the notice cookie in each request's `Cookie`.
+    ([#385 A post that redirects cannot say what it did on the page it lands on, so each screen carries its message in a query value](https://github.com/todd-skelton/corten/issues/385)).
+151. `Signal::task()`: a task's signal and its `Shutdown` handle, whose `begin()` aborts the signal
     with `Abort::Shutdown` as `serve` does, so a test of an app's task covers its shutdown path (a
     job released, a loop that returns at once) on a paused clock; a request's signal still cannot
     be aborted by the app (a `compile_fail` doctest). Nothing a request does changes
@@ -1787,6 +1806,35 @@ Corten is pre-1.0, so any minor version may change the API.
     takes is now checked as that type, where it took any value. Make the set a Rust enum with a
     generated declaration and type the value with it, alone
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
+93. `tokens!` reads the W3C Design Tokens format, 2025.10, instead of a format of Corten's own:
+    token files with `$value`, `$type`, groups, `$root`, `$extends`, `{group.token}` references (a
+    reference is `var(--group-token)`) and JSON pointers (URI fragments, as RFC 6901 writes them;
+    one into a value is the value, an alias it reaches followed to the value), the Color
+    module's color spaces as CSS Color 4, and themes as a resolver document's modifiers
+    (`tokens!("tokens/tokens.resolver.json")`; a file with `resolutionOrder` is a resolver, whatever
+    its name, and each file it names is found from the file that names it), each context applying under `[data-{modifier}="{context}"]`
+    (the default with the default values of what the others change) and declaring again the
+    tokens that read one it changes, so a theme works on an element inside the page, a light panel
+    on a dark page included. Names are written as CSS writes them (`Brand Primary`
+    is `--brand-primary`, `BrandPrimary`), and a top-level token is a custom property with no enum.
+    Breakpoints, utilities (`"group"` where they said `"scale"`) and the media condition a
+    context follows go under `$extensions."run.corten"`. A context that defines a token the defaults
+    lack, or retypes one, does not compile (two `compile_fail` doctests); so do a circle of references, contexts of two modifiers whose CSS together differs from the resolver's answer, two names that are one
+    CSS name, breakpoints out of order or a breakpoint or utility whose name starts with a digit, a modifier with no default, and a gradient or typography token,
+    which have no one CSS value (a stroke style of dashes and caps is `dashed`, the Format module's
+    fallback). The JSON reader stays on `proc_macro` alone
+    and now reads arrays and numbers. Migration: move `scales` to typed groups (`"#1d1b26"` becomes
+    `{"colorSpace": "srgb", "components": [...], "hex": "#1d1b26"}`, `"4px"` becomes
+    `{"value": 4, "unit": "px"}`), each `themes` selector to a modifier context in a resolver, and
+    `"@media": {cond: selector}` to the modifier's `"media": {context: cond}`; the system-dark
+    selector is now `:where(:root):not([data-theme])` (the page chose no theme, with one attribute's
+    specificity so a later modifier's rule wins) rather than
+    `:root:not([data-theme="light"])`. The examples' generated CSS adds the default context's rule
+    (`[data-theme="light"]`, `[data-density="comfortable"]`) and otherwise differs only in that
+    selector, a 6-digit hex where one was written with 3, `0px` for a zero length token and no
+    space between layered shadows: card-market's tokens 1,946 to 2,171 bytes (473 to 492
+    brotli), the watchlist's 14,713 to 14,952 (1,752 to 1,759 brotli)
+    ([#394 tokens! reads a token format of our own instead of the W3C Design Tokens format (DTCG 2025.10)](https://github.com/todd-skelton/corten/issues/394)).
 
 93. Breaking: a form's `FieldName` carries the type its control sends, `FieldName<T = Untyped, P = Root>`
     (`condition: Option<Condition>` is a `FieldName<Condition>`, an `Option` and a `Vec` taken off;
