@@ -29,7 +29,12 @@ framework's shape, and what it does not do yet.
    frameworks put unchecked strings in every view and need a scanner and a build step; CSS in
    Rust needs inline styles the CSP blocks, or a runtime. A CSS file per component keeps the
    language designers know, and the macro makes its class names typed. Tokens cover the
-   one-off values (spacing, direction per breakpoint) utilities are good at.
+   one-off values (spacing, direction per breakpoint) utilities are good at. A value drawn from
+   data is a custom property the component's file registers (`@property`), set from markup as a
+   typed number with a unit (`style={FILL.pct(42.0)}`): a full page carries them in one style
+   block allowed by its hash (one header source, no nonce, so a cached page stays the same bytes,
+   where a hash per style attribute would be one header source per value), and the runtime sets
+   a patch's through the CSSOM, since a document keeps the policy it loaded with.
 7. **A page is sent whole, not streamed in parts.** Streaming a slow section later in the same
    response sends the status and headers before that section exists, so a failure in it can no
    longer become an error page or a redirect; placing it out of order needs a script, so

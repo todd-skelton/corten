@@ -687,6 +687,32 @@ function parse(html) {
 }
 
 /**
+ * Gives the elements in `root` (itself included) the custom properties the server wrote for
+ * them: `style={FILL.pct(42.0)}` in markup is `data-vars="--meter__fill:42%"`. A full page brings
+ * them in a style block its CSP allows by hash; markup a patch or a navigation brings in is
+ * under the policy the document loaded with, which allows neither that block nor a style
+ * attribute, so they are set through the CSSOM, which the policy does not govern, `!important`
+ * as the block's rules are, so markup wins over the component's rules either way. Called once
+ * the markup is in the document, before the browser paints it.
+ * @param {Element | DocumentFragment} root
+ */
+function setVars(root) {
+  const found = Array.from(root.querySelectorAll("[data-vars], template"));
+  for (const el of root instanceof Element ? [root, ...found] : found) {
+    // A template's markup gets its values too, so they move with it when a script puts its content
+    // in the page (`rows.append(rest.content)`).
+    if (el instanceof HTMLTemplateElement) setVars(el.content);
+    const vars = el.getAttribute("data-vars");
+    if (!vars || !(el instanceof HTMLElement || el instanceof SVGElement)) continue;
+    for (const one of vars.split(";")) {
+      const at = one.indexOf(":");
+      // Custom properties only: the server writes nothing else here.
+      if (one.startsWith("--") && at > 2) el.style.setProperty(one.slice(0, at), one.slice(at + 1), "important");
+    }
+  }
+}
+
+/**
  * Imports the modules the handlers in `node` name, including those in its templates' content
  * (rows a script will move into the page).
  * @param {ParentNode} node
@@ -756,6 +782,7 @@ async function apply(html, signal, sent, took) {
   // not this page: mark it as a navigation would. Only then: a patch without one (a ticker's)
   // only looks through what it put.
   if (navs || put.some(holdsNav)) markCurrent();
+  for (const el of put) setVars(el);
   if (again) readPatchAgain(again, put);
 }
 
@@ -1088,6 +1115,8 @@ async function swapPage(html, signal, stay, notice = null) {
   serve(content);
   const [x, y] = [scrollX, scrollY];
   main.replaceChildren(content);
+  // A page that sets no value skips the walk: a search of the text costs less than one of the DOM.
+  if (html.includes("data-vars")) setVars(main);
   scrolledIn.clear();
   view?.();
   if (stay) scrollTo(x, y);
