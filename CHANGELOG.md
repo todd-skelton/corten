@@ -1263,9 +1263,12 @@ Corten is pre-1.0, so any minor version may change the API.
     anywhere in the app (modules, areas, APIs) that differ only in that text stop it at startup.
     A route without such text generates the code it did (the expanded card-market is identical).
     Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
-    requests over 1,000, median of three): `/file/37.xml` with `{page}.xml` runs 20,993
-    instructions a request, against 21,083 for the workaround (the segment as text, the handler
-    stripping `.xml` and parsing) and 18,533 for `/plain/37` with a plain `{page}`
+    requests over 1,000, median of three and the range of the nine pairs): `/file/37.xml` with
+    `{page}.xml` runs 20,991 instructions a request (20,970 to 21,169), against 21,083 (21,073 to
+    21,203) for the workaround (the segment as text, the handler stripping `.xml` and parsing)
+    and 18,529 (18,488 to 18,781) for `/plain/37` with a plain `{page}`. `Req::serves`, which
+    now picks a route by its segments' shape and then checks the text, costs 5,350 instructions a
+    call (5,344 to 5,364) against 5,210 (5,209 to 5,210) on main, for an app of 12 routes
     ([#514 A route parameter cannot be followed by fixed text in its segment, so /sitemap/{kind}/{page}.xml has no typed route](https://github.com/todd-skelton/corten/issues/514)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

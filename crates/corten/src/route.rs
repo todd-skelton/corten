@@ -2332,7 +2332,8 @@ pub(crate) fn with_suffixes<R: Route + ?Sized, S: Clone + Send + Sync + 'static>
 }
 
 /// [`with_suffixes`]'s layer and service: a 404 unless the path ends each segment as `written`
-/// does. A service of its own, not `middleware::from_fn`, so a request boxes no future.
+/// does. A service of its own rather than `middleware::from_fn`, which boxes a `Next` and a future
+/// of its own on each request (the router still boxes the layered route, as it does any layer).
 #[derive(Clone)]
 struct Suffixed<S> {
     written: &'static str,
@@ -2449,7 +2450,7 @@ pub mod __private {
     fn unsuffixed<T: serde::de::DeserializeOwned>(text: &str, suffix: &str) -> Result<T, FormError> {
         let value =
             text.strip_suffix(suffix).ok_or_else(|| FormError::in_path(format!("`{text}` does not end in `{suffix}`")))?;
-        crate::form::de::one(value)
+        crate::form::de::in_path(value)
             .map_err(|e| FormError::in_path(format!("Cannot parse `{value}` to a `{}`: {e}", std::any::type_name::<T>())))
     }
 

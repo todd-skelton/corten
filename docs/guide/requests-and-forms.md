@@ -161,7 +161,8 @@ A parameter may be followed by plain text in its segment, as a file's extension 
 `#[route("/sitemap/{kind}/{page}.xml")] pub struct SitemapPage<'a> { pub kind: &'a str, pub page: u32 }`
 links to `/sitemap/items/3.xml`, and `Params` reads `page` as `3`. A segment that does not end in
 the text (`/sitemap/items/3.json`), or is only the text, is a 404 before the handler runs,
-whatever its method; one whose value is not the type (`x.xml`) is a 400, as any parameter is.
+whatever its method; one whose value is not the type (`x.xml`) is a 400, as any parameter is,
+and the value reads as any path parameter's does (a `bool` is `true` or `false`).
 The router matches the segment whole, so the route takes every path of its shape, as
 `/sitemap/{kind}/{page}` would: a `/{*page}` catch-all does not answer `/sitemap/items/3.json`
 either (`req.serves` agrees), and the app's middleware sees that 404 with the route's

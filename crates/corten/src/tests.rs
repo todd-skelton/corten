@@ -2337,6 +2337,11 @@ fn a_prefixed_entry_the_app_no_longer_has_is_left_out() {
 /// Every kind of parameter a route has, which its handler reads back as the link wrote it.
 #[crate::routes]
 mod params_url {
+    #[route("/flags/{on}.txt", get = params_flag)]
+    pub struct Flag {
+        pub on: bool,
+    }
+
     #[route("/shops/{shop}/items/{id}", get = params_item)]
     #[serde(rename_all = "camelCase")]
     pub struct Item<'a> {
@@ -2488,6 +2493,21 @@ fn routes_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
     let rss = crate::Methods::reads(get(|| async { "rss" }));
     let atom = crate::Methods::reads(axum::routing::post(|| async { "atom" }));
     let _ = App::new(Routes::new().__route::<Rss>(rss)).area::<Feeds>(|feeds| feeds.route::<Atom>(atom)).router();
+}
+
+async fn params_flag(at: crate::Params<params_url::Flag>) -> String {
+    at.on.to_string()
+}
+
+/// A value before text reads as a path parameter does: a `bool` is `true` or `false`, not a
+/// checkbox's `on`.
+#[tokio::test]
+async fn a_value_before_text_reads_as_a_path_parameter() {
+    let router = App::new(params_url::router()).router();
+    let (status, _, body) = call_with(router.clone(), "GET", "/flags/true.txt", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "true"));
+    let (status, _, _) = call_with(router, "GET", "/flags/on.txt", None, None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 #[derive(crate::Route)]
