@@ -1172,8 +1172,10 @@ Corten is pre-1.0, so any minor version may change the API.
     distinct value, allowed by its hash in that response's `style-src`, so it paints with the
     sizes, needs no script or nonce and allows no style attribute; the runtime sets the values a
     patch, navigation or live fragment brings through the CSSOM. `examples/seller-desk`'s
-    statement draws each set's share as a bar. The minified runtime grows by 302 bytes (27,428 to
-    27,730), 83 gzipped, 85 with brotli. Measured with callgrind (release build, in-process
+    statement draws each set's share as a bar. The minified runtime grows by 327 bytes (27,428 to
+    27,755), 96 gzipped, 101 with brotli, and `corten/views` (loaded only by a page whose handlers
+    use views) by 304 (2,852 to 3,156), 162 gzipped, 133 with brotli, for rows copied from a
+    `<template>`. Measured with callgrind (release build, in-process
     `oneshot`, the difference between 1,200 and 200 requests over 1,000, median of three): a page
     that sets no value runs 22,976 instructions a request against 22,842 on its base (base runs
     22,829 to 22,842, branch 22,975 to 22,976), the empty collection around the render and the
