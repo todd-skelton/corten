@@ -49,6 +49,18 @@ async function counted(container, work) {
   return counts;
 }
 
+// Before any load: the kernel this runs on, and `perf` counting an idle second on it. r8's droplet
+// locked up as counting started, on a kernel newer than the one it was provisioned with (#466); a
+// `perf` that does not fit the running kernel stops the step here with the reason instead.
+const kernel = spawnSync("uname", ["-r"], { encoding: "utf8" }).stdout.trim();
+const pending = existsSync("/var/run/reboot-required") ? " (a newer kernel is installed and waits for a reboot)" : "";
+writeFileSync(join(dir, "count-kernel.txt"), `${kernel}${pending}\n`);
+console.log(`counting on kernel ${kernel}${pending}`);
+const probe = spawnSync("perf", ["stat", "-a", "-x", ",", "-e", "instructions:u", "--", "sleep", "1"], { encoding: "utf8", timeout: 30_000 });
+if (probe.status !== 0 || !/instructions:u/.test(probe.stderr)) {
+  throw new Error(`perf cannot count on kernel ${kernel}: ${probe.error?.message ?? probe.stderr.trim()}`);
+}
+
 // Merged into the round's earlier counts, so one app can be counted again on its own.
 const file = join(dir, "instructions.json");
 const results = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};

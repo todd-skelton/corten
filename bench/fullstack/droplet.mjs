@@ -72,6 +72,10 @@ try {
     console.log("provisioning");
     ssh([
       "cloud-init status --wait >/dev/null",
+      // No package updates during the round: r8's droplet installed a new kernel mid-run (#466),
+      // and an apt run takes CPU and memory from what is being measured.
+      "systemctl disable --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1 || true",
+      "while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done",
       "command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh >/dev/null",
       "command -v node >/dev/null || (curl -fsSL https://deb.nodesource.com/setup_24.x | bash - >/dev/null && apt-get install -y -qq nodejs >/dev/null)",
       "command -v perf >/dev/null || apt-get install -y -qq linux-tools-common linux-tools-$(uname -r) >/dev/null",
