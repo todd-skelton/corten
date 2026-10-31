@@ -684,7 +684,7 @@ fn flatten(prefix: &str, value: Value, out: &mut Vec<(String, String)>) -> Resul
             out.push((prefix.to_string(), text));
             Ok(())
         }
-        Value::Other(what) => Err(format!("{prefix:?} is {what}; messages are strings")),
+        other => Err(format!("{prefix:?} is {}; messages are strings", other.kind())),
     }
 }
 

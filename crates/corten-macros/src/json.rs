@@ -1,15 +1,33 @@
-//! Just enough JSON for message catalogs: objects and strings, in order, with positions in errors.
+//! JSON for message catalogs and design-token files (RFC 8259): objects keep their keys in
+//! order, numbers keep the text they were written with, and errors give a line and column.
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Object(Vec<(String, Value)>),
+    Array(Vec<Value>),
     String(String),
-    /// A number, `true`, `false`, `null` or an array: what it was, for the error.
-    Other(&'static str),
+    /// A number as written, `0.5` or `1e3`, so a value copied into CSS keeps its digits.
+    Number(String),
+    Bool(bool),
+    Null,
+}
+
+impl Value {
+    /// What the value is, for an error: `a number`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Value::Object(_) => "an object",
+            Value::Array(_) => "an array",
+            Value::String(_) => "a string",
+            Value::Number(_) => "a number",
+            Value::Bool(_) => "a boolean",
+            Value::Null => "null",
+        }
+    }
 }
 
 pub fn parse(text: &str) -> Result<Value, String> {
-    let mut p = Parser { bytes: text.as_bytes(), text, i: 0 };
+    let mut p = Parser { bytes: text.as_bytes(), text, i: 0, depth: 0 };
     let value = p.value()?;
     p.space();
     if p.i < p.bytes.len() {
@@ -22,7 +40,12 @@ struct Parser<'a> {
     bytes: &'a [u8],
     text: &'a str,
     i: usize,
+    depth: usize,
 }
+
+/// Objects and arrays inside one another deeper than this are an error, so a file cannot overflow
+/// the compiler's stack here or in the recursive code that reads the value.
+pub const MAX_DEPTH: usize = 128;
 
 impl Parser<'_> {
     fn error(&self, message: &str) -> String {
@@ -33,7 +56,8 @@ impl Parser<'_> {
     }
 
     fn space(&mut self) {
-        while self.bytes.get(self.i).is_some_and(|b| b.is_ascii_whitespace()) {
+        // RFC 8259's four: space, tab, line feed, carriage return (not form feed).
+        while self.bytes.get(self.i).is_some_and(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r')) {
             self.i += 1;
         }
     }
@@ -51,11 +75,21 @@ impl Parser<'_> {
     fn value(&mut self) -> Result<Value, String> {
         self.space();
         match self.bytes.get(self.i) {
-            Some(b'{') => self.object(),
+            Some(b'{' | b'[') if self.depth == MAX_DEPTH => {
+                Err(self.error(&format!("objects and arrays nest more than {MAX_DEPTH} deep")))
+            }
+            Some(b'{') => {
+                self.depth += 1;
+                let value = self.object();
+                self.depth -= 1;
+                value
+            }
             Some(b'"') => Ok(Value::String(self.string()?)),
             Some(b'[') => {
-                self.skip_nested()?;
-                Ok(Value::Other("an array"))
+                self.depth += 1;
+                let value = self.array();
+                self.depth -= 1;
+                value
             }
             Some(_) => {
                 let start = self.i;
@@ -63,9 +97,10 @@ impl Parser<'_> {
                     self.i += 1;
                 }
                 match &self.text[start..self.i] {
-                    "true" | "false" => Ok(Value::Other("a boolean")),
-                    "null" => Ok(Value::Other("null")),
-                    word if word.parse::<f64>().is_ok() => Ok(Value::Other("a number")),
+                    "true" => Ok(Value::Bool(true)),
+                    "false" => Ok(Value::Bool(false)),
+                    "null" => Ok(Value::Null),
+                    word if is_number(word) => Ok(Value::Number(word.to_string())),
                     _ => {
                         self.i = start;
                         Err(self.error("expected a value"))
@@ -73,6 +108,24 @@ impl Parser<'_> {
                 }
             }
             None => Err(self.error("expected a value")),
+        }
+    }
+
+    fn array(&mut self) -> Result<Value, String> {
+        self.i += 1;
+        let mut items = Vec::new();
+        if self.eat(b']') {
+            return Ok(Value::Array(items));
+        }
+        loop {
+            items.push(self.value()?);
+            if self.eat(b',') {
+                continue;
+            }
+            if self.eat(b']') {
+                return Ok(Value::Array(items));
+            }
+            return Err(self.error("expected , or ]"));
         }
     }
 
@@ -161,29 +214,30 @@ impl Parser<'_> {
         self.i += 4;
         Ok(value)
     }
+}
 
-    fn skip_nested(&mut self) -> Result<(), String> {
-        let mut depth = 0;
-        while let Some(&b) = self.bytes.get(self.i) {
-            match b {
-                b'"' => {
-                    self.string()?;
-                    continue;
-                }
-                b'[' | b'{' => depth += 1,
-                b']' | b'}' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        self.i += 1;
-                        return Ok(());
-                    }
-                }
-                _ => {}
-            }
-            self.i += 1;
-        }
-        Err(self.error("unclosed array"))
+/// JSON's number grammar: `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?`.
+fn is_number(word: &str) -> bool {
+    let digits = |s: &str| s.len() - s.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    let rest = word.strip_prefix('-').unwrap_or(word);
+    let int = digits(rest);
+    if int == 0 || (int > 1 && rest.starts_with('0')) {
+        return false;
     }
+    let mut rest = &rest[int..];
+    if let Some(fraction) = rest.strip_prefix('.') {
+        let n = digits(fraction);
+        if n == 0 {
+            return false;
+        }
+        rest = &fraction[n..];
+    }
+    if let Some(exponent) = rest.strip_prefix(['e', 'E']) {
+        let exponent = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+        let n = digits(exponent);
+        return n > 0 && n == exponent.len();
+    }
+    rest.is_empty()
 }
 
 #[cfg(test)]
@@ -196,10 +250,37 @@ mod tests {
         let Value::Object(entries) = value else { panic!() };
         assert_eq!(entries[0], ("b".into(), Value::String("x\"y\u{e9}\u{1F600}".into())));
         assert_eq!(entries[1].1, Value::Object(vec![("c".into(), Value::String("\n".into()))]));
-        assert_eq!(entries[2].1, Value::Other("a number"));
-        assert_eq!(entries[3].1, Value::Other("an array"));
+        assert_eq!(entries[2].1, Value::Number("1".into()));
+        assert_eq!(entries[3].1, Value::Array(vec![Value::Number("1".into()), Value::String("]".into())]));
         assert!(parse("{\"a\": \"b\",\n }").unwrap_err().contains("line 2"));
         assert!(parse("{\"a\" \"b\"}").is_err());
         assert!(parse("{\"a\": \"b\"} x").is_err());
+    }
+
+    #[test]
+    fn reads_numbers_as_written_and_the_other_values() {
+        let value = parse(r#"[0, -0.5, 1e3, 2.50E-2, true, false, null, [], {}]"#).unwrap();
+        let number = |s: &str| Value::Number(s.into());
+        assert_eq!(
+            value,
+            Value::Array(vec![
+                number("0"),
+                number("-0.5"),
+                number("1e3"),
+                number("2.50E-2"),
+                Value::Bool(true),
+                Value::Bool(false),
+                Value::Null,
+                Value::Array(vec![]),
+                Value::Object(vec![]),
+            ])
+        );
+        assert!(parse(" \t\r\n[1]\n").is_ok());
+        for not_json in ["01", "1.", ".5", "+1", "1e", "inf", "NaN", "0x10", "[1,]", "[1 2]", "\u{c}[1]", "[1]\u{b}"] {
+            assert!(parse(not_json).is_err(), "{not_json}");
+        }
+        let deep = |n: usize| format!("{}1{}", "[".repeat(n), "]".repeat(n));
+        assert!(parse(&deep(MAX_DEPTH)).is_ok());
+        assert!(parse(&deep(100_000)).unwrap_err().contains("nest more than 128 deep"), "an error, not a stack overflow");
     }
 }

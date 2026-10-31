@@ -1,0 +1,26 @@
+{
+  "version": "2025.10",
+  "resolutionOrder": [
+    {
+      "type": "set",
+      "name": "base",
+      "sources": [
+        {
+          "space": { "$type": "dimension", "1": { "$value": { "value": 4, "unit": "px" } }, "gap": { "$value": "{space.1}" } }
+        }
+      ]
+    },
+    {
+      "type": "modifier",
+      "name": "theme",
+      "default": "light",
+      "contexts": { "light": [], "roomy": [{ "space": { "gap": { "$type": "dimension", "$value": { "value": 12, "unit": "px" } } } }] }
+    },
+    {
+      "type": "modifier",
+      "name": "density",
+      "default": "normal",
+      "contexts": { "normal": [], "compact": [{ "space": { "1": { "$type": "dimension", "$value": { "value": 2, "unit": "px" } } } }] }
+    }
+  ]
+}

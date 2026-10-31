@@ -1,0 +1,7 @@
+{
+  "space": {
+    "$type": "dimension",
+    "a": { "$value": { "value": { "$ref": "#/space/b/$value/value" }, "unit": "px" } },
+    "b": { "$value": { "value": { "$ref": "#/space/a/$value/value" }, "unit": "px" } }
+  }
+}
