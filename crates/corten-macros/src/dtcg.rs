@@ -1569,16 +1569,21 @@ fn stroke_style(value: &Value, at: &str, refs: &mut Refs) -> Result<String, Stri
 /// whose `hex` is them rounded to 8 bits, is the hex (`#1d1b26`, `rgb(29 27 38 / 0.05)` with an alpha).
 fn color(value: &Value, at: &str) -> Result<String, String> {
     // A hex alone is not a color in the format (2025.10): the error is the object to write instead.
-    let written_hex = match value {
-        Value::String(text) => Some(text.as_str()),
+    let (written_hex, alpha) = match value {
+        Value::String(text) => (Some(text.as_str()), None),
         Value::Object(entries) if field(entries, "components").is_none() => match field(entries, "hex") {
-            Some(Value::String(text)) => Some(text.as_str()),
-            _ => None,
+            Some(Value::String(text)) => (Some(text.as_str()), field(entries, "alpha")),
+            _ => (None, None),
         },
-        _ => None,
+        _ => (None, None),
     };
     if let Some(text) = written_hex {
-        return Err(match hex_object(text) {
+        // An `alpha` beside the hex is kept as written; `#rrggbbaa` carries its own.
+        let alpha = match alpha {
+            Some(Value::Number(alpha)) => Some(alpha.as_str()),
+            _ => None,
+        };
+        return Err(match hex_object(text, alpha) {
             Some(object) => format!("{at}: a color is its components, with the hex as a fallback; write {object}"),
             None => format!(
                 "{at}: {text:?} is not a color; a color is an object, {{\"colorSpace\": \"srgb\", \"components\": [1, 0, 0]}}"
@@ -1690,7 +1695,7 @@ fn color(value: &Value, at: &str) -> Result<String, String> {
 
 /// The color object a hex stands for (`#1d1b26`, `#f00`, with an alpha `#1d1b2680`): sRGB
 /// components to four places, which round back to the same 8-bit values, and the hex as written.
-fn hex_object(text: &str) -> Option<String> {
+fn hex_object(text: &str, alpha: Option<&str>) -> Option<String> {
     let digits = text.strip_prefix('#').filter(|d| d.chars().all(|c| c.is_ascii_hexdigit()))?;
     let long: String = match digits.len() {
         3 | 4 => digits.chars().flat_map(|c| [c, c]).collect(),
@@ -1709,7 +1714,10 @@ fn hex_object(text: &str) -> Option<String> {
         }
     };
     let components: Vec<String> = bytes[..3].iter().map(|b| unit(*b)).collect();
-    let alpha = bytes.get(3).map(|a| format!(", \"alpha\": {}", unit(*a))).unwrap_or_default();
+    let alpha = match alpha {
+        Some(alpha) => format!(", \"alpha\": {alpha}"),
+        None => bytes.get(3).map(|a| format!(", \"alpha\": {}", unit(*a))).unwrap_or_default(),
+    };
     Some(format!(
         r#"{{"colorSpace": "srgb", "components": [{}]{alpha}, "hex": "{}"}}"#,
         components.join(", "),
@@ -1792,6 +1800,9 @@ mod tests {
             one("color", r##"{"colorSpace": "srgb", "components": [0, 0, 0], "alpha": 0.502, "hex": "#000000"}"##).unwrap(),
             "rgb(0 0 0 / 0.502)"
         );
+        let half = error(one("color", r##"{"hex": "#000000", "alpha": 0.5}"##));
+        assert!(half.ends_with(r##"[0, 0, 0], "alpha": 0.5, "hex": "#000000"}"##), "an alpha beside the hex is kept: {half}");
+        assert_eq!(one("color", half.split("write ").nth(1).unwrap()).unwrap(), "rgb(0 0 0 / 0.5)");
         assert!(error(one("color", r#""red""#)).contains("\"red\" is not a color"));
         assert!(error(c("hsl", "[360, 0, 0]", "")).contains("outside hsl's range, [0, 360)"));
         assert!(error(c("srgb", "[1.2, 0, 0]", "")).contains("outside srgb's range"));
