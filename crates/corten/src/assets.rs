@@ -843,8 +843,31 @@ mod tests {
     use axum::http::Request;
     use tower::ServiceExt;
 
-    fn dir(name: &str, files: &[(&str, &str)]) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("corten-assets-{name}-{}", std::process::id()));
+    /// A directory under the system's temp directory, removed when it is dropped (by a failing
+    /// test too), so a test run leaves nothing behind.
+    struct Scratch(PathBuf);
+
+    impl std::ops::Deref for Scratch {
+        type Target = Path;
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl AsRef<Path> for Scratch {
+        fn as_ref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn dir(name: &str, files: &[(&str, &str)]) -> Scratch {
+        let root = Scratch(std::env::temp_dir().join(format!("corten-assets-{name}-{}", std::process::id())));
         for (path, body) in files {
             let path = root.join(path);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1236,6 +1259,10 @@ mod tests {
         let c = Assets::load(dir("v3", &[("b.css", "x")]), "/assets").unwrap();
         assert_ne!(a.version(), b.version());
         assert_ne!(a.version(), c.version());
-        assert_eq!(a.version(), Assets::load(dir("v1", &[]), "/assets").unwrap().version(), "same files, same version");
+        assert_eq!(
+            a.version(),
+            Assets::load(dir("v1-again", &[("a.css", "x")]), "/assets").unwrap().version(),
+            "same files, same version"
+        );
     }
 }

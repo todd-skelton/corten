@@ -419,5 +419,6 @@ export {};
         assert!(stale.is_err(), "a missing file fails once");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), types.typescript());
         types.sync(&path);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }
