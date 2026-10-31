@@ -2496,6 +2496,16 @@ Corten is pre-1.0, so any minor version may change the API.
     round that fails, or whose process dies without finishing, tries to download what it measured
     before the droplet is destroyed
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
+90. A `bench/fullstack` round runs on its droplet by itself, so a hung connection or a sleeping
+    PC can no longer stop or stall it. `droplet.mjs` starts the round as a systemd unit;
+    `--detach` leaves once it has started and `--collect` downloads a round that has ended and
+    destroys its droplet (or says where it is). `run-all.mjs --unattended` gives every call a time
+    limit and stops one that runs past it or prints nothing for an hour. A kernel lockup panics
+    and reboots the droplet, and the round goes on from the step after the one it was in, so it
+    needs no power cycle from outside. The droplet is destroyed only after its results are
+    downloaded. The step order, limits and resume rule are in `round.mjs`, tested by
+    `round.test.mjs` (`npm run check`)
+    ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
 
 ### Documentation
 
