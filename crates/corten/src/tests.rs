@@ -16,9 +16,10 @@ fn demo(text: &str) -> impl Render + '_ {
     }
 }
 
-/// A directory of the test's own under the system's temp directory (`corten-{name}-{pid}`), empty
-/// when made and removed when dropped, a failing test's included, so a test run leaves nothing
-/// behind.
+/// A path of the test's own under the system's temp directory (`corten-{name}-{pid}`): any
+/// leftover there is removed when it is made, the test creates what it writes, and the directory
+/// is removed when dropped, a failing test's included, so a test run leaves nothing behind. Each
+/// test uses a name no other test does.
 pub(crate) struct Scratch(std::path::PathBuf);
 
 impl Scratch {
