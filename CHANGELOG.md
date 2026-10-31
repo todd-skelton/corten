@@ -2356,6 +2356,12 @@ Corten is pre-1.0, so any minor version may change the API.
     parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
     and a form's body are still refused. Links write what they did
     ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
+84. The browser smokes retry a page's `goto` or `reload` once on `net::ERR_NETWORK_CHANGED`
+    alone, which Chromium raises when Docker changes the machine's network interfaces mid-run (twice
+    in CI in a week, each blocking a merge until a rerun); any other failure, a second one included,
+    still fails. One helper, `scripts/steady.mjs`, wraps each smoke's browser at launch. Test code
+    only
+    ([#497 Browser CI fails at random on net::ERR_NETWORK_CHANGED during a smoke navigation, blocking merges until a rerun](https://github.com/todd-skelton/corten/issues/497)).
 
 ### Documentation
 

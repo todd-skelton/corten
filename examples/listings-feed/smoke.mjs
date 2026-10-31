@@ -1,6 +1,7 @@
 // Browser smoke test for the seller's page, against one instance with Postgres and NATS.
 // Usage: node examples/listings-feed/smoke.mjs http://localhost:18485 (seller s1, the default seed)
 import { chromium } from "@playwright/test";
+import { steady } from "../../scripts/steady.mjs";
 import { stall } from "../../scripts/stall.mjs";
 
 const base = process.argv[2];
@@ -21,7 +22,7 @@ const snapshot = async () => {
 };
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
-const browser = await chromium.launch();
+const browser = steady(await chromium.launch());
 try {
   const page = await (await browser.newContext()).newPage();
   const errors = [];
