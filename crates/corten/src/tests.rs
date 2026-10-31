@@ -3154,6 +3154,16 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
                     }),
                 )
                 .route("/offset", get(move |req: Req| async move { req.zone().offset(at).to_string() }))
+                // Shared by its own header: a date written for one visitor would make it private.
+                .route(
+                    "/shared",
+                    get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let page =
+                            req.test_page("Shared", html! { <p>{t.date_time(at, DateStyle::Medium, TimeStyle::Short)}</p> })?;
+                        Ok::<_, Error>(([(axum::http::header::CACHE_CONTROL, "public, max-age=60")], page))
+                    }),
+                )
                 // Through Corten's handler check, which knows the answer is `Public`.
                 .route(
                     "/public",
@@ -3273,6 +3283,12 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
     let (cache, page) = get_with(learns.clone(), "/", Some("corten-zone=America/Chicago")).await;
     assert!(page.contains(&format!("{utc}<p>known</p>{utc}")), "{page}");
     assert_eq!(cache, plain, "answered as the app that does not learn zones");
+    let (_, page) = get_with(learns.clone(), "/", None).await;
+    assert!(page.contains(&format!("{utc}<p>known</p>{utc}")), "no LocalTime script before the cookie: {page}");
+    let (cache, page) = get_with(learns.clone(), "/shared", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains(utc) && cache.starts_with("public"), "{cache}: {page}");
+    let (cache, page) = get_with(App::new(routes()).zoned_dates().router(), "/shared", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains("10:04 AM GMT-5") && cache.contains("private"), "{cache}: {page}");
     assert_eq!(get_with(learns, "/offset", Some("corten-zone=America/Chicago")).await.1, "-18000");
     // Outside a request's render: UTC.
     assert_eq!(

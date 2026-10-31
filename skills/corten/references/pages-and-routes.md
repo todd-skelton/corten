@@ -197,9 +197,9 @@ not add an `Origin` check of your own. A URL that is also a page or a relayed an
 `corten::Relay::new(status, headers, body)`, never a `Response`; never merge a router after
 `app.router()` for either.
 
-A date the visitor picks, or a time shown where they are, needs their time zone: turn on
-Corten's `zones` feature and set `App::zoned_dates()`. Dates then render in the visitor's zone on
-their own (no zone argument, no zone prop); a picked date converts with `req.zone()`; a date the
+A time shown where the visitor is needs their time zone: turn on Corten's `zones` feature and set
+`App::zoned_dates()`. Dates then render in the visitor's zone on
+their own (no zone argument, no zone prop); a picked date converts with `req.zone()` (`App::client_zone()` is enough for that alone); a date the
 first page shows goes in `corten_ui::LocalTime`. A `Public` page is the same for everyone, so its
 dates are UTC: draw each in `LocalTime`, which writes it again in the browser's zone. Never add a
 time zone crate, a `Zone` newtype or a page script that converts dates. A date rendered once and

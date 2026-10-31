@@ -141,9 +141,9 @@ impl<S: Send + Sync> OptionalFromRequestParts<S> for ClientIp {
 /// The visitor's time zone, as the browser names it (IANA: `America/Chicago`), with
 /// [`App::client_zone`](crate::App::client_zone): `async fn schedule(zone: Option<ClientZone>, ..)`.
 /// Its name only: with Corten's `zones` feature, `req.zone()` is the zone with its rules (for a
-/// date the user picked, `<input type="date">`, as the instant it means where they are), and dates
-/// are written in it while Corten renders the answer, so a handler that only draws dates takes
-/// neither. This is for the name itself (a log line, "Alerts follow America/Chicago time").
+/// date the user picked, `<input type="date">`, as the instant it means where they are), and with
+/// `App::zoned_dates` dates are written in it while Corten renders the answer, so a handler that
+/// only draws dates takes neither. This is for the name itself (a log line, "Alerts follow America/Chicago time").
 ///
 /// It is `None` until the runtime has run once on a page of the app (the first page a browser
 /// loads, or a browser without JavaScript), so it is only taken as an `Option`: a bare

@@ -61,8 +61,8 @@ feed = ["json", "dep:corten-feed"]
 # corten::agent: the app's actions as Model Context Protocol tools for AI agents.
 agent = ["types"]
 # The visitor's time zone with its rules (App::client_zone): `req.zone()`, and with
-# App::zoned_dates dates written in it
-# by default while Corten renders the request's answer (jiff and its bundled tz database).
+# App::zoned_dates dates written in it while Corten renders the request's answer (jiff and its
+# bundled tz database).
 zones = ["dep:jiff"]
 
 # docs.rs documents every module, including the opt-in ones.

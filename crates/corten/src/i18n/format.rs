@@ -997,8 +997,8 @@ impl Display for Formatted {
 
 /// A date, a time or both in a locale: what `t.date`, `t.time` and `t.date_time` return. In UTC
 /// unless [`When::zone`] says otherwise, or, with the `zones` feature and `App::zoned_dates`, in
-/// the visitor's zone while Corten renders the request's answer. It renders in `html!` as text or an attribute value, and is a message
-/// argument ([`super::Arg`]).
+/// the visitor's zone while Corten renders the request's answer. It renders in `html!` as text or
+/// an attribute value, and is a message argument ([`super::Arg`]).
 #[derive(Clone, Copy)]
 pub struct When {
     data: &'static __private::LocaleData,
