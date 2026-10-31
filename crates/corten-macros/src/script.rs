@@ -2032,21 +2032,41 @@ export function f(a, b, c, d, e) {}"#;
         );
         assert_eq!(handlers[0].params[1].1, Param::Checked("ts::Number".into()));
         // Many names behind one long alias, and a generic arrow with many brackets, in about linear time.
-        let names = (0..20_000).map(|i| format!("N{i}")).collect::<Vec<_>>().join(" | ");
-        let source = format!("/** @typedef {{{names}}} Big */\n/** @typedef {{[Big, Big]}} Two */\n/** @param {{Two}} a */\nexport function f(a) {{}}");
-        let started = std::time::Instant::now();
-        parse(&source).unwrap();
-        assert!(started.elapsed() < std::time::Duration::from_secs(3), "{:?}", started.elapsed());
-        let nested = format!("<T>(x: {}T{}) => T", "Array<".repeat(4000), ">".repeat(4000));
-        let started = std::time::Instant::now();
-        parse(&format!("/** @param {{{nested}}} a */\nexport function f(a) {{}}")).unwrap();
-        assert!(started.elapsed() < std::time::Duration::from_secs(3), "{:?}", started.elapsed());
+        linear("a long alias", 20_000, |n| {
+            let names = (0..n).map(|i| format!("N{i}")).collect::<Vec<_>>().join(" | ");
+            let source = format!("/** @typedef {{{names}}} Big */\n/** @typedef {{[Big, Big]}} Two */\n/** @param {{Two}} a */\nexport function f(a) {{}}");
+            parse(&source).unwrap();
+        });
+        linear("nested brackets", 4000, |n| {
+            let nested = format!("<T>(x: {}T{}) => T", "Array<".repeat(n), ">".repeat(n));
+            parse(&format!("/** @param {{{nested}}} a */\nexport function f(a) {{}}")).unwrap();
+        });
         // Many generated declarations in one type are read in one pass.
-        let many = (0..20_000).map(|i| format!("{{ k{i}: import(\"../types/app\").T{i} }}")).collect::<Vec<_>>().join(" | ");
-        let started = std::time::Instant::now();
-        let why = refusal(&format!("/** @param {{{many}}} a */\nexport function f(a) {{}}"));
-        assert!(why.contains("generated declaration"));
-        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+        linear("many generated declarations", 20_000, |n| {
+            let many = (0..n).map(|i| format!("{{ k{i}: import(\"../types/app\").T{i} }}")).collect::<Vec<_>>().join(" | ");
+            let why = refusal(&format!("/** @param {{{many}}} a */\nexport function f(a) {{}}"));
+            assert!(why.contains("generated declaration"));
+        });
+    }
+
+    /// `case` at size `n` runs in about linear time. Under a second is (a quadratic parse of these
+    /// sizes takes far longer); slower, on a busy machine, it is checked by its growth instead: at
+    /// `n` about four times as long as at `n / 4`, not sixteen, the fastest of two runs at each
+    /// size, so the load slows both alike rather than failing a bound on the clock.
+    fn linear(name: &str, n: usize, case: impl Fn(usize)) {
+        let time = |n: usize| {
+            let started = std::time::Instant::now();
+            case(n);
+            started.elapsed()
+        };
+        let first = time(n);
+        if first < std::time::Duration::from_secs(1) {
+            return;
+        }
+        let (quarter, whole) = (time(n / 4).min(time(n / 4)), first.min(time(n)));
+        // Ten times, with 20 ms for a size so small that timer noise is most of it.
+        let bound = quarter * 10 + std::time::Duration::from_millis(20);
+        assert!(whole < bound, "{name}: {whole:?} at {n}, {quarter:?} at {}", n / 4);
     }
 
     #[test]
