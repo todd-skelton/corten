@@ -751,12 +751,14 @@ impl Notice {
 /// The page a notice is for, as its cookie names it: a hash of the path with its escapes decoded,
 /// so the link the app wrote (`/items/a b` as `a%20b`, a [`crate::Local`] with a `{`) and the path
 /// the browser asks for (which escapes the `{`) name one page, in 16 characters however long it is.
+/// An escaped `/` is kept as written, since it is part of one segment.
 pub(crate) fn path_key(path: &str) -> String {
     let (bytes, mut hash, mut i) = (path.as_bytes(), crate::fnv::OFFSET, 0);
     while i < bytes.len() {
         let hex = |b: u8| (b as char).to_digit(16);
         let byte = match (bytes[i], bytes.get(i + 1).copied().and_then(hex), bytes.get(i + 2).copied().and_then(hex)) {
-            (b'%', Some(hi), Some(lo)) => {
+            // An escaped `/` stays escaped: `/a%2Fb` is one segment, not the page `/a/b`.
+            (b'%', Some(hi), Some(lo)) if hi * 16 + lo != u32::from(b'/') => {
                 i += 2;
                 (hi * 16 + lo) as u8
             }

@@ -2703,6 +2703,8 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
     assert_eq!(key("/items/a%20b"), key("/items/a b"));
     assert_eq!(key("/a%7Bb%7d"), key("/a{b}"));
     assert_ne!(key("/done"), key("/done/"));
+    // An escaped `/` is part of one segment, not a second one.
+    assert_ne!(key("/a%2Fb"), key("/a/b"));
     // A broken escape is its bytes as they are.
     assert_ne!(key("/bad%zz"), key("/bad"));
     assert_ne!(key("/bad%4"), key("/bad"));

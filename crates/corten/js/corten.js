@@ -1698,13 +1698,17 @@ async function send(form, submitter, sends) {
     init.headers = { corten: "action", "content-type": plain ? "text/plain" : "application/x-www-form-urlencoded" };
   }
   formCall(form, "setAttribute", "aria-busy", "true");
-  // A write can change any page, so nothing fetched before it is reused.
-  if (method !== "GET") {
+  // A write can change any page, so nothing fetched before it is reused, nor anything prefetched
+  // while it was on its way (which may predate it, or use up a notice it sets).
+  const forget = () => {
+    if (method === "GET") return;
     for (const entry of prefetched.values()) discard(entry);
     prefetched.clear();
-  }
+  };
+  forget();
   try {
     const res = await fetch(url, init);
+    forget();
     // A whole answer below 500 is definitive: the write applied or was refused, and the form gets
     // a new key. A 5xx (a 502 from a proxy can hide a committed write), a network error, an abort
     // or a body cut off on the way keeps the key, so a retry is the same submission.
