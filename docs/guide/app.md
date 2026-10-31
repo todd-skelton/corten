@@ -139,7 +139,8 @@ async fn refresh(quotas: Quotas, signal: Signal) {
         tokio::select! {
             biased;
             _ = signal.aborted() => return,
-            _ = every.tick() => quotas.refresh().await, // finishes its journal write
+            // Given the signal: it stops its slow reads there, and still finishes its journal write.
+            _ = every.tick() => quotas.refresh(&signal).await,
         }
     }
 }
@@ -156,11 +157,60 @@ and then, within the same grace, for work handlers finish ([`Signal::finish`](ca
 A task still running then is ended and logged by name, so a stuck one cannot hold the process,
 and so is one that panics; whether to restart it is the app's choice.
 
-Two lines in the loop matter. `biased` polls the signal first, so no run starts once shutdown has
-begun (`select!` otherwise picks among ready branches at random); one in progress has until
-`App::shutdown_grace` to finish. With `MissedTickBehavior::Skip` a run that took longer than the
+Three things in the loop matter. `biased` polls the signal first, so no run starts once shutdown
+has begun (`select!` otherwise picks among ready branches at random). A run in progress is
+outside that `select!`, so the signal reaches it only if the run takes it: a step that can take
+longer than `App::shutdown_grace` (a remote read with a 10 s timeout, a page of 25 calls) races
+its slow awaits against `signal.aborted()` and returns at the first, where its writes are whole.
+Corten does not race the whole step for it: a step dropped mid-write leaves half a write, and only
+the step knows where it can stop. A task still running at the end of the grace is ended anyway. With `MissedTickBehavior::Skip` a run that took longer than the
 interval is followed by one late run, and then the interval's marks again: tokio's default,
 `Burst`, runs once for each mark missed, back to back.
+
+### A queue a request fills
+
+A worker for jobs that requests queue (a batch to price, a file to import) claims a job, works
+it, and waits for the next. The queue (a claim with a lease, `FOR UPDATE SKIP LOCKED`, its renewal,
+putting back the claims of a worker that died) is the app's storage and its SQL, kept in a module
+of the app's own that every worker shares. The loop around it is a task:
+
+```rust,ignore
+async fn worker(jobs: Jobs, queued: Arc<Notify>, signal: Signal) {
+    while !signal.is_aborted() {
+        if let Some(job) = jobs.claim().await.ok().flatten() {
+            let work = jobs.work(&job); // made once: in the loop below, `select!` would start it again
+            tokio::pin!(work);
+            let mut renew = interval(Duration::from_secs(2));
+            renew.set_missed_tick_behavior(MissedTickBehavior::Delay);
+            renew.tick().await; // the first tick is at once, and the claim is new
+            let outcome = loop {
+                tokio::select! {
+                    biased;
+                    _ = signal.aborted() => break Outcome::Released,
+                    done = &mut work => break Outcome::Done(done),
+                    _ = renew.tick() => if !jobs.renew(&job).await.unwrap_or(true) { break Outcome::LeaseLost },
+                }
+            };
+            jobs.finished(&job, outcome).await; // released for the next process, or nothing if lost
+            continue;
+        }
+        tokio::select! {
+            biased;
+            _ = signal.aborted() => return,
+            _ = queued.notified() => {}, // the handler that queues a job calls `notify_one()`
+            _ = sleep(Duration::from_secs(1)) => {}, // jobs another process queued
+        }
+    }
+}
+```
+
+The job's work races the signal here because dropping it loses nothing: its claim is released,
+and the next process prices the batch again. The idle wait is a `sleep` from now, not an
+interval, which would tick at once after a long job; the renewal is an interval that waits a whole
+period after a slow renewal (`Delay`), and a lost lease stops the work without writing its result,
+which the worker that holds the lease now writes. A test runs the task on a paused clock with a
+signal from `Signal::task()`, whose `Shutdown::begin` aborts it as `serve` does, and checks the
+job is released at once.
 
 ### On a schedule
 

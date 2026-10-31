@@ -575,7 +575,9 @@ impl<M: Middleware> App<M> {
     /// overlap. With `MissedTickBehavior::Skip` a run that overran a mark is followed by one late
     /// run, and then the marks again (tokio's default, `Burst`, runs once for each mark missed,
     /// back to back). `biased` puts the signal first, so no run starts once shutdown has begun; one
-    /// in progress has until [`App::shutdown_grace`]. A mark on the clock (:15 past the hour,
+    /// in progress has until [`App::shutdown_grace`], and a run that can take longer is given the
+    /// signal and stops its slow awaits there. A test aborts a task's signal as `serve` does with
+    /// [`Signal::task`]. A mark on the clock (:15 past the hour,
     /// UTC) is where the interval starts, and the loop keeps what each job did for a status page:
     ///
     /// ```
