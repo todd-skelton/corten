@@ -11,7 +11,8 @@ docker build -t {{name}} . && docker run -p 8080:8080 {{name}}
 
 | Path | What |
 |---|---|
-| `src/main.rs` | routes and handlers |
+| `src/lib.rs` | the app: routes, handlers, `app()` and its tests; declare modules here |
+| `src/main.rs` | `main`, which serves `app()`; declares no modules |
 | `src/views.rs` | the layout (the whole document), the error page and the pages, in `html!` |
 | `src/click_counter.js`, `.css` | the `ClickCounter` component's handlers and stylesheet, next to its component |
 | `static/` | the app's own CSS (element defaults, the layout), images; compiled into the program (`views::Static`, a constant per file) and served at versioned URLs |
