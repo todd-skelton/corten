@@ -32,6 +32,7 @@ fn every_component_has_its_script_and_no_css() {
             "ui.copy_button",
             "ui.print_button",
             "ui.relative_time",
+            "ui.local_time",
             "ui.checkbox_group",
             "ui.required_when",
             "ui.choice",

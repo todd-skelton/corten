@@ -31,7 +31,7 @@ your routes. Each default can be replaced in one line.
 | Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, JSON held as bytes (`json::Raw`) once when it is sent again, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`); a `Relay`'s answer goes on as the upstream sent it | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
 | Languages | none | `.messages::<Msg>()`: `req.t()` and `req.lang()` follow `Accept-Language` |
-| Visitors' time zones | not known: dates are UTC unless a zone is given | `.client_zone()`: the runtime keeps the browser's zone in a `corten-zone` cookie, read by `Option<ClientZone>` ([Views](views.md)) |
+| Visitors' time zones | not known: dates are UTC unless a zone is given | `.client_zone()`: the runtime keeps the browser's zone in a `corten-zone` cookie, `Option<ClientZone>` reads its name and, with the `zones` feature, `req.zone()` gives it with its rules; `.zoned_dates()` (`zones` feature) also writes dates in it ([Views](views.md)) |
 | Dev mode | when `CORTEN_DEV` is set (`corten dev` sets it): errors shown on the page, open pages reload after a rebuild | `.dev(bool)` |
 
 `App::header_timeout` (30 seconds unless set) bounds what comes before a request: a client that
@@ -149,14 +149,6 @@ let app = App::new(url::router(quotas.clone())).task("refresh", move |signal| re
 corten::serve(app).await
 ```
 
-`serve` starts the tasks once it listens; `app.router()` starts none, so a test of the app does
-not run them. On Ctrl-C or `SIGTERM` the signal aborts with `Abort::Shutdown` first, then live
-streams end and the listeners close, and `serve` returns once requests in progress and the
-tasks have finished, waiting for the tasks up to `App::shutdown_grace` (5 seconds unless set),
-and then, within the same grace, for work handlers finish ([`Signal::finish`](cancellation.md#work-that-must-finish)).
-A task still running then is ended and logged by name, so a stuck one cannot hold the process,
-and so is one that panics; whether to restart it is the app's choice.
-
 Three things in the loop matter. `biased` polls the signal first, so no run starts once shutdown
 has begun (`select!` otherwise picks among ready branches at random). A run in progress is
 outside that `select!`, so the signal reaches it only if the run takes it: a step that can take
@@ -167,6 +159,31 @@ the step knows where it can stop. A task still running at the end of the grace i
 With `MissedTickBehavior::Skip` a run that took longer than the interval is followed by one late
 run, and then the interval's marks again: tokio's default, `Burst`, runs once for each mark
 missed, back to back.
+
+`serve` starts the tasks once it listens; `app.router()` starts none, so a test of the app does
+not run them. On Ctrl-C or `SIGTERM` the signal aborts with `Abort::Shutdown` first, then live
+streams end and the listeners close, and `serve` returns once requests in progress and the
+tasks have finished, waiting for the tasks up to `App::shutdown_grace` (5 seconds unless set),
+and then, within the same grace, for work handlers finish ([`Signal::finish`](cancellation.md#work-that-must-finish)).
+A task still running then is ended and logged by name, so a stuck one cannot hold the process,
+and so is one that panics; whether to restart it is the app's choice. A task that returns before
+shutdown began (it could not reach its database, or gave up) is logged by name as well
+(`corten: task "pricing worker" returned before shutdown began`), so the log tells a task that
+stopped from one that runs. A task the configuration turns off is not registered at all (the task
+does not read the configuration and return), and a task with work to do once (warming a cache
+after the app listens) waits for the signal when it is done (`warm(&cache, &signal).await;
+signal.aborted().await`), so only a task that stopped early is logged. The builder chain ends
+before the switched tasks:
+
+```rust,ignore
+let app = App::new(routes).middleware(Stamp).area::<Admin>(admin).task("sales", sales);
+let app = match config.pricing_worker {
+    Some(settings) => app.task("pricing worker", move |signal| worker::run(settings, signal)),
+    None => app, // the app's own log line says the worker is off
+};
+```
+
+Work that must finish before the first request (a migration) is done before `serve`, not in a task.
 
 ### A queue a request fills
 
@@ -291,6 +308,64 @@ Limits, which are the app's to handle:
    (jiff, chrono-tz).
 
 Corten has no scheduler of its own: a task and tokio's intervals are the one way.
+
+## Testing an app
+
+A test asks the app as a browser would: `app().router().oneshot(request)` runs the request through
+every middleware, area and error page without a socket (`corten new`'s test does this), and
+`router()` starts no tasks, so a test of a task runs its function itself with `Signal::task()`.
+`corten check` runs `cargo test`, so it runs every test that is not `#[ignore]`d.
+
+### With a database
+
+Corten has no database layer; the app's driver (sqlx, say) owns the connection, and tests follow
+from how the app's code takes one. Code that writes takes the connection it writes on rather than
+the pool, so a test can hand it a transaction:
+
+```rust,ignore
+// The app's write: a transaction in a handler, a test's transaction in a test.
+pub async fn record_cost(db: &mut PgConnection, order: &Order) -> sqlx::Result<()> { .. }
+
+async fn save(State(db): State<PgPool>, Form(order): Form<Order>) -> HtmlResult {
+    let mut tx = db.begin().await?;
+    record_cost(&mut tx, &order).await?;
+    tx.commit().await?;
+    ..
+}
+```
+
+Then pick one of two ways to keep tests from leaving rows behind:
+
+1. **A fresh database per test**: `#[sqlx::test]` (sqlx's `migrate` feature) creates one with the
+   role in `DATABASE_URL`, which must be allowed to create databases, applies `./migrations`
+   (`migrator`, `fixtures` or `migrations = false` for a schema the app does not own) and gives
+   the test a pool or a connection; a passing test's database is dropped, a failing one's is kept
+   for a look and dropped by the next run. Code that commits is tested as it runs, and tests do
+   not see each other's rows. This is the one to reach for, and the one a handler test needs: a
+   handler opens its transaction from the pool, so the test builds the app's state with the test's
+   pool and asks `app(shared).router()` as above.
+2. **A transaction per test, rolled back**: `let mut tx = pool.begin().await?;`, the code under
+   test given `&mut tx` (its own transactions become savepoints), the result read on `tx`, and
+   `tx` dropped or rolled back at the end. This works against a shared database (a dev copy) but
+   cannot test code that commits on its own connection, and tests that write the same rows can
+   deadlock under cargo's parallel threads (Postgres `40P01`). Tests
+   that write the same rows take one lock first, `SELECT pg_advisory_xact_lock(hashtext('stock'))`
+   on `tx`, released with the transaction.
+
+`corten check` runs `cargo test` alone, so a test that needs a database the machine may not have is
+`#[ignore = "needs DATABASE_URL"]`, and the app's CI runs `cargo test -- --ignored` with a
+database. Such a test reads `DATABASE_URL` and fails with that name when it is missing rather than
+panicking somewhere later.
+
+The app is a library (`corten new` writes the routes, handlers and `app()` in `src/lib.rs`, and a
+`main.rs` that only serves it), so a test target of its own, `tests/db.rs`, an example and a
+second binary all reach the app's code. `cargo test --test db -- --ignored` runs the database tests
+and nothing else. Something that calls a live service and writes files (a fixture recorder) is not
+a test: make it an example (`examples/record_fixtures.rs`, run with `cargo run --example
+record_fixtures`) or a binary, so no `cargo test` run, `--include-ignored` or not, starts it. An
+app made before `corten new` wrote `src/lib.rs` (its modules declared in `main.rs`) moves them and
+`app()` there; a module declared in both files is a second copy of its components, which fails
+to build.
 
 ## Your own listeners
 

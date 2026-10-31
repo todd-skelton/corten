@@ -953,6 +953,11 @@ impl Policy {
     pub(crate) fn allowed_origins(&self) -> &[String] {
         &self.allowed_origins
     }
+
+    /// Whether the app said it is HTTPS only ([`Policy::hsts`]).
+    pub(crate) fn sends_hsts(&self) -> bool {
+        self.hsts
+    }
 }
 
 /// Whether a write with `headers` comes from the app's own pages, one of `allowed` (lowercase

@@ -1163,7 +1163,49 @@ Corten is pre-1.0, so any minor version may change the API.
     `render_cost` (release, callgrind, 3 runs) is 35,602,516,052 instructions against
     35,613,859,907 on main (-0.03%, layout: the page has no part)
     ([#492 A sub-component cannot bind its page's script: #[component] has css = Other but no js = Other](https://github.com/todd-skelton/corten/issues/492)).
-153. A size drawn from data is a custom property: a component's stylesheet registers it
+153. The `zones` feature: the visitor's time zone with its rules, from Corten. With
+    `App::zoned_dates()` (which the app sets: the feature alone, which another crate may turn on,
+    changes no app's dates), while Corten renders a request's answer (a page, a patch), `t.date`,
+    `t.time` and `t.date_time` write in the zone the browser reported, with its daylight saving
+    rules (jiff and its bundled tz database, so an image without `/usr/share/zoneinfo` has them),
+    and the answer is private; a live part's fragments too. A value that names a day (a due date
+    kept as UTC midnight, a chart's axis) takes `.zone(Utc)`, or it reads a day early west of UTC.
+    A `Public` answer, the same for everyone, is written as for an unknown zone (UTC, `LocalTime`
+    written again in the browser) and stays shared; the route knows it when the crate compiles.
+    No handler takes the zone and no component is given it, where an app added a tz crate, a `Zone` newtype, `Option<ClientZone>` on each handler that draws a date and
+    a prop down to it. `.zone(..)` still chooses another; outside a request's render a date is in
+    UTC. `req.zone()` is the zone (`corten::i18n::Visitor`, a `Zone`), for a picked date, UTC
+    until the browser has reported it. corten-ui's `LocalTime` draws a date the first page shows:
+    there the server does not know the zone yet and writes UTC, and its script writes it again in
+    the browser's zone with the server's own format (`DateFormat` takes an offset,
+    `format(at, { offset })`); later pages are the server's. `When` has `datetime()`, `format()` and
+    `zone_unknown()`. A date rendered once and kept across requests takes `.zone(..)`, or it is in
+    the zone of the request that rendered it. Each `LocalTime` whose script runs carries its format
+    (about 850 bytes before compression against about 70 for the date alone). The minified format
+    module grows by 18 bytes (3,008 to 3,026); the runtime is unchanged. The item page's
+    `render_cost` (release, callgrind, 3 runs, without the feature, which card-market does not
+    turn on) is 35,621,122,132 instructions against 35,603,094,486 on main (+0.05%). A page that
+    writes ten dates (callgrind, release, per request) runs 34,952 instructions without the
+    feature, 36,363 with it in an app that sets neither setting, and 42,854 with
+    `zoned_dates` and a zone cookie (the zone looked up once per request, about 380 per date for
+    its offset)
+    ([#387 Dates in the visitor's zone need a tz crate, a ClientZone argument on every handler and a prop through every component, and the first page is UTC](https://github.com/todd-skelton/corten/issues/387)).
+154. `corten::i18n::Day`: a calendar date with no instant behind it (a report's window, a week's
+    start, a due date, an API's `"2026-09-02"`). `t.date(day, style)` writes it as that day in every
+    zone, as an `OnDay`, which has no `.zone(..)` and no time (`t.time` and `t.date_time` take an
+    instant), so a day cannot be written as an instant by mistake (`compile_fail` doctests). With
+    `App::zoned_dates` a day kept as midnight UTC read a day early west of UTC. `Day` parses
+    `YYYY-MM-DD` only (what `<input type="date">` sends), reads and writes JSON and serde as that
+    text, renders as it in `html!` (`<time datetime={on_day.datetime()}>`), is a `string` in
+    `corten::types` declarations, and has `plus(n)` and `midnight_utc()` (an `Option`: a
+    `SystemTime` does not reach year 1 on every platform; a day is written from its calendar date,
+    so `t.date` writes every one). `t.date` takes a `DateValue`: an instant as before, or a `Day`;
+    a closure that passes its untyped parameter to `t.date` needs the parameter's type. A script's
+    `format("2026-09-02")` with no offset writes the same day (checked by `npm run check`).
+    The item page's `render_cost` (release, callgrind, 3 runs) is 35,607,619,833 instructions
+    against 35,621,122,132 for the zones change it builds on (-0.04%; the page writes no date).
+    ([#502 i18n: no way to write a calendar date (no instant behind it) that never shifts with the zone](https://github.com/todd-skelton/corten/issues/502)).
+155. A size drawn from data is a custom property: a component's stylesheet registers it
     (`@property --fill { syntax: "<percentage>"; inherits: false; initial-value: 0% }`), and
     `style={FILL.pct(used)}` sets it, with a method per unit its syntax allows (`px`, `deg`,
     `set(3)`); CSS text, another unit or another component's property does not compile. A
@@ -1915,6 +1957,14 @@ Corten is pre-1.0, so any minor version may change the API.
     35,618,729,963 against 35,592,439,055 on its base), which has no lent call: noise between
     builds of the same markup.
     ([#485 A view lent to a call inside markup ({keep_query(&r, &html! { .. })}) still takes ownership of the locals it uses, so a local also read elsewhere fails with E0382](https://github.com/todd-skelton/corten/issues/485)).
+96. `corten new` writes the app as a library, `src/lib.rs` (the routes, handlers, `pub fn app()` and
+    its tests), and a `src/main.rs` that only serves `my_app::app()`, so a test target in `tests/`,
+    an example and a second binary reach the app's code; in a binary-only app none could. Modules
+    are declared in `lib.rs` alone (one declared in both files is a second copy of its components,
+    which fails to build), which the template's comments, README and AGENTS.md say. A name the app
+    could not be reached by (a keyword, `std`, `test`, a dependency such as `tokio`) is refused. An app made before keeps working; the app guide
+    says how to move it
+    ([#508 corten new makes a bin-only app: tests/, examples/ and a second bin cannot reach its code, so #506's advice cannot be followed](https://github.com/todd-skelton/corten/issues/508)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -2404,6 +2454,30 @@ Corten is pre-1.0, so any minor version may change the API.
     still fails. One helper, `scripts/steady.mjs`, wraps each smoke's browser at launch. Test code
     only
     ([#497 Browser CI fails at random on net::ERR_NETWORK_CHANGED during a smoke navigation, blocking merges until a rerun](https://github.com/todd-skelton/corten/issues/497)).
+85. `req.redirect_with_notice` from a write on a plain `http://` origin that is not loopback (a LAN
+    tool at `http://automation.lan:3001`) reaches its page: a browser refuses the `Secure`
+    `__Host-corten-notice` cookie there, so the notice was dropped without a trace. Corten reads
+    the write (an `Origin` of this host over `http://`, no `Sec-Fetch-Site`) and sets a plain
+    `corten-notice` cookie instead (`HttpOnly`, `SameSite=Lax`, a minute), which a page reads
+    only from a request without `Sec-Fetch-Site`, so on HTTPS another site on the domain cannot
+    plant one in a current browser; an app with `Policy::hsts()` never sets or reads it, and
+    `localhost` and `127.0.0.1` keep `__Host-`. The ui-gallery smoke renames from the machine's
+    LAN address in each engine (it fails on the image before this change). The item page's
+    `render_cost` (release, callgrind, 3 runs) is 35,612,123,545 instructions against
+    35,603,094,486 on main (+0.03%, within the runs' spread: a page's GET only compares the
+    method and looks at its cookies once, as before)
+    ([#498 redirect_with_notice is lost without a trace on a plain-HTTP LAN deployment: __Host- cookies need a secure origin](https://github.com/todd-skelton/corten/issues/498)).
+86. A task (`App::task`) that returns before shutdown began is logged with its name, as one that
+    panics is (`corten: task "pricing worker" returned before shutdown began`): a task that could
+    not start or gave up ended without a trace, so a log could not tell it from one that runs. A
+    task that did its work once and returned is now logged as well: the app guide has it wait for
+    the signal when done, and a task the configuration turns off not registered (a `match` on the
+    configuration in the builder chain). Nothing a request does changes
+    ([#503 A task that returns before shutdown is silent: a task the configuration turns off, or one that cannot start, ends without a trace](https://github.com/todd-skelton/corten/issues/503)).
+87. A release build of an app no longer warns that `Assets::module_tag` is never used: its only
+    caller is the debug-build check that a page's handlers call a module the app serves, so it is
+    built in debug builds only. Nothing a page renders changes
+    ([#500 A release build warns that Assets::module_tag is never used: its only caller is a debug-build check](https://github.com/todd-skelton/corten/issues/500)).
 
 ### Documentation
 
@@ -2635,6 +2709,14 @@ Corten is pre-1.0, so any minor version may change the API.
     and no `every` helper: the queue is the app's storage, and a helper that raced the step would
     drop work mid-write
     ([#488 A worker for jobs that requests queue builds its own leased claim, heartbeat, requeue, progress and retry on App::task, once per worker](https://github.com/todd-skelton/corten/issues/488)).
+41. The app guide has a Testing an app section: a test asks `app().router()` as a browser would
+    (`router()` starts no tasks), and a test with a database takes the connection the code writes
+    on, with `#[sqlx::test]` (a fresh database per test) first and a rolled-back transaction for a
+    shared one (tests writing the same rows take an advisory lock, or they can deadlock), tests that
+    need a database `#[ignore]`d in a `tests/` target of their own, and a fixture recorder an
+    example rather than a test. Corten adds no test mode or rollback helper: the driver's are the one
+    way
+    ([#506 No story for tests that need a database or a live service: #[ignore] runs both, and a live recorder ran with the database tests](https://github.com/todd-skelton/corten/issues/506)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

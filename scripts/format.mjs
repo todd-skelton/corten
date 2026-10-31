@@ -75,6 +75,11 @@ for (const [key, spec] of specs) {
   check(`${tag} plural 1.5`, pick({ count: 1.5 }), "other");
   check(`${tag} plural "1.5"`, pick({ count: "1.5" }), "other");
 }
+// A day with no time (`t.date(day, ..)`'s `OnDay::format`, a `Day` as `"2026-09-02"`): the same day,
+// as the server writes it, when the script gives no offset.
+for (const [style, expected] of [["0", "9/2/2026"], ["1", "Sep 2, 2026"], ["3", "Wednesday, September 2, 2026"]]) {
+  check(`en date ${style} of a day keeps its day`, formatter(specs.get(`en date ${style}`))("2026-09-02"), expected);
+}
 const en = formatter({ ...specs.get("en number"), c: specs.get("en plural").c, m: [null, ["", "count", " card"], null, null, null, ["", "count", " cards"]] });
 check("a plural count is written as t.number writes it", en({ count: 1234 }), "1,234 cards");
 check("a plural count of one", en({ count: 1 }), "1 card");

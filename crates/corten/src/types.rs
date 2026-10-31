@@ -370,6 +370,19 @@ export type Kind = "single" | "sealed_box";
         assert!(Types::new().add::<Card>().json_schema()["$defs"]["Kind"]["enum"].is_array());
     }
 
+    /// A calendar day is its text in a row's declaration.
+    #[test]
+    fn a_day_is_a_string() {
+        #[derive(Serialize, JsonSchema)]
+        #[allow(dead_code)]
+        struct Week {
+            start: crate::i18n::Day,
+            end: Option<crate::i18n::Day>,
+        }
+        let ts = Types::new().add::<Week>().typescript();
+        assert!(ts.contains("end: string | null;\n  start: string;"), "{ts}");
+    }
+
     /// A card was picked (named apart from the script tests' `RowToggled`: one event of a name per program).
     #[crate::script::event]
     #[allow(dead_code)]

@@ -27,6 +27,9 @@ corten::i18n::messages! {
 /// How far the best offer's expiry is ahead of each page, and the listing behind it.
 pub const EXPIRES_IN: Duration = Duration::from_secs(90);
 pub const LISTED_AGO: Duration = Duration::from_secs(3 * 3600 + 5 * 60);
+/// When the draft was created, after the Unix epoch: 2026-03-22T15:04:05Z, written in the
+/// visitor's zone.
+pub const CREATED: Duration = Duration::from_secs(1_774_191_845);
 
 corten::assets::embed! {
     /// The files in `static/`, compiled into the program: `Static::STYLE_CSS` is `static/style.css`.
@@ -66,7 +69,7 @@ pub mod url {
 pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery, crate::gallery::Sku];
 
 pub fn app() -> App {
-    App::new(url::router()).assets(Static).components(COMPONENTS).components(corten_ui::COMPONENTS)
+    App::new(url::router()).assets(Static).components(COMPONENTS).components(corten_ui::COMPONENTS).zoned_dates()
 }
 
 /// The document around every page, with the toaster: what an answer says (`toast`) or, after a

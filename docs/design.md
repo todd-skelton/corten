@@ -128,7 +128,9 @@ framework's shape, and what it does not do yet.
    of the answer, so it is not an `ETag`, which caches and conditional requests read.
    `corten-notice` hands the runtime a redirect's notice (`req.redirect_with_notice`) the swapped
    page did not draw, which it dispatches as `corten:notice`; the notice itself rides to the page
-   in the `__Host-corten-notice` cookie, since `fetch` follows the redirect. Corten would move to
+   in the `__Host-corten-notice` cookie, since `fetch` follows the redirect (in `corten-notice`,
+   read only without `Sec-Fetch-Site`, for a write from a plain `http://` origin off loopback,
+   which refuses a `Secure` cookie; never with `Policy::hsts`). Corten would move to
    `Location` once `fetch` can read a redirect's target without following it.
 
 ## Rules

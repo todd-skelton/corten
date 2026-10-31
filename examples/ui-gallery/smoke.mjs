@@ -5,6 +5,7 @@ import { chromium, firefox, webkit } from "@playwright/test";
 import { steady } from "../../scripts/steady.mjs";
 import { stall } from "../../scripts/stall.mjs";
 import { browserBug } from "../../scripts/browser-bugs.mjs";
+import { networkInterfaces } from "node:os";
 
 const base = process.argv[2] ?? "http://localhost:18482";
 const engines = { chromium, firefox, webkit };
@@ -30,6 +31,27 @@ const check = (name, ok, detail = "") => {
  * @type {Map<import("@playwright/test").Request, { at: number, context: import("@playwright/test").BrowserContext }>}
  */
 const inflight = new Map();
+
+/**
+ * The app at an address of this machine that is not loopback, when `base` is loopback: plain http
+ * there is not a secure origin, as a tool served on the LAN is not. `SMOKE_LAN` names it
+ * (`http://192.168.1.5:18482`); otherwise the private (RFC 1918) addresses first, the first that
+ * answers.
+ * @param {string} base
+ */
+async function lanBase(base) {
+  if (process.env.SMOKE_LAN) return process.env.SMOKE_LAN;
+  const url = new URL(base);
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return null;
+  const all = Object.values(networkInterfaces()).flat().filter((a) => a && a.family === "IPv4" && !a.internal && !a.address.startsWith("169.254."));
+  const private_ = (/** @type {string} */ a) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a);
+  const ordered = [...all.filter((a) => a && private_(a.address)), ...all.filter((a) => a && !private_(a.address))];
+  for (const a of ordered) {
+    const lan = `http://${a?.address}:${url.port}`;
+    if (await fetch(`${lan}/`, { signal: AbortSignal.timeout(2000) }).then((r) => r.ok, () => false)) return lan;
+  }
+  return null;
+}
 /** @param {import("@playwright/test").Browser} browser */
 function track(browser) {
   /** @param {(r: import("@playwright/test").Request, at: { context: import("@playwright/test").BrowserContext }) => boolean} gone */
@@ -120,7 +142,7 @@ async function run(browser) {
   page.off("requestfailed", lost);
   page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the thirteen scripts load and connect", loaded === 13, `${loaded} script(s)`);
+  check("the fifteen scripts load and connect", loaded === 15, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -463,6 +485,22 @@ async function run(browser) {
     check(noticeChecks[3], kept && loaded && (await page.locator("#ui-toast").isVisible()), `${loaded} ${await page.locator("#ui-toast").textContent()}`);
     await page.unroute("**/*");
   } else for (const name of noticeChecks) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
+  // Over plain http from an address that is not loopback (a tool on the LAN) the browser refuses
+  // the Secure `__Host-` cookie, so the notice rides in a plain one there, in every engine (#498).
+  const lan = await lanBase(base);
+  const lanCheck = "a redirect's notice on a plain-http LAN address reaches the toaster";
+  if (lan) {
+    const onLan = await (await browser.newContext()).newPage();
+    await onLan.goto(`${lan}/`);
+    await onLan.getByRole("button", { name: "Rename draft" }).click();
+    await onLan.locator("#draft-name").fill("Lan draft");
+    await onLan.getByRole("button", { name: "Rename", exact: true }).click();
+    const shown = await onLan.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Lan draft.", null, { timeout: 5000 }).then(() => true, () => false);
+    // The page's answer removed it, so a reload does not say it again.
+    const cookies = (await onLan.context().cookies()).map((c) => c.name).filter((name) => name.includes("corten-notice"));
+    check(lanCheck, shown && (await onLan.locator("#ui-toast").isVisible()) && !cookies.length, `${lan} ${await onLan.locator("#ui-toast").textContent()}; notice cookies left: ${cookies.join(",") || "none"}`);
+    await onLan.context().close();
+  } else skip(lanCheck, "no address other than loopback to reach the app on");
   // A post without the runtime (no data-patch): the whole page, the dialog drawn open.
   await page.getByRole("button", { name: "Rename draft" }).click();
   await Promise.all([
@@ -706,10 +744,25 @@ async function run(browser) {
   });
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
 
+  // LocalTime: a browser's first page is written in UTC, since its zone is not known yet, and the
+  // script writes it again in the browser's; on the next page the server writes it in that zone.
+  const kiwi = await (await browser.newContext({ timezoneId: "Pacific/Auckland" })).newPage();
+  await kiwi.goto(`${base}/`);
+  const drafted = kiwi.locator("p", { hasText: "Drafted" }).locator("time");
+  await kiwi.waitForFunction(() => document.cookie.includes("corten-zone=") && document.body.textContent?.includes("GMT+13"), null, { timeout: 5000 }).catch(() => {});
+  const firstDrafted = await drafted.textContent();
+  check("a first page's date is written again in the browser's zone", firstDrafted === "Mar 23, 2026, 4:04 AM GMT+13", firstDrafted);
+  await kiwi.reload();
+  const nextDrafted = await drafted.textContent();
+  check("the next page's server writes it in that zone, with no script", nextDrafted === firstDrafted && (await drafted.getAttribute("data-on")) === null, nextDrafted);
+  await kiwi.context().close();
+
   // Without JavaScript
   const plain = await (await browser.newContext({ javaScriptEnabled: false })).newPage();
   await plain.goto(`${base}/`);
   check("no script: the server's relative time is the text", (await plain.locator("time").first().textContent()) === "3 hr. ago");
+  const plainDrafted = plain.locator("p", { hasText: "Drafted" }).locator("time");
+  check("no script: a first page's date is in UTC", (await plainDrafted.textContent()) === "Mar 22, 2026, 3:04 PM UTC", await plainDrafted.textContent());
   check("no script: the select is the control", (await plain.locator("[data-scope=ui-combo-box] select").isVisible()) && (await plain.locator("[data-scope=ui-combo-box] input").isHidden()));
   await plain.locator("[data-scope=ui-combo-box] select").selectOption("lp");
   // The post loads a new page; waitForLoadState alone can return for the page it left.
