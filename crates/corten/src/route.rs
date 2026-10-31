@@ -38,15 +38,32 @@
 //! text after a parameter do not compile:
 //!
 //! ```compile_fail
+//! use corten::Params;
+//!
 //! #[corten::routes]
 //! mod url {
-//!     #[route("/feeds/{name}.rss", get = super::feed)]
+//!     #[route("/feeds/{name}.rss", get = rss)]
 //!     pub struct Rss<'a> { pub name: &'a str }
 //!
-//!     #[route("/feeds/{name}.atom", get = super::feed)]
+//!     #[route("/feeds/{name}.atom", get = atom)]
 //!     pub struct Atom<'a> { pub name: &'a str }
 //! }
-//! async fn feed() -> &'static str { "" }
+//! async fn rss(_: Params<url::Rss<'_>>) -> &'static str { "" }
+//! async fn atom(_: Params<url::Atom<'_>>) -> &'static str { "" }
+//! # fn main() {}
+//! ```
+//!
+//! (Either route alone compiles:)
+//!
+//! ```
+//! use corten::Params;
+//!
+//! #[corten::routes]
+//! mod url {
+//!     #[route("/feeds/{name}.rss", get = rss)]
+//!     pub struct Rss<'a> { pub name: &'a str }
+//! }
+//! async fn rss(_: Params<url::Rss<'_>>) -> &'static str { "" }
 //! # fn main() {}
 //! ```
 //!
@@ -1313,7 +1330,14 @@ pub(crate) fn chosen(routes: &[(&'static str, bool)], path: &str) -> Option<(&'s
             })
             .collect()
     };
-    routes.iter().copied().filter(|(pattern, _)| routes_path(pattern, path)).max_by_key(|(pattern, _)| preference(pattern))
+    // The router picks by each segment's shape (it matches `{page}.xml` as `{page}`); a route with
+    // text after a parameter then answers 404 when the segment lacks it, so the path is not served.
+    routes
+        .iter()
+        .copied()
+        .filter(|(pattern, _)| segments_match(pattern, path, false))
+        .max_by_key(|(pattern, _)| preference(pattern))
+        .filter(|(pattern, _)| routes_path(pattern, path))
 }
 
 /// Whether `path` is one `pattern` routes, as axum (matchit) matches it: `{name}` is one segment,
@@ -1323,6 +1347,11 @@ pub(crate) fn chosen(routes: &[(&'static str, bool)], path: &str) -> Option<(&'s
 /// and the text is compared as it is written, so `/items/` is not `/items`. These are all the
 /// shapes a route macro takes.
 pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
+    segments_match(pattern, path, true)
+}
+
+/// [`routes_path`], with the text after a parameter required (`text`) or not (as axum matches).
+fn segments_match(pattern: &str, path: &str, text: bool) -> bool {
     let (mut pattern, mut path) = (pattern.split('/'), path.split('/'));
     loop {
         match (pattern.next(), path.next()) {
@@ -1331,11 +1360,11 @@ pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
                 return !got.is_empty() || path.next().is_some();
             }
             (Some(want), Some(got)) if want.starts_with('{') => {
-                let text = want.split_once('}').map_or("", |(_, text)| text);
-                if text.is_empty() && got.is_empty() && pattern.clone().next().is_none() {
+                let after = if text { want.split_once('}').map_or("", |(_, after)| after) } else { "" };
+                if after.is_empty() && got.is_empty() && pattern.clone().next().is_none() {
                     return false;
                 }
-                if !text.is_empty() && !(got.len() > text.len() && got.ends_with(text)) {
+                if !after.is_empty() && !(got.len() > after.len() && got.ends_with(after)) {
                     return false;
                 }
             }
@@ -1379,6 +1408,19 @@ mod local_tests {
             ("/sitemap/{page}.xml/x", "/sitemap/3.xml/x", true),
         ] {
             assert_eq!(routes_path(pattern, path), want, "{pattern} {path}");
+        }
+        for (path, written, want) in [
+            ("/items/{id}", "/items/{id}", true),
+            ("/sitemap/{kind}/{page}", "/sitemap/{kind}/{page}.xml", true),
+            ("/s/{a}/{b}", "/s/{a}.x/{b}.y", true),
+            ("/s/{a}", "/s/{a}.x/y", false),
+            ("/s/{a}", "/s/{b}.x", false),
+            ("/s/x", "/s/x.y", false),
+            ("/f/{*rest}", "/f/{*rest}.xml", false),
+            ("/s/{a}", "/s/{a}.{b}", false),
+            ("/s/{a}/b", "/s/{a}/b", true),
+        ] {
+            assert_eq!(super::written_fits(path, written), want, "{path} {written}");
         }
     }
 
@@ -2177,15 +2219,64 @@ impl Routes {
 }
 
 /// `methods` for `R`'s path: when a parameter of it is followed by text (`{page}.xml`), a request
-/// whose segment does not end in that text is a 404 before a handler runs, as a path that does not
-/// match is. A route with none is `methods` as it is.
+/// whose segment does not end in that text is a 404 before a handler runs, whatever its method. The
+/// route still takes every path of its shape from the router, so another route (a `/{*page}`
+/// catch-all) does not answer `/sitemap/about` either. A route with none is `methods` as it is.
+/// Whether `written` is `path` with text after some of its `{name}` parameters (in their segment),
+/// as `#[derive(Route)]` writes the two.
+const fn written_fits(path: &str, written: &str) -> bool {
+    let (p, w) = (path.as_bytes(), written.as_bytes());
+    let (mut i, mut j) = (0, 0);
+    // Just past a `{name}` (not a `{*rest}`, which nothing follows), and inside a `{*..}`.
+    let (mut closed, mut rest) = (false, false);
+    while i < p.len() {
+        if j >= w.len() {
+            return false;
+        }
+        if closed && p[i] == b'/' && w[j] != b'/' {
+            // Text after a parameter, up to the segment's end.
+            if w[j] == b'{' || w[j] == b'}' {
+                return false;
+            }
+            j += 1;
+            continue;
+        }
+        if p[i] != w[j] {
+            return false;
+        }
+        if p[i] == b'*' && i > 0 && p[i - 1] == b'{' {
+            rest = true;
+        }
+        closed = p[i] == b'}' && !rest;
+        if p[i] == b'}' {
+            rest = false;
+        }
+        i += 1;
+        j += 1;
+    }
+    // Text after the last parameter, to the end.
+    while closed && j < w.len() {
+        if w[j] == b'/' || w[j] == b'{' || w[j] == b'}' {
+            return false;
+        }
+        j += 1;
+    }
+    j == w.len()
+}
+
 pub(crate) fn with_suffixes<R: Route + ?Sized, S: Clone + Send + Sync + 'static>(
     methods: axum::routing::MethodRouter<S>,
 ) -> axum::routing::MethodRouter<S> {
+    const {
+        assert!(
+            written_fits(R::PATH, R::WRITTEN),
+            "corten: a route's WRITTEN path is its PATH with text after some parameters (`/sitemap/{{page}}.xml` for `/sitemap/{{page}}`)"
+        )
+    };
     if R::WRITTEN == R::PATH {
         return methods;
     }
-    methods.route_layer(axum::middleware::from_fn(|req: axum::extract::Request, next: axum::middleware::Next| async move {
+    methods.layer(axum::middleware::from_fn(|req: axum::extract::Request, next: axum::middleware::Next| async move {
         if routes_path(R::WRITTEN, req.uri().path()) {
             next.run(req).await
         } else {
@@ -2271,7 +2362,7 @@ pub mod __private {
 
     /// A path parameter followed by text in its segment (`{page}.xml`), read without the text,
     /// then as its type. The router has checked the text is there.
-    pub fn unsuffixed<T: serde::de::DeserializeOwned>(text: &str, suffix: &str) -> Result<T, FormError> {
+    fn unsuffixed<T: serde::de::DeserializeOwned>(text: &str, suffix: &str) -> Result<T, FormError> {
         let value =
             text.strip_suffix(suffix).ok_or_else(|| FormError::in_path(format!("`{text}` does not end in `{suffix}`")))?;
         crate::form::de::one(value)
@@ -2402,6 +2493,22 @@ pub mod __private {
     pub trait Deserialized {
         type T;
         fn field(pairs: &[Pair<'_>], key: &str, default: Option<fn() -> Self::T>) -> Result<Self::T, FormError>;
+    }
+
+    /// A path parameter followed by text in its segment (`{page}.xml`), read without the text,
+    /// then as its type; through `Later`, so a route used only for links needs only `Display`.
+    pub trait Unsuffixed {
+        type T;
+        fn unsuffixed(text: &str, suffix: &str) -> Result<Self::T, FormError>;
+    }
+
+    impl<T: serde::de::DeserializeOwned> Unsuffixed for Later<'_, T> {
+        type T = T;
+
+        #[inline]
+        fn unsuffixed(text: &str, suffix: &str) -> Result<T, FormError> {
+            unsuffixed(text, suffix)
+        }
     }
 
     impl<T: serde::de::DeserializeOwned> Deserialized for Later<'_, T> {

@@ -160,10 +160,12 @@ not compile.
 A parameter may be followed by plain text in its segment, as a file's extension is:
 `#[route("/sitemap/{kind}/{page}.xml")] pub struct SitemapPage<'a> { pub kind: &'a str, pub page: u32 }`
 links to `/sitemap/items/3.xml`, and `Params` reads `page` as `3`. A segment that does not end in
-the text (`/sitemap/items/3.json`), or is only the text, is a 404 before the handler runs; one
-whose value is not the type (`x.xml`) is a 400, as any parameter is. The router matches the
-segment whole, so two routes of a module that differ only in that text (`{name}.rss` and
-`{name}.atom`) do not compile: give each a segment of its own. Text before a parameter
+the text (`/sitemap/items/3.json`), or is only the text, is a 404 before the handler runs,
+whatever its method; one whose value is not the type (`x.xml`) is a 400, as any parameter is.
+The router matches the segment whole, so the route takes every path of its shape: a `/{*page}`
+catch-all does not answer `/sitemap/items/3.json` either (`req.serves` agrees), and two routes
+of a module that differ only in that text (`{name}.rss` and `{name}.atom`) do not compile: give
+each a segment of its own. Text before a parameter
 (`item_{id}`) does not compile either.
 
 Links write a route's parameters by name with `Display`, so `Params` refuses what would read them

@@ -2403,6 +2403,13 @@ struct LinkTwin<'a> {
     tab: Option<&'a Shown>,
 }
 
+/// The same with text after the parameter: still only `Display` for a link.
+#[derive(crate::Route)]
+#[route("/shown-file/{value}.xml")]
+struct LinkFile<'a> {
+    value: &'a Shown,
+}
+
 async fn params_item(item: crate::Params<params_url::Item<'_>>) -> String {
     let (shop, id, sort, tags, mine, page, dims) =
         (&item.shop, item.id, &item.sort_by, &item.tags, item.mine, item.paging.page, &item.dims);
@@ -2430,9 +2437,13 @@ async fn a_parameter_followed_by_text_is_read_without_it() {
     assert_eq!(body, "items|12|Some(true)", "with a query");
     // The text is the route's: without it, or with nothing before it, no route matches.
     for path in ["/sitemap/items/3", "/sitemap/items/3.json", "/sitemap/items/.xml", "/sitemap/items/3.xml.bak"] {
-        let (status, _, _) = call_with(router.clone(), "GET", path, None, None).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+        for method in ["GET", "DELETE"] {
+            let (status, _, _) = call_with(router.clone(), method, path, None, None).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
+        }
     }
+    let (status, _, _) = call_with(router.clone(), "DELETE", "/sitemap/items/3.xml", None, None).await;
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "a path the route serves, by another method");
     // A value that is not the parameter's type is refused as any path parameter is.
     let (status, _, body) = call_with(router.clone(), "GET", "/sitemap/items/x.xml", None, Some("text/plain")).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -2496,6 +2507,7 @@ async fn a_handler_reads_its_routes_parameters_as_the_link_wrote_them() {
     let shown = Shown("x y".into());
     assert_eq!(LinkOnly { value: &shown, tab: Some(&shown) }.href(), "/shown/x%20y?tab=x%20y");
     assert_eq!(LinkTwin { value: &shown, tab: None }.href(), "/shown-twin/x%20y");
+    assert_eq!(LinkFile { value: &shown }.href(), "/shown-file/x%20y.xml");
     let file = params_url::File { rest: "docs/a b.txt".into() };
     let (_, _, body) = call_with(router, "GET", &file.href(), None, None).await;
     assert_eq!(body, "docs/a b.txt", "{}", file.href());
@@ -4537,6 +4549,11 @@ mod serves_router_url {
     #[route("/shop/cart", get = serves_page)]
     pub struct CartPage;
 
+    #[route("/sitemap/{page}.xml", get = serves_sitemap)]
+    pub struct Sitemap {
+        pub page: u32,
+    }
+
     #[route("/{*page}", get = serves_router_page)]
     pub struct Page {
         pub page: String,
@@ -4566,6 +4583,10 @@ async fn serves_edit(_: crate::Params<serves_router_url::Edit>) -> &'static str 
 }
 
 async fn serves_write(_: crate::Params<serves_router_url::Write>) -> &'static str {
+    serves_page().await
+}
+
+async fn serves_sitemap(_: crate::Params<serves_router_url::Sitemap>) -> &'static str {
     serves_page().await
 }
 
@@ -4606,6 +4627,11 @@ async fn serves_agrees_with_the_router() {
         ("/shop/list", true),
         ("/about", true),
         ("/health/live", false),
+        // The sitemap's route takes every path of its shape; one without its text is a 404.
+        ("/sitemap/3.xml", true),
+        ("/sitemap/about", false),
+        ("/sitemap/.xml", false),
+        ("/sitemap/3.xml/x", true),
     ] {
         let (status, _, body) = call_with(router.clone(), "GET", p, None, None).await;
         let routed = status == StatusCode::OK && body == "page";

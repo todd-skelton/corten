@@ -1235,10 +1235,12 @@ Corten is pre-1.0, so any minor version may change the API.
 158. A route parameter may be followed by plain text in its segment, a file's extension:
     `#[route("/sitemap/{kind}/{page}.xml")]` with `page: u32` links to `/sitemap/items/3.xml`, and
     `Params` reads `page` as `3`. A segment that does not end in the text, or is only the text, is
-    a 404 before the handler runs (the router matches the segment whole and Corten checks the
-    text), and a value that is not the type is a 400 as for any parameter. Two routes of a module
-    that differ only in that text (`{name}.rss`, `{name}.atom`) do not compile, and
-    `Req::serves` knows such a path. A route without such text generates the code it did
+    a 404 before the handler runs, whatever its method (the router matches the segment whole, so
+    the route takes every path of its shape, and Corten checks the text), and a value that is not
+    the type is a 400 as for any parameter. Two routes of a module that differ only in that text
+    (`{name}.rss`, `{name}.atom`) do not compile, and `Req::serves` agrees with the router. A
+    field after which text comes needs only `Display` for a link, as any field. A route without
+    such text generates the code it did
     ([#514 A route parameter cannot be followed by fixed text in its segment, so /sitemap/{kind}/{page}.xml has no typed route](https://github.com/todd-skelton/corten/issues/514)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

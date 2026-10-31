@@ -283,9 +283,12 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment], suffixes: &[(St
     for (field, ty) in fields.iter().zip(&types) {
         if let Some((_, suffix)) = suffixes.iter().find(|(n, _)| *n == field.name) {
             let ident = TokenTree::Ident(field.ident.clone());
+            // Through `Later`, as a query field is: checked where `Params` is used.
+            let later = q("::corten::route::__private::Later<'__corten, __A0>", std::slice::from_ref(ty));
+            bounds.extend(q("__A0: ::corten::route::__private::Unsuffixed<T = __A1>,", &[later.clone(), ty.clone()]));
             reads.extend(q(
-                "__A0: ::corten::route::__private::unsuffixed::<__A1>(&__A0, __A2)?,",
-                &[ident.into(), ty.clone(), string(suffix).into()],
+                "__A0: <__A1 as ::corten::route::__private::Unsuffixed>::unsuffixed(&__A0, __A2)?,",
+                &[ident.into(), later, string(suffix).into()],
             ));
         } else if in_path(field) {
             reads.extend([TokenTree::Ident(field.ident.clone())]);
