@@ -1810,9 +1810,11 @@ Corten is pre-1.0, so any minor version may change the API.
 94. A view lent to a call written in markup (`{keep_query(&at, &html! { .. })}`, a whole argument)
     borrows what it uses, as one lent to a prop does since item 70, so the rest of the page reads
     the same local; it was a `move` closure and a second read was E0382. A view given by value, or
-    in a closure of its own (`.map(|g| f(&html! { .. }))`), still owns what it uses. `keep_query`'s
-    docs and the guide now lend the controls, and say to clear the fields a form resets on the
-    route it is given. RENDER_TBD
+    in a closure of its own (`.map(|g| f(html! { .. }))`), still owns what it uses, and so does one
+    in a macro's arguments (`format!(..)`). A callee that needs the view `'static` or `Send` takes
+    it by value; a lent view that changes a captured `mut` local now changes the page's one (it
+    changed a copy). `{&html! { .. }}` alone is lent too. `keep_query`'s docs and the guide now
+    lend the controls, and say to clear the fields a form resets on the route it is given. RENDER_TBD
     ([#485 A view lent to a call inside markup ({keep_query(&r, &html! { .. })}) still takes ownership of the locals it uses, so a local also read elsewhere fails with E0382](https://github.com/todd-skelton/corten/issues/485)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

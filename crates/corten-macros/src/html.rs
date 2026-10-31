@@ -173,6 +173,7 @@ fn borrowing(value: &TokenStream) -> TokenStream {
     };
     let idents_only = path[refs..].iter().all(|t| matches!(t, TokenTree::Ident(_) | TokenTree::Punct(_)));
     if refs == 0
+        || inside_marker(body.stream()).0
         || !ours
         || !idents_only
         || name.to_string() != "html"
@@ -194,28 +195,33 @@ fn borrowing(value: &TokenStream) -> TokenStream {
 /// as a whole argument) is built and rendered inside this view's closure, as one lent to a prop is,
 /// so it borrows what it uses (`borrowing`; one given by value may be kept). Only the arguments of
 /// the expression's own calls: one inside a closure or a block of its own
-/// (`.map(|row| f(&html! { .. }))`) may outlive what it would borrow. Arguments are split at every top-level comma and joined again as they were, so
+/// (`.map(|row| f(html! { .. }))`) may outlive what it would borrow. A macro's arguments
+/// (`format!(..)`, `stringify!(..)`) are its own to read, so they are left as written. Arguments are split at every top-level comma and joined again as they were, so
 /// a turbofish's comma (`Vec::<A, B>::new()`) only makes two pieces that are not views.
 fn lent_args(expr: TokenStream) -> TokenStream {
+    let mut after_bang = false;
     expr.into_iter()
-        .map(|token| match token {
-            TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis => {
-                let mut args = TokenStream::new();
-                let mut arg = Vec::new();
-                for t in g.stream() {
-                    if is_punct(Some(&t), ',') {
-                        args.extend(borrowing(&stream(arg.drain(..))));
-                        args.extend([t]);
-                    } else {
-                        arg.push(t);
+        .map(|token| {
+            let macro_args = std::mem::replace(&mut after_bang, is_punct(Some(&token), '!'));
+            match token {
+                TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis && !macro_args => {
+                    let mut args = TokenStream::new();
+                    let mut arg = Vec::new();
+                    for t in g.stream() {
+                        if is_punct(Some(&t), ',') {
+                            args.extend(borrowing(&stream(arg.drain(..))));
+                            args.extend([t]);
+                        } else {
+                            arg.push(t);
+                        }
                     }
+                    args.extend(borrowing(&stream(arg)));
+                    let mut lent = Group::new(Delimiter::Parenthesis, args);
+                    lent.set_span(g.span());
+                    TokenTree::Group(lent)
                 }
-                args.extend(borrowing(&stream(arg)));
-                let mut lent = Group::new(Delimiter::Parenthesis, args);
-                lent.set_span(g.span());
-                TokenTree::Group(lent)
+                other => other,
             }
-            other => other,
         })
         .collect()
 }
@@ -704,7 +710,7 @@ impl Cursor {
                 if is_punct(inner.first(), '.') && is_punct(inner.get(1), '.') {
                     return err(span, "{..attributes} goes inside a start tag, like <input {..attrs}>");
                 }
-                Ok(Node::Expr(lent_args(g.stream())))
+                Ok(Node::Expr(borrowing(&lent_args(g.stream()))))
             }
             Some(TokenTree::Ident(id)) => match id.to_string().as_str() {
                 "for" => self.block_for(),
