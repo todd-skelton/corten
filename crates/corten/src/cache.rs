@@ -208,7 +208,10 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     };
     let typed = res.extensions().get::<Typed>().is_some();
     let headers = res.headers_mut();
-    if has(&text, "private") || has(&text, "no-store") {
+    // The directives of every line count, as HTTP joins them (a second line is rare: only a
+    // header written by hand has one).
+    let kept = |text: &str| has(text, "private") || has(text, "no-store");
+    if kept(&text) || headers.get_all(header::CACHE_CONTROL).iter().skip(1).any(|v| v.to_str().is_ok_and(kept)) {
         return;
     }
     let bug = if seen.nonce {

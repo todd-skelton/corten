@@ -2719,7 +2719,7 @@ fn cached_routes() -> Router {
         .route(
             "/lines",
             get(|| async {
-                let lines = [(header::CACHE_CONTROL, "private"), (header::CACHE_CONTROL, "no-store")];
+                let lines = [(header::CACHE_CONTROL, "max-age=60"), (header::CACHE_CONTROL, "no-store")];
                 (StatusCode::BAD_REQUEST, axum::response::AppendHeaders(lines), "")
             }),
         )
@@ -3139,7 +3139,14 @@ async fn a_failure_under_no_store_is_not_stored() {
     let res =
         router.clone().oneshot(Request::get("/lines").header("accept", "text/html").body(Body::empty()).unwrap()).await.unwrap();
     let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
-    assert_eq!(lines, ["private", "no-store"]);
+    assert_eq!(lines, ["max-age=60", "no-store"]);
+    // Also when the error page read a caller, which would make a shared answer private.
+    let res = app(cached_routes(), Some("ann"))
+        .oneshot(Request::get("/lines").header("accept", "text/html").header("cookie", "s=1").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
+    assert_eq!(lines, ["max-age=60", "no-store"], "with a caller");
 }
 
 #[tokio::test]

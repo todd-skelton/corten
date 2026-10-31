@@ -1289,8 +1289,9 @@ impl<A: Answer + Shareable> Answer for Public<A> {
 /// An answer nothing may keep, not even the browser's own cache (`Cache-Control: no-store`): a
 /// statement, a one-time code. `async fn statement(req: Req) -> NoStore<HtmlResult>`. The browser's
 /// back/forward cache may not restore the page either. It applies to a failure the handler returns
-/// too: the error page that replaces it is `no-store` (a request refused before the handler runs,
-/// such as a path that does not parse, never reaches it).
+/// too: the error page that replaces it is `no-store`. A request refused before the handler runs
+/// (a path that does not parse), a handler that panics and one past its deadline never reach it,
+/// and get the default.
 pub struct NoStore<A>(pub A);
 
 impl<A> NoStore<A> {
