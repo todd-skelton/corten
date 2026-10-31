@@ -212,8 +212,155 @@
 //!     html! { <ul></ul> }
 //! }
 //! ```
+//!
+//! # Values from data
+//!
+//! A size or position computed as the page renders (a meter's fill, a bar's length, a mark on a
+//! timeline) is a custom property the stylesheet registers with `@property` and reads with
+//! `var()`, set in the markup with `style={..}`:
+//!
+//! ```css
+//! /* meter.css */
+//! @property --fill { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+//! .meter { background: linear-gradient(to right, currentColor var(--fill), transparent var(--fill)); }
+//! ```
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn Meter(used: f64, nudge: Option<f64>) -> impl Render {
+//!     html! { <div class={Meter} style={(FILL.pct(used), nudge.map(|px| NUDGE.px(px)))}></div> }
+//! }
+//!
+//! assert_eq!(
+//!     Meter { used: 42.5, nudge: None }.to_html(),
+//!     r#"<div class="meter__meter" data-vars="--meter__fill:42.5%"></div>"#
+//! );
+//! assert!(Meter.style.unwrap().css.starts_with("@property --meter__fill{syntax:\"<percentage>\""));
+//! ```
+//!
+//! - Each `@property` whose `syntax` is a number (`<number>`, `<integer>`, `<percentage>`,
+//!   `<length>`, `<length-percentage>`, `<angle>`, `<time>`) is a constant named in capitals,
+//!   `--fill` is `FILL` (a [`Var`]), whose methods are the units its syntax allows:
+//!   `FILL.pct(42.0)`, `GAP.px(4.0)`, `SPAN.set(3)`. A value is a number and a unit, so no CSS
+//!   text from data reaches the page, and a number that is not finite sets nothing.
+//! - The property is the component's, as its classes are: `--fill` is `--meter__fill` everywhere
+//!   in the file, so two components can both register a `--fill`. A rule the browser would ignore
+//!   (no `syntax`, `inherits` or `initial-value`, or for a number syntax an `initial-value` that
+//!   is not one, or depends on the font or a container, `1em`) does not compile.
+//! - `style={..}` takes one value, an `Option` (`None` sets nothing) or a tuple or array of them,
+//!   and writes `data-vars`. A full page gets one `<style>` at `<Corten />` with a rule for each
+//!   distinct value (`[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%!important}`, which wins
+//!   over the component's rules, as the runtime's inline `!important` values do; an `!important`
+//!   declaration of a property markup sets does not compile), allowed by its
+//!   hash in that response's CSP, so it paints with the sizes and no script, and no style
+//!   attribute is allowed anywhere. A patch, a client navigation and a `<corten-live>` fragment
+//!   arrive under the policy the document loaded with, so the runtime sets their values through
+//!   the CSSOM, which the policy allows. A style attribute written as text (`style="width: 4px"`)
+//!   stays blocked unless the area allows them.
+//!
+//! CSS text is not a value:
+//!
+//! ```compile_fail,E0277
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn Meter(used: f64) -> impl Render {
+//!     html! { <div class={Meter} style={format!("width: {used}%")}></div> }
+//! }
+//! ```
+//!
+//! nor is a unit the property's syntax does not allow (`--fill` is a `<percentage>`):
+//!
+//! ```compile_fail,E0599
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn Meter(used: f64) -> impl Render {
+//!     html! { <div class={Meter} style={FILL.px(used)}></div> }
+//! }
+//! ```
+//!
+//! and another component cannot set a component's property:
+//!
+//! ```compile_fail,E0425
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn Meter(used: f64) -> impl Render {
+//!     html! { <div class={Meter} style={FILL.pct(used)}></div> }
+//! }
+//!
+//! #[component]
+//! fn Other(used: f64) -> impl Render {
+//!     html! { <div style={FILL.pct(used)}></div> }
+//! }
+//! ```
+//!
+//! Markup's values win over the component's rules, so its stylesheet may not mark a property it
+//! registers `!important` (`pinned_meter.css` has `.meter.full { --fill: 100% !important }`, which
+//! would win on a full page and lose after a patch):
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn PinnedMeter(used: f64) -> impl Render {
+//!     html! { <div class={Meter} style={FILL.pct(used)}></div> }
+//! }
+//! ```
+//!
+//! One `style={..}` per element (a browser keeps the first of two attributes); a tuple sets several:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn Meter(used: f64) -> impl Render {
+//!     html! { <div class={Meter} style={FILL.pct(used)} style={NUDGE.px(2.0)}></div> }
+//! }
+//! ```
+//!
+//! `style` is checked only as written in lowercase, so `STYLE` does not compile either:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! let width = 4;
+//! let view = html! { <div STYLE={format!("width: {width}px")}></div> };
+//! ```
+//!
+//! `data-vars` is Corten's to write, in any case (HTML names are case-insensitive):
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! let view = html! { <div data-vars="--fill:4px"></div> };
+//! ```
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! let view = html! { <div data-Vars="--fill:4px"></div> };
+//! ```
+//!
+//! and only Corten's types are values, so no type of the app's writes CSS text there:
+//!
+//! ```compile_fail,E0277
+//! struct Css(String);
+//! impl corten::style::Vars for Css {
+//!     fn write_vars(&self, out: &mut String) {
+//!         out.push_str(&self.0)
+//!     }
+//! }
+//! ```
 
 use std::cell::RefCell;
+
+mod vars;
+pub(crate) use vars::collect as collect_vars;
+pub use vars::{syntax, Declaration, Var, Vars};
 
 /// Design tokens as CSS and Rust, from W3C Design Tokens files (DTCG 2025.10). See [the module](self)
 /// and `examples/card-market/tokens/`.
@@ -599,7 +746,7 @@ pub(crate) fn custom_properties(css: &str) -> (Vec<&str>, Vec<&str>) {
             (i, last) = (end, b'-');
             continue;
         }
-        if c == b'@' && css[i..].starts_with("@property") {
+        if c == b'@' && css.get(i..i + 9).is_some_and(|at| at.eq_ignore_ascii_case("@property")) {
             let start = space(i + "@property".len());
             if css[start..].starts_with("--") {
                 let end = name_end(start + 2);
@@ -647,6 +794,7 @@ pub(crate) fn custom_properties(css: &str) -> (Vec<&str>, Vec<&str>) {
 
 #[doc(hidden)]
 pub mod __private {
+    pub use super::vars::__private::vars_attr;
     use super::{ClassList, RENDERED};
 
     /// ` class="a b"`, or nothing when the list is empty.
@@ -690,7 +838,7 @@ mod tests {
     fn a_stylesheet_names_the_custom_properties_it_declares_and_reads() {
         let css = "/* var(--commented) */ :root{--ink:#111;--space-1 : 4px}.a--b:hover{color:var(--ink)}
 .x { padding: var( --space-1 ); margin: var(--gap, var(--nope)); content: \"var(--quoted)\"; background: VAR(--bg) }
-@property --angle { syntax: '<angle>'; inherits: false; initial-value: 0deg }
+@PROPERTY --angle { syntax: '<angle>'; inherits: false; initial-value: 0deg }
 @supports (--x: 1) { .y { width: calc(var(--w) * 2); --é-ä: 1 } }";
         let (declared, needed) = custom_properties(css);
         assert_eq!(declared, ["--ink", "--space-1", "--angle", "--é-ä"]);

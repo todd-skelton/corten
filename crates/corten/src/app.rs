@@ -186,7 +186,8 @@ impl<P: Prefix> Area<P> {
 
     /// What the area's pages add to the app's [`Policy`] (its Content-Security-Policy, and a looser
     /// `Cross-Origin-Opener-Policy`): a payment provider's scripts and frames on the payment pages,
-    /// style attributes on the pages that draw sizes from data, and not on every other page. Only adding is possible, so a page in the
+    /// style attributes on pages that show rich text written with them, and not on every other page
+    /// (a size drawn from data needs none: it is a custom property, [`crate::style::Var`]). Only adding is possible, so a page in the
     /// area never allows less than the app; nested areas add up, outermost first. A stricter
     /// `Referrer-Policy` ([`crate::security::Sources::referrer`]) is the one way an area sends
     /// less, for every answer under it, an API's included.

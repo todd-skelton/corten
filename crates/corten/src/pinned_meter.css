@@ -1,0 +1,4 @@
+/* For the compile_fail example in style.rs: --fill is set from markup, so the stylesheet may not
+   mark it !important. */
+@property --fill { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+.meter.full { --fill: 100% !important; }
