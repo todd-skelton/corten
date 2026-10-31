@@ -48,7 +48,9 @@ its field, is `href={FieldId.fragment()}`. Never format a `#fragment` by hand.
 To say what the write did on the page it lands on, `req.redirect_with_notice(&to, "Batch 3517
 deleted.")`, read once there by `req.notice()` (the layout's `Toaster { toast: Toast { message:
 req.notice() } }`; after a navigation the runtime dispatches `corten:notice` and the toaster takes
-it). Never add a route field (`?deleted=3517`, `?done=saved`) only to carry a message.
+it). Render it once, in the layout: a full load shows it only where the page renders it. `to` is a
+page of the app (`OnSite`: a route, `route.at(id)`, `Local`, a `#[derive(Href)]` enum of those).
+Never add a route field (`?deleted=3517`, `?done=saved`) only to carry a message.
 
 ## Files
 

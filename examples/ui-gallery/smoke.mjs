@@ -430,7 +430,12 @@ async function run(browser) {
   // A rename that is taken redirects to the draft with a notice (`req.redirect_with_notice`): the
   // navigation's page does not run the layout, so the runtime hands it to the layout's toaster.
   // The notice rides in a Secure cookie, which Playwright's WebKit never sends back over http.
-  const noticeChecks = ["a redirect's notice reaches the layout's toaster", "and the toaster offers to dismiss it", "the notice is said once"];
+  const noticeChecks = [
+    "a redirect's notice reaches the layout's toaster",
+    "and the toaster offers to dismiss it",
+    "the notice is said once",
+    "a notice whose page loads in full instead reaches the toaster after the load",
+  ];
   if (engine !== "webkit") {
     await page.getByRole("button", { name: "Rename draft" }).click();
     await page.locator("#draft-name").fill("Spring draft");
@@ -440,6 +445,22 @@ async function run(browser) {
     check(noticeChecks[1], await page.getByRole("button", { name: "Dismiss" }).isVisible());
     await page.getByRole("button", { name: "Dismiss" }).click();
     check(noticeChecks[2], !(await page.evaluate(async () => (await (await fetch("/")).text()).includes("Renamed to"))));
+    // The navigation's page comes with another layout (here a shell key changed on the way): the
+    // runtime loads it in full, and the notice, whose cookie that answer removed, goes with it.
+    await page.route("**/*", async (route) => {
+      if (route.request().method() !== "GET" || route.request().headers()["corten"] !== "nav") return route.fallback();
+      const res = await route.fetch();
+      await page.context().clearCookies({ name: "__Host-corten-notice" });
+      await route.fulfill({ response: res, headers: { ...res.headers(), "corten-shell": "0000000000000000" } });
+    });
+    await page.evaluate(() => ((/** @type {any} */ (window)).__before = 1));
+    await page.getByRole("button", { name: "Rename draft" }).click();
+    await page.locator("#draft-name").fill("Autumn draft");
+    await page.getByRole("button", { name: "Rename", exact: true }).click();
+    const kept = await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Autumn draft.", null, { timeout: 5000 }).then(() => true, () => false);
+    const loaded = await page.evaluate(() => (/** @type {any} */ (window)).__before === undefined);
+    check(noticeChecks[3], kept && loaded && (await page.locator("#ui-toast").isVisible()), `${loaded} ${await page.locator("#ui-toast").textContent()}`);
+    await page.unroute("**/*");
   } else for (const name of noticeChecks) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
   // A post without the runtime (no data-patch): the whole page, the dialog drawn open.
   await page.getByRole("button", { name: "Rename draft" }).click();

@@ -2695,8 +2695,15 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
     let res = router.clone().oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     assert_eq!(res.headers()[header::LOCATION], "/done#msg");
-    let cookie = "__Host-corten-notice=p=%2Fdone&m=Batch+3517+deleted%3B+2+left.";
+    let key = |path: &str| crate::page::path_key(path);
+    let cookie = &format!("__Host-corten-notice=p={}&m=Batch+3517+deleted%3B+2+left.", key("/done"));
     assert_eq!(set(&res), [format!("{cookie}; Path=/; SameSite=Lax; Max-Age=60; HttpOnly; Secure")]);
+    // The page's path, escapes decoded: the link's `%20` and the browser's `%7B` for a `{` name
+    // the same page as the characters.
+    assert_eq!(key("/items/a%20b"), key("/items/a b"));
+    assert_eq!(key("/a%7Bb%7d"), key("/a{b}"));
+    assert_ne!(key("/done"), key("/done/"));
+    assert_eq!(key("/bad%zz%4"), key("/bad%zz%4"));
     let fetch = |uri: &str, mode: Option<&str>| {
         let mut req = Request::get(uri).header(header::COOKIE, format!("a=1; {cookie}"));
         if let Some(mode) = mode {
@@ -2715,6 +2722,10 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
     }
     let res = fetch("/other", Some("nav")).await.unwrap();
     assert!(set(&res).is_empty() && res.headers().get("corten-notice").is_none(), "another page leaves it");
+    // A HEAD request (a link preview) leaves it for the page's GET.
+    let req = Request::head("/done").header(header::COOKIE, cookie.as_str()).body(Body::empty()).unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert!(set(&res).is_empty(), "HEAD leaves it");
     // A navigation's page that does not draw it, or holds it in the layout around `<main>`, which
     // a navigation does not run: the runtime gets it. A full load draws it in the layout.
     let routes = Router::new().route("/done", get(|req: Req| async move { req.test_page("Done", "done") })).route(
@@ -2737,7 +2748,7 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
     );
     let layouts = app(routes, None);
     for (path, mode) in [("/done", Some("nav")), ("/done/in-layout", Some("nav")), ("/done/in-layout", None)] {
-        let cookie = cookie.replace("%2Fdone", &path.replace('/', "%2F"));
+        let cookie = cookie.replace(&key("/done"), &key(path));
         let mut req = Request::get(path).header(header::COOKIE, cookie);
         if let Some(mode) = mode {
             req = req.header("corten", mode);

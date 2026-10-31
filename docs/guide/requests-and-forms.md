@@ -677,7 +677,7 @@ async fn report(req: Req, Params(at): Params<url::Report<'_>>) -> HtmlResult {
 
 The page a write redirects to often says what it did ("Batch 3517 deleted."). That is not part of
 the page's address: written into a query value, a reload says it again, a copied link shares it
-and Back returns to it. `req.redirect_with_notice(&to, text)` carries it instead, and the page it
+and Back to the page asks for it again. `req.redirect_with_notice(&to, text)` carries it instead, and the page it
 lands on reads it once with `req.notice()`:
 
 ```rust,ignore
@@ -691,17 +691,27 @@ async fn delete(req: Req, Params(at): Params<url::Delete>) -> HtmlResult {
 ```
 
 The text rides in a cookie (`__Host-corten-notice`, `HttpOnly`, a minute) for the path it
-redirected to; another page neither shows nor removes it, and the answer of the page it was for
-removes it, so it is said once. That answer is private, as one for a signed-in caller is. A notice
-is text, escaped where it renders, cut at 500 bytes. It is for a page of the app: a route, a place
-on one or a checked `Local`; a URL of another site does not compile.
+redirected to (its escapes decoded, so `a%20b` and `a b` are one page); another page neither shows
+nor removes it, and the answer of the page it was for removes it, so it is said once. A `HEAD`
+request leaves it for the `GET`. That answer is private, as one for a signed-in caller is. A
+notice is text, escaped where it renders, cut at 500 bytes. A page the browser restores from its
+back-forward cache is the page as it was left, toaster and all; Corten does not ask the server for
+it. It is for a page of the app: a route, a place on one, a checked `Local` or a
+`#[derive(Href)]` enum of those (`OnSite`); a URL of another site does not compile.
 
 A client navigation runs only the page inside `<main>`, not the layout around it, so a notice the
 layout holds is not drawn there. When the page did not render the notice, its answer hands it to
 the runtime, which dispatches `corten:notice` on the document (`detail.message`) once the page is
 swapped in; corten-ui's `Toaster` shows it. A page that renders it itself (a status line in the
-form it sent the user back to) is not sent it twice. Like any cookie set over HTTPS only, it does
-not reach a browser on plain `http://` that drops `Secure` cookies there.
+form it sent the user back to) is not sent it twice. When the navigation has to load the page in
+full instead (its layout changed), the runtime keeps the notice for that load in session storage
+and dispatches the event once the page's modules have connected. Like any cookie set over HTTPS
+only, it does not reach a browser on plain `http://` that drops `Secure` cookies there.
+
+On a full load (the first page, or without JavaScript) the server draws the page, layout and all,
+so the notice shows only where the page renders `req.notice()`: render it in the layout, once. A
+page that renders it twice shows it twice, and one that does not render it drops it (a debug
+build logs a warning).
 
 A page handler may redirect too (an old URL; a `Caller` sending someone to sign in does the
 same). A client

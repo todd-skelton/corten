@@ -1095,14 +1095,22 @@ async function swapPage(html, signal, stay) {
 }
 
 /**
- * After a page answer is drawn: the notice the write that redirected here left for it
- * (`req.redirect_with_notice`) and the page did not draw, as `corten:notice` on the document
- * (`detail.message`), for the app's toaster. The layout around `<main>` does not run for a swap.
- * @param {Response} res
+ * The notice of the page answer being drawn (`corten-notice`, form-encoded): what the write that
+ * redirected to it said (`req.redirect_with_notice`) and the page did not draw. Kept across a
+ * reload that draws the page in full instead (`reload`), and announced once it is drawn.
+ * @type {string | null}
  */
-function announce(res) {
-  const notice = res.headers.get("corten-notice");
-  if (notice !== null) document.dispatchEvent(new CustomEvent("corten:notice", { detail: { message: decodeURIComponent(notice.replaceAll("+", " ")) } }));
+let notice = null;
+const NOTICE = "corten-notice";
+
+/**
+ * After a page answer is drawn: its notice as `corten:notice` on the document (`detail.message`),
+ * for the app's toaster. The layout around `<main>` does not run for a swap.
+ * @param {string | null} text
+ */
+function announce(text) {
+  notice = null;
+  if (text !== null) document.dispatchEvent(new CustomEvent("corten:notice", { detail: { message: decodeURIComponent(text.replaceAll("+", " ")) } }));
 }
 
 /**
@@ -1347,6 +1355,7 @@ async function visit(url, signal, redirected, again, place, source) {
       return;
     }
     signal.throwIfAborted();
+    notice = res.headers.get(NOTICE);
     // Sent to a place on a page (`route.at(id)`): the server names it here, since `fetch` follows a
     // redirect but drops its `#id`.
     const to = res.headers.get("corten-location");
@@ -1376,8 +1385,9 @@ async function visit(url, signal, redirected, again, place, source) {
       return;
     }
     await swapPage(html, signal, again || place !== undefined);
-    announce(res);
+    announce(notice);
   } finally {
+    notice = null;
     signal.removeEventListener("abort", idle);
     idle();
   }
@@ -1590,9 +1600,16 @@ function named(el, name) {
  * `beforeunload` prompt) drops only the submits waiting then, not every later one.
  */
 let left = 0;
-/** Loads the page again from the server. */
+/** Loads the page again from the server, with the notice of the answer it takes the place of. */
 function reload() {
   left += 1;
+  if (notice !== null) {
+    try {
+      sessionStorage.setItem(NOTICE, JSON.stringify([location.pathname, notice]));
+    } catch {
+      // No session storage (a sandboxed frame): the page loads without it.
+    }
+  }
   location.reload();
 }
 addEventListener("pagehide", () => (left += 1));
@@ -1704,6 +1721,7 @@ async function send(form, submitter, sends) {
       }
     } else if (res.headers.has("corten-page") && shellChanged(res)) {
       renew();
+      notice = res.headers.get(NOTICE);
       reload();
     } else if (res.headers.has("corten-patch") || res.headers.has("corten-page")) {
       const body = await res.text();
@@ -1711,8 +1729,13 @@ async function send(form, submitter, sends) {
       signal.throwIfAborted();
       if (res.headers.has("corten-patch")) await apply(body, signal, sent, res.ok);
       else {
-        await swapPage(body, signal);
-        announce(res);
+        notice = res.headers.get(NOTICE);
+        try {
+          await swapPage(body, signal);
+          announce(notice);
+        } finally {
+          notice = null;
+        }
       }
       signal.throwIfAborted();
       if (res.status === 422) focusInvalid(form);
@@ -1842,6 +1865,19 @@ readAgainLater();
 
 /** Resolves once the script modules the first page's handlers use are imported. */
 export const ready = Promise.all(loading.values()).then(() => undefined);
+
+// A navigation's notice whose page loaded in full instead (`reload`): announced once the page's
+// modules are in and their `on:connect` handlers ran (a task later), if this is still that page.
+try {
+  const kept = sessionStorage.getItem(NOTICE);
+  if (kept !== null) {
+    sessionStorage.removeItem(NOTICE);
+    const [path, text] = JSON.parse(kept);
+    if (path === location.pathname && typeof text === "string") ready.then(() => setTimeout(() => announce(text)));
+  }
+} catch {
+  // No session storage, or not what reload wrote: nothing to say.
+}
 
 // Under `corten dev` the server sends the time it started; after a restart (a rebuild) the stream
 // reconnects to a server that started later, and the page reloads.

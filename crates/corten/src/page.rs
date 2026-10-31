@@ -559,7 +559,8 @@ pub(crate) struct Asked {
 
 impl Asked {
     pub(crate) fn new(req: &Request, shared: Arc<Shared>, credentials: Credentials) -> Self {
-        Asked { req: Req::new(req.headers(), req.extensions(), req.uri(), shared), credentials }
+        // The error page's own `Req` reads the notice; this one only answers what was asked.
+        Asked { req: Req::new(req.headers(), req.extensions(), req.uri(), shared, false), credentials }
     }
 
     fn path(&self) -> &str {
@@ -737,8 +738,28 @@ impl Notice {
                 _ => {}
             }
         }
-        (to? == path).then(|| Notice { text: text.unwrap_or_default().into(), signal: signal.clone() })
+        (*to? == *path_key(path)).then(|| Notice { text: text.unwrap_or_default().into(), signal: signal.clone() })
     }
+}
+
+/// The page a notice is for, as its cookie names it: a hash of the path with its escapes decoded,
+/// so the link the app wrote (`/items/a b` as `a%20b`, a [`crate::Local`] with a `{`) and the path
+/// the browser asks for (which escapes the `{`) name one page, in 16 characters however long it is.
+pub(crate) fn path_key(path: &str) -> String {
+    let (bytes, mut hash, mut i) = (path.as_bytes(), crate::fnv::OFFSET, 0);
+    while i < bytes.len() {
+        let hex = |b: u8| (b as char).to_digit(16);
+        let byte = match (bytes[i], bytes.get(i + 1).copied().and_then(hex), bytes.get(i + 2).copied().and_then(hex)) {
+            (b'%', Some(hi), Some(lo)) => {
+                i += 2;
+                (hi * 16 + lo) as u8
+            }
+            (byte, ..) => byte,
+        };
+        hash = crate::fnv::extend(hash, &[byte]);
+        i += 1;
+    }
+    format!("{hash:016x}")
 }
 
 impl Render for Notice {
@@ -765,19 +786,22 @@ impl<St: Send + Sync> FromRequestParts<St> for Req {
 
     async fn from_request_parts(parts: &mut Parts, _: &St) -> std::result::Result<Self, Self::Rejection> {
         let shared = parts.extensions.get::<crate::Signal>().and_then(crate::Signal::shared).unwrap_or(&DEFAULT).clone();
-        Ok(Req::new(&parts.headers, &parts.extensions, &parts.uri, shared))
+        // A HEAD request (a link checker, a preview) gets no body, so it leaves the notice for the
+        // page's GET.
+        Ok(Req::new(&parts.headers, &parts.extensions, &parts.uri, shared, parts.method != axum::http::Method::HEAD))
     }
 }
 
 impl Req {
-    pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, uri: &Uri, shared: Arc<Shared>) -> Self {
+    /// `notice`: read the request's notice (its answer then removes it).
+    pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, uri: &Uri, shared: Arc<Shared>, notice: bool) -> Self {
         let signal: crate::Signal = extensions.get::<crate::Signal>().cloned().unwrap_or_default();
         Req {
             mode: mode_of(headers),
             nonce: extensions.get::<NonceSlot>().cloned(),
             uri: uri.clone(),
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
-            notice: Notice::of(headers, uri.path(), &signal),
+            notice: if notice { Notice::of(headers, uri.path(), &signal) } else { None },
             shared,
             signal,
         }
@@ -1095,6 +1119,13 @@ impl Req {
             res.headers_mut().append(header::SET_COOKIE, gone);
             self.signal.mark_personal();
             let swap = matches!(self.mode, Mode::Navigation | Mode::Action);
+            #[cfg(debug_assertions)]
+            if matches!(self.mode, Mode::Document) && !self.signal.notice_drawn() {
+                tracing::warn!(
+                    "corten: {} was sent a notice (req.redirect_with_notice) it did not draw (req.notice()), so a full load drops it",
+                    self.uri.path()
+                );
+            }
             if swap && !self.signal.notice_drawn() {
                 let text: String = form_urlencoded::byte_serialize(notice.as_str().as_bytes()).collect();
                 if let Ok(value) = HeaderValue::from_str(&text) {
@@ -1386,14 +1417,14 @@ impl Req {
 
     /// [`Req::redirect`] with what the write did, said once on the page it lands on ("Batch 3517
     /// deleted."), where [`Req::notice`] reads it: no field on the route carries it, so a reload,
-    /// a copied link or Back does not say it again. It rides in a short-lived cookie for that
+    /// a copied link or Back to a page the browser asks for again does not say it again. It rides in a short-lived cookie for that
     /// page's path (`__Host-corten-notice`, a minute), which the page's answer removes. A
     /// navigation's page that did not draw it hands it to the runtime, which dispatches
     /// `corten:notice` on the document for the app's toaster, since the layout around `<main>`
     /// does not run there. Text past 500 bytes is cut at a character's end.
     ///
-    /// Only for a page of the app (a route, a place on one, a checked [`crate::Local`]): a URL of
-    /// another site does not compile.
+    /// Only for a page of the app ([`crate::OnSite`]: a route, a place on one, a checked
+    /// [`crate::Local`], a `#[derive(Href)]` enum of those): a URL of another site does not compile.
     ///
     /// ```compile_fail,E0277
     /// use corten::prelude::*;
@@ -1401,6 +1432,37 @@ impl Req {
     /// async fn pay(req: Req) -> HtmlResult {
     ///     let to: corten::axum::http::Uri = "https://pay.example/checkout".parse().unwrap();
     ///     req.redirect_with_notice(&to, "Sent to payment.")
+    /// }
+    /// ```
+    ///
+    /// A `#[derive(Href)]` enum is a page of the app when each of its variants is:
+    ///
+    /// ```
+    /// use corten::{prelude::*, Href};
+    ///
+    /// #[derive(Route)] #[route("/inventory")] struct Inventory;
+    /// #[derive(Route)] #[route("/pull-sheet/{id}")] struct PullSheet<'a> { id: &'a str }
+    ///
+    /// #[derive(Href)]
+    /// enum Back<'a> { Inventory(Inventory), PullSheet(PullSheet<'a>) }
+    ///
+    /// async fn delete(req: Req) -> HtmlResult {
+    ///     req.redirect_with_notice(&Back::PullSheet(PullSheet { id: "7" }), "Batch 3517 deleted.")
+    /// }
+    /// ```
+    ///
+    /// and not when one of them may go to another site:
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::{prelude::*, Elsewhere, Href};
+    ///
+    /// #[derive(Route)] #[route("/inventory")] struct Inventory;
+    ///
+    /// #[derive(Href)]
+    /// enum Back<'a> { Inventory(Inventory), Payment(Elsewhere<'a>) }
+    ///
+    /// async fn delete(req: Req) -> HtmlResult {
+    ///     req.redirect_with_notice(&Back::Inventory(Inventory), "Batch 3517 deleted.")
     /// }
     /// ```
     pub fn redirect_with_notice(&self, to: &(impl crate::route::OnSite + ?Sized), notice: impl std::fmt::Display) -> HtmlResult {
@@ -1415,7 +1477,8 @@ impl Req {
             }
             text.truncate(end);
         }
-        let cookie = form_urlencoded::Serializer::new(String::new()).append_pair("p", path).append_pair("m", &text).finish();
+        let cookie =
+            form_urlencoded::Serializer::new(String::new()).append_pair("p", &path_key(path)).append_pair("m", &text).finish();
         // Form encoding writes only letters, digits, `*-._+%&=`: all a cookie can carry.
         let cookie = crate::security::cookie::SetCookie::new(NOTICE_COOKIE, &cookie).max_age(60);
         Ok(HtmlResponse::new(redirect(self.mode, value)).with_cookie(cookie))
