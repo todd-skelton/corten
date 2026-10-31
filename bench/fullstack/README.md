@@ -433,11 +433,14 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
 
 1. Machine: a DigitalOcean CPU-optimized droplet (`c-8`: 8 dedicated vCPUs, Intel Xeon Platinum
    8168 at 2.7 GHz in r8, 16 GB), Ubuntu 24.04, kernel 6.8, Docker 29.9, Node 24, created for the run
-   and destroyed after it (`droplet.mjs`). If the droplet stops answering mid-round,
-   `droplet.mjs` power-cycles it and goes on from the next step; the skipped step is named in
-   `run.log` ("step <name> skipped"), and its results are missing from the round. Droplets of one size are not all the same CPU (r1's,
-   r4's, r5's and r8's were a Platinum 8168, r2's, r3's, r6's and r7's a Platinum 8280), so times are compared within a
-   round, never across rounds.
+   and destroyed after it (`droplet.mjs`). If the droplet stops answering for 15 minutes or the
+   round's log stops growing for an hour, `droplet.mjs` power-cycles it and goes on from the next
+   step, at most twice a round (the full comparison only; `--suite live` and `--suite browser`
+   fail instead). The skipped step is named in `run.log` and in `summary.json` (`skipped`), and
+   its results are partly or wholly missing from the round. A round that fails keeps what it
+   measured: `droplet.mjs` downloads it before destroying the droplet. Droplets of one size are
+   not all the same CPU (r1's, r4's, r5's and r8's were a Platinum 8168, r2's, r3's, r6's and
+   r7's a Platinum 8280), so times are compared within a round, never across rounds.
 2. Cores: the app under test pinned to core 1 with 1 GiB of memory, the item API to cores 2-3,
    the load generator (k6) to cores 4-7, the system and Docker on core 0. One app runs at a time.
    From r7, with items in memory, k6 also gets cores 2-3, which the item API does not use then.

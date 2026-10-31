@@ -7,14 +7,18 @@
 //   --from <step>: start run-all.mjs at that step and keep the droplet's earlier results.
 //   --attach: with --host, only wait for the round already running there and download it.
 //   --stall <minutes>: how long a droplet may not answer before it is power-cycled (default 15).
+//   --idle <minutes>: how long the round's log may not grow before it is power-cycled (default 60;
+//     the longest quiet stretch in r5-r8's logs was 26 minutes, in count.mjs).
 //   --suite live: run bench/live (run.mjs, then summarize.mjs) instead; results in bench/live/results.
 //   --suite browser: only the browser pass of this comparison (run-all.mjs from "browser": parity,
 //     bytes, browser timing), then bench/browser's run-all.mjs; results in both results folders.
 // Results land in bench/fullstack/results/<round>/. The droplet is destroyed when the run ends,
 // fails or is interrupted, unless --keep (and never one passed with --host).
-// If a full-stack round's droplet stops answering (r8's locked up in count.mjs, #466), it is
-// power-cycled, the step it was in is skipped ("step <name> skipped" in run.log) and the round
-// goes on from the next step, at most twice; after that the run fails rather than wait forever.
+// If a full-stack round's droplet stops answering (r8's locked up in count.mjs, #466) or its log
+// stops growing, it is power-cycled, the step it was in is skipped ("step <name> skipped" in
+// run.log and skipped.txt, which summarize.mjs copies into summary.json) and the round goes on from
+// the next step, at most twice. Otherwise, or after that, the run fails: it downloads what the
+// round has first, then destroys the droplet.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -34,6 +38,13 @@ const suiteDir = `/bench/bench/${suite === "live" ? "live" : "fullstack"}`;
 // The last line of a finished run: bench/browser's run-all.mjs prints its own after fullstack's.
 const doneMarker = suite === "browser" ? /browser suite (done|finished)/ : /all done/;
 const minute = 60_000;
+const minutes = (name, fallback) => {
+  const n = Number(flag(name, fallback));
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`--${name} is a number of minutes`);
+  return n * minute;
+};
+const stall = minutes("stall", "15");
+const idle = minutes("idle", "60");
 // stdin is never inherited: started from a hidden console, Windows' ssh sometimes keeps waiting on
 // that console after the remote command has finished (the r7, r8 and r9 runs each hung for hours
 // in one such call; in a test 2 of 6 calls hung with stdin inherited and none of 30 with it
@@ -48,6 +59,9 @@ const run = (cmd, cmdArgs, { quiet, allowFail, timeout = 2 * minute, ...options 
   return failure ? { ...r, status: r.status || 1 } : r;
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Windows' antivirus can hold a file it just saw written for a moment: a temporary file that cannot
+// be removed is left behind rather than failing the round.
+const remove = (file) => { try { rmSync(file, { force: true, maxRetries: 10, retryDelay: 500 }); } catch (e) { console.log(`could not remove ${file}: ${e.code}`); } };
 // Only for work that can run again safely: up to `times` attempts, a minute apart.
 const retry = async (times, work) => {
   for (let attempt = 1; ; attempt += 1) {
@@ -61,10 +75,16 @@ const retry = async (times, work) => {
 
 let host = flag("host");
 let dropletId = null;
+const tagged = () => (run("doctl", ["compute", "droplet", "list", "--tag-name", "corten-bench", "--format", "ID,Name,PublicIPv4", "--no-header"], { quiet: true, allowFail: true })
+  .stdout ?? "").split("\n").map((l) => l.trim().split(/\s+/));
+const dropletByName = (name) => tagged().find(([, n]) => n === name)?.[0] ?? null;
+const dropletAt = (ip) => tagged().find(([, , a]) => a === ip)?.[0] ?? null;
 const destroy = () => {
   if (dropletId && !args.includes("--keep")) {
     console.log(`destroying droplet ${dropletId}`);
-    run("doctl", ["compute", "droplet", "delete", dropletId, "--force"], { allowFail: true });
+    if (run("doctl", ["compute", "droplet", "delete", dropletId, "--force"], { allowFail: true }).status !== 0) {
+      console.log(`could not delete droplet ${dropletId}: delete it with doctl compute droplet delete ${dropletId} --force`);
+    }
     dropletId = null;
   }
 };
@@ -79,6 +99,14 @@ const env = suite === "live"
 const sshOptions = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=4"];
 const ssh = (script, options) => run("ssh", [...sshOptions, `root@${host}`, script], options);
 const scp = (from, to) => run("scp", ["-q", ...sshOptions, from, to], { timeout: 15 * minute });
+const quote = (text) => `'${text.replaceAll("'", "'\\''")}'`;
+// Runs `script` on the droplet for at most `limit` minutes there, one such script at a time: a
+// retry after a dropped connection waits for the attempt it replaces (or its time limit) rather
+// than running beside it (two apt or docker builds at once).
+const remote = (script, limit, options) => ssh(
+  `flock -w ${limit * 60} /tmp/droplet.lock timeout -k 30 ${limit * 60} bash -c ${quote(script)}`,
+  { timeout: (2 * limit + 2) * minute, ...options },
+);
 const answers = async (tries) => {
   for (let i = 0; i < tries; i += 1) {
     if (ssh("true", { quiet: true, allowFail: true, timeout: 30_000 }).status === 0) return true;
@@ -86,9 +114,11 @@ const answers = async (tries) => {
   }
   return false;
 };
-// run-all.mjs's steps, in its order, and the step a "<time> node <script> ..." line of its log runs.
+// run-all.mjs's steps, in its order, and the step a "<time> node <script> ..." line of its log runs
+// ("<time> starting every app" begins the browser step, before parity.mjs).
 const steps = ["cold-start", "fixture", "api", "count", "browser"];
 const stepOf = (line) => {
+  if (/^\S+ starting every app/.test(line)) return "browser";
   const m = /^\S+ node (\S+)\.mjs(?: \S+ (fixture|api)\b)?/.exec(line);
   if (!m) return null;
   if (m[1] === "run-ssr") return m[2];
@@ -97,7 +127,9 @@ const stepOf = (line) => {
 
 const log = `${suiteDir}/results-${round}.log`;
 const itemApi = "(docker rm -f item-api >/dev/null 2>&1; docker run -d --name item-api --network rustbench --cpuset-cpus 2-3 -v /bench/bench/fullstack:/b:ro node:24-bookworm-slim node /b/item-api/server.mjs /b/fixtures/items.json >/dev/null)";
-const running = `pgrep -f 'run(-all)?\\.mjs ${round}' >/dev/null`;
+// The round's process: run-all.mjs or run.mjs, or the summarize.mjs that ends a round whose last
+// step was skipped. "([^0-9]|$)" keeps r9 from matching r90.
+const running = `pgrep -f '(run(-all)?|summarize)\\.mjs ${round}([^0-9]|$)' >/dev/null`;
 // Starts `command` in the background on the droplet, detached, so a dropped connection does not
 // stop it (`;`, not `&&`: only the command goes to the background, so ssh returns at once). Not
 // retried blindly: if the call fails, the round counts as started when its process is there.
@@ -106,13 +138,35 @@ const launch = (command, append) => {
   if (ssh(running, { quiet: true, allowFail: true }).status === 0) return;
   throw new Error(`could not start the round on ${host}`);
 };
+// host.txt: the CPU model and the rest, since droplets of one size are not all the same machine.
+const hostInfo = "(lscpu; free -m; uname -r; docker --version; node --version; npx playwright --version)";
+const download = async (remoteDir, localName, label) => {
+  const local = join(here, "..", localName, "results");
+  mkdirSync(local, { recursive: true });
+  await retry(3, () => remote(`cd ${remoteDir} && mkdir -p results/${round} && cp ${log} results/${round}/run.log && ${hostInfo} > results/${round}/host.txt 2>&1; tar -czf /tmp/results.tgz -C results ${round}`, 5));
+  await retry(3, () => scp(`root@${host}:/tmp/results.tgz`, join(local, ".results.tgz")));
+  run("tar", ["-xzf", join(local, ".results.tgz"), "-C", local], { timeout: 5 * minute });
+  remove(join(local, ".results.tgz"));
+  console.log(`${label} in ${join(local, round)}`);
+};
+const downloadAll = async (label) => {
+  await download(suiteDir, suite === "live" ? "live" : "fullstack", label);
+  if (suite === "browser") await download("/bench/bench/browser", "browser", label);
+};
 
+let launched = false;
 try {
   if (!host) {
     const key = flag("ssh-key");
     if (!key) throw new Error("--ssh-key <DigitalOcean key id> is required to create a droplet");
-    const created = run("doctl", ["compute", "droplet", "create", `corten-bench-${suite === "fullstack" ? "" : `${suite}-`}${round}`, "--size", flag("size", "c-8"), "--region", flag("region", "sfo2"),
-      "--image", "ubuntu-24-04-x64", "--ssh-keys", key, "--tag-name", "corten-bench", "--wait", "--format", "ID,PublicIPv4", "--no-header"], { quiet: true, timeout: 10 * minute });
+    const name = `corten-bench-${suite === "fullstack" ? "" : `${suite}-`}${round}`;
+    const created = run("doctl", ["compute", "droplet", "create", name, "--size", flag("size", "c-8"), "--region", flag("region", "sfo2"),
+      "--image", "ubuntu-24-04-x64", "--ssh-keys", key, "--tag-name", "corten-bench", "--wait", "--format", "ID,PublicIPv4", "--no-header"], { quiet: true, allowFail: true, timeout: 10 * minute });
+    if (created.status !== 0) {
+      // The droplet may exist even though the call failed or timed out: find it so finally deletes it.
+      dropletId = dropletByName(name);
+      throw new Error(`could not create droplet ${name}: ${String(created.error?.message ?? created.stderr).trim()}`);
+    }
     [dropletId, host] = created.stdout.trim().split(/\s+/);
     console.log(`droplet ${dropletId} at ${host}`);
     await answers(30);
@@ -122,7 +176,7 @@ try {
   if (attach && !flag("host")) throw new Error("--attach needs --host");
   if (!attach) {
     console.log("provisioning");
-    await retry(2, () => ssh([
+    await retry(2, () => remote([
       "cloud-init status --wait >/dev/null",
       // No package updates during the round: r8's droplet installed a new kernel while it ran
       // (#466), so a power cycle came back on a kernel `perf` was not installed for, and an apt run
@@ -137,20 +191,20 @@ try {
       ...(suite === "browser"
         ? ["command -v cc >/dev/null || apt-get install -y -qq build-essential >/dev/null", "command -v cargo >/dev/null || (curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal >/dev/null)"]
         : []),
-    ].join(" && "), { timeout: 30 * minute }));
+    ].join(" && "), 30));
 
     console.log("uploading the working tree");
     const tarball = join(here, "results", ".upload.tgz");
     mkdirSync(dirname(tarball), { recursive: true });
-    run("tar", ["-czf", tarball, "--exclude=target", "--exclude=node_modules", "--exclude=./bench/fullstack/results", "--exclude=./bench/live/results", "--exclude=./bench/browser/results", "--exclude=./bench/browser/out", "--exclude=./.git", "-C", repo, "."]);
+    run("tar", ["-czf", tarball, "--exclude=target", "--exclude=node_modules", "--exclude=./bench/fullstack/results", "--exclude=./bench/live/results", "--exclude=./bench/browser/results", "--exclude=./bench/browser/out", "--exclude=./.git", "-C", repo, "."], { timeout: 5 * minute });
     const from = flag("from");
-    await retry(3, () => ssh(from ? "mkdir -p /bench" : "rm -rf /bench && mkdir -p /bench"));
+    await retry(3, () => remote(from ? "mkdir -p /bench" : "rm -rf /bench && mkdir -p /bench", 2));
     await retry(3, () => scp(tarball, `root@${host}:/bench/src.tgz`));
-    rmSync(tarball);
+    remove(tarball);
 
     console.log("building the images");
     const fullstackImages = (names) => names.filter((app) => app !== "corten").map((app) => `docker build -q -t cb-${app} bench/fullstack/apps/${app}`);
-    await retry(2, () => ssh(suite === "live"
+    await retry(2, () => remote(suite === "live"
       ? [
         "cd /bench && tar -xzf src.tgz",
         "docker build -q -f bench/live/apps/corten/Dockerfile -t cb-live-corten .",
@@ -164,7 +218,7 @@ try {
         ...fullstackImages(Object.keys(apps)),
         "docker network create rustbench >/dev/null 2>&1 || true",
         itemApi,
-      ].join(" && "), { timeout: 90 * minute }));
+      ].join(" && "), 90));
 
     console.log(`running round ${round} (${{ live: "about an hour", browser: "about an hour", fullstack: "about six hours for fourteen apps" }[suite]})`);
     launch({
@@ -173,66 +227,103 @@ try {
       fullstack: `node run-all.mjs ${round} 10 ${from ?? ""}`,
     }[suite], Boolean(from));
   }
-  const stall = Number(flag("stall", "15")) * minute;
+  launched = true;
   let shown = 0;
   let lastLog = "";
+  let changedAt = Date.now();
+  let quietPolls = 0;
   let silentSince = null;
+  let silentPolls = 0;
+  let floor = 0;
   let recoveries = 0;
   let gone = 0;
   for (;;) {
     await sleep(minute);
     const r = ssh(`cat ${log}; ${running} || echo __stopped__`, { quiet: true, allowFail: true });
+    let why = null;
     if (r.status === 0) {
       silentSince = null;
-      lastLog = r.stdout;
+      silentPolls = 0;
+      const text = r.stdout.replace("__stopped__\n", "");
+      if (text !== lastLog) { changedAt = Date.now(); quietPolls = 0; } else quietPolls += 1;
+      lastLog = text;
       // Two polls in a row with no round process and no last line: it died without finishing.
-      gone = r.stdout.includes("__stopped__") && !doneMarker.test(r.stdout) ? gone + 1 : 0;
+      gone = r.stdout.includes("__stopped__") && !doneMarker.test(text) ? gone + 1 : 0;
       if (gone >= 2) throw new Error(`the round's process on ${host} stopped before it finished; its log is ${log}`);
-      const lines = r.stdout.split("\n").filter((l) => /^\d{4}-|step failed|step \S+ skipped|all done|browser suite|^\|/.test(l));
+      const lines = text.split("\n").filter((l) => /^\d{4}-|step failed|step \S+ skipped|all done|browser suite|^\|/.test(l));
       for (const l of lines.slice(shown)) console.log(l);
       shown = lines.length;
-      if (doneMarker.test(r.stdout)) break;
-      continue;
+      if (doneMarker.test(text)) break;
+      // The droplet answers but the round has written nothing for `idle` (k6, perf or a browser
+      // hung): treated like a droplet that stopped answering. Counted in polls too, so a PC that
+      // slept through the round does not count its sleep.
+      if (suite !== "fullstack" || Date.now() - changedAt < idle || quietPolls < idle / minute / 2) continue;
+      why = `its log has not grown for ${Math.round((Date.now() - changedAt) / minute)} minutes`;
+    } else {
+      silentSince ??= Date.now();
+      silentPolls += 1;
+      if (Date.now() - silentSince < stall || silentPolls < 3) continue;
+      // A network problem here looks the same as a hung droplet: only a droplet that DigitalOcean
+      // can be reached past is restarted.
+      if (run("doctl", ["account", "get"], { quiet: true, allowFail: true, timeout: minute }).status !== 0) {
+        console.log("neither the droplet nor DigitalOcean answers from here: waiting for the network");
+        continue;
+      }
+      why = `it has not answered for ${Math.round((Date.now() - silentSince) / minute)} minutes`;
     }
-    silentSince ??= Date.now();
-    if (Date.now() - silentSince < stall) continue;
-    // The droplet has not answered for `stall`: restart it and go on without the step it was in.
-    const step = lastLog.split("\n").map(stepOf).filter(Boolean).at(-1);
-    if (suite !== "fullstack" || !step || recoveries >= 2) {
-      throw new Error(`the droplet has not answered for ${stall / minute} minutes${step ? ` (in step ${step})` : ""}`);
+    // Restart the droplet and go on without the step it was in.
+    const fromLog = lastLog.split("\n").map(stepOf).filter(Boolean).at(-1);
+    const step = steps[Math.max(floor, steps.indexOf(fromLog))];
+    if (suite !== "fullstack" || !fromLog || recoveries >= 2) {
+      throw new Error(`the round on ${host} is stuck: ${why}${fromLog ? ` (in step ${step})` : ""}`);
     }
     recoveries += 1;
-    const id = dropletId ?? run("doctl", ["compute", "droplet", "list", "--tag-name", "corten-bench", "--format", "ID,PublicIPv4", "--no-header"], { quiet: true })
-      .stdout.split("\n").map((l) => l.trim().split(/\s+/)).find(([, ip]) => ip === host)?.[0];
-    if (!id) throw new Error(`the droplet at ${host} stopped answering and no corten-bench droplet has that address to power-cycle`);
-    console.log(`the droplet stopped answering in step ${step}: power-cycling droplet ${id}`);
-    run("doctl", ["compute", "droplet-action", "power-cycle", id, "--wait"], { quiet: true, timeout: 10 * minute });
+    const id = dropletId ?? dropletAt(host);
+    if (!id) throw new Error(`the round on ${host} is stuck (${why}) and no corten-bench droplet has that address to power-cycle`);
+    console.log(`the round is stuck in step ${step}, ${why}: power-cycling droplet ${id}`);
+    const cycledAt = Date.now();
+    run("doctl", ["compute", "droplet-action", "power-cycle", id, "--wait"], { quiet: true, allowFail: true, timeout: 10 * minute });
     if (!(await answers(60))) throw new Error(`droplet ${id} did not answer after a power cycle`);
-    const next = steps[steps.indexOf(step) + 1];
-    const note = `step ${step} skipped: the droplet stopped answering and was power-cycled`;
-    console.log(next ? `${note}; going on from ${next}` : note);
-    // A reboot stops every container: clear the apps and start the item API again.
-    if (ssh(`echo "$(date -u +%Y-%m-%dT%H:%M:%S.000Z) ${note}" >> ${log}; docker ps -aq --filter name=fsw- | xargs -r docker rm -f >/dev/null; ${itemApi}`, { quiet: true, allowFail: true }).status !== 0) {
-      console.log("could not clear the app containers or start the item API; the next steps will say what failed");
+    // Only a droplet that restarted (so no process of the round is left) gets the round again.
+    const up = ssh(`cut -d. -f1 /proc/uptime; ${running} && echo __running__; true`, { quiet: true, allowFail: true });
+    const uptime = Number(up.stdout?.split("\n")[0]);
+    if (up.status !== 0 || !(uptime * 1000 < Date.now() - cycledAt + minute) || up.stdout.includes("__running__")) {
+      console.log(`droplet ${id} did not restart (up ${uptime} s): watching the round again`);
+      silentSince = null;
+      silentPolls = 0;
+      changedAt = Date.now();
+      quietPolls = 0;
+      continue;
     }
-    launch(next ? `node run-all.mjs ${round} 10 ${next}` : `sh -c 'node summarize.mjs ${round}; echo "$(date -u +%Y-%m-%dT%H:%M:%S.000Z) all done"'`, true);
+    const next = steps[steps.indexOf(step) + 1];
+    const note = `step ${step} skipped: ${why}, so the droplet was power-cycled`;
+    console.log(next ? `${note}; going on from ${next}` : note);
+    // A reboot stops every container: clear the apps and start the item API again. skipped.txt
+    // tells summarize.mjs (and so summary.json) which step's results are partly or wholly missing.
+    const stamp = "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)";
+    if (ssh(`mkdir -p ${suiteDir}/results/${round}; echo "${stamp} ${note}" | tee -a ${log} >> ${suiteDir}/results/${round}/skipped.txt; docker ps -aq --filter name=fsw- | xargs -r docker rm -f >/dev/null; ${itemApi}`, { quiet: true, allowFail: true }).status !== 0) {
+      console.log("could not record the skip, clear the app containers or start the item API; the next steps will say what failed");
+    }
+    launch(next ? `node run-all.mjs ${round} 10 ${next}` : `sh -c 'node summarize.mjs ${round}; echo "${stamp} all done"'`, true);
+    floor = next ? steps.indexOf(next) : steps.length - 1;
     silentSince = null;
+    silentPolls = 0;
+    changedAt = Date.now();
+    quietPolls = 0;
+    gone = 0;
   }
 
   console.log("downloading the results");
-  // host.txt: the CPU model and the rest, since droplets of one size are not all the same machine.
-  const hostInfo = "(lscpu; free -m; uname -r; docker --version; node --version; npx playwright --version)";
-  const download = async (remoteDir, localName) => {
-    const local = join(here, "..", localName, "results");
-    mkdirSync(local, { recursive: true });
-    await retry(3, () => ssh(`cd ${remoteDir} && cp ${log} results/${round}/run.log && ${hostInfo} > results/${round}/host.txt 2>&1; tar -czf /tmp/results.tgz -C results ${round}`, { timeout: 5 * minute }));
-    await retry(3, () => scp(`root@${host}:/tmp/results.tgz`, join(local, ".results.tgz")));
-    run("tar", ["-xzf", join(local, ".results.tgz"), "-C", local], { timeout: 5 * minute });
-    rmSync(join(local, ".results.tgz"));
-    console.log(`results in ${join(local, round)}`);
-  };
-  await download(suiteDir, suite === "live" ? "live" : "fullstack");
-  if (suite === "browser") await download("/bench/bench/browser", "browser");
+  await downloadAll("results");
+} catch (e) {
+  // A round that ran and then failed keeps what it measured: download it before the droplet goes.
+  if (launched) {
+    console.log(`the round failed (${String(e.message).split("\n")[0]}); downloading what it has`);
+    try { await downloadAll("partial results (the round did not finish)"); } catch (d) {
+      console.log(`could not download them: ${String(d.message).split("\n")[0]}`);
+    }
+  }
+  throw e;
 } finally {
   destroy();
 }

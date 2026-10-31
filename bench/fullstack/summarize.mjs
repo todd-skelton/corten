@@ -14,6 +14,15 @@ const pct = (xs, p) => {
   return s.length ? +s[Math.min(s.length - 1, Math.floor(p * (s.length - 1) + 0.5))].toFixed(0) : null;
 };
 const summary = { ssr: {}, coldStart: read(join(dir, "cold-start.json")), bytes: read(join(dir, "bytes.json")), instructions: {}, browser: {} };
+// Steps droplet.mjs skipped after the droplet hung ("<time> step <name> skipped: <why>"): their
+// results are partly or wholly missing. Only rounds with one get the key.
+const skippedFile = join(dir, "skipped.txt");
+if (existsSync(skippedFile)) {
+  summary.skipped = readFileSync(skippedFile, "utf8").trim().split("\n").filter(Boolean).map((line) => {
+    const m = /^(\S+) step (\S+) skipped: (.*)$/.exec(line);
+    return m ? { at: m[1], step: m[2], why: m[3] } : { line };
+  });
+}
 
 // "fixture" and "api" are the item page; "fixture-json" and "api-json" the item as JSON.
 for (const [key, source, suffix] of [["fixture", "fixture", ""], ["api", "api", ""], ["fixture-json", "fixture", "-json"], ["api-json", "api", "-json"]]) {
@@ -79,6 +88,7 @@ for (const [key, list] of Object.entries(summary.browser)) {
 writeFileSync(join(dir, "summary.json"), JSON.stringify(summary, null, 1));
 
 const line = (cells) => `| ${cells.join(" | ")} |`;
+for (const s of summary.skipped ?? []) console.log(`SKIPPED: step ${s.step ?? "?"} (${s.why ?? s.line}); its results are partly or wholly missing`);
 for (const source of Object.keys(summary.ssr)) {
   console.log(`\nSSR ${source}`);
   console.log(line(["App", "fixed rate: achieved rps, p50/p99 ms, CPU", "64 VUs: rps, p50/p99", "256 VUs: rps, p99, failed", "memory under load"]));
