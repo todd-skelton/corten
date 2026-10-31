@@ -2397,6 +2397,10 @@ Corten is pre-1.0, so any minor version may change the API.
     the signal when done, and a task the configuration turns off not registered (a `match` on the
     configuration in the builder chain). Nothing a request does changes
     ([#503 A task that returns before shutdown is silent: a task the configuration turns off, or one that cannot start, ends without a trace](https://github.com/todd-skelton/corten/issues/503)).
+87. A release build of an app no longer warns that `Assets::module_tag` is never used: its only
+    caller is the debug-build check that a page's handlers call a module the app serves, so it is
+    built in debug builds only. Nothing a page renders changes
+    ([#500 A release build warns that Assets::module_tag is never used: its only caller is a debug-build check](https://github.com/todd-skelton/corten/issues/500)).
 
 ### Documentation
 

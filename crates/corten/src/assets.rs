@@ -586,7 +586,9 @@ impl Assets {
         self.registered.contains(name)
     }
 
-    /// The tag that loads the script module `name` with a page, when there is one.
+    /// The tag that loads the script module `name` with a page, when there is one. Debug builds
+    /// only: the check that a page's handlers call a module the app serves.
+    #[cfg(debug_assertions)]
     pub(crate) fn module_tag(&self, name: &str) -> Option<&str> {
         self.module(name).map(|(tag, _)| tag)
     }
