@@ -1,3 +1,7 @@
+/* A set's share of the stock's value, which `style={SHARE.pct(..)}` sets on its bar. */
+@property --share { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
 .table th:nth-child(n + 2), .table td:nth-child(n + 2) { text-align: end; font-variant-numeric: tabular-nums; }
 .table tbody th { font: inherit; font-weight: 400; color: inherit; text-transform: none; letter-spacing: normal; }
 .table tfoot :is(th, td) { border-top: 2px solid var(--line); border-bottom: 0; font-weight: 600; color: var(--ink); font-size: inherit; text-transform: none; letter-spacing: normal; }
+/* The bar is the share's picture; the number beside it is what a screen reader reads. */
+.bar { display: inline-block; vertical-align: middle; width: 6rem; height: 6px; margin-inline-end: 10px; border-radius: 3px; background: linear-gradient(to right, var(--accent) var(--share), var(--tint) var(--share)); }

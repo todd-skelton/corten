@@ -1164,20 +1164,21 @@ How the common cases look:
 | Private everywhere (an internal tool) | `caller = Staff` on the app's routes module, and the sign-in route (and any webhook) in a module without it |
 | An API only some callers may use | handlers that take `Caller<Partner>` and return `JsonResult<T>` |
 | Only the author edits, members see their organization's records | the handler, which loads the record |
-| A payment provider's scripts and frames, or style attributes, on some pages | an area with `.policy(..)` ([below](#a-policy-for-part-of-the-app)) |
+| A payment provider's scripts and frames, or style attributes in rich text, on some pages | an area with `.policy(..)` ([below](#a-policy-for-part-of-the-app)) |
 
 ### A policy for part of the app
 
 What only some pages need is allowed on those pages only: an area adds to the app's policy for
 the pages at its prefix and under it. A payment page that embeds a provider's fields, for example,
-or the pages that draw sizes from data with `style` attributes:
+or the pages that show rich text with `style` attributes written in it (a size drawn from data needs
+no policy: it is a [custom property](styles.md#values-from-data)):
 
 ```rust,ignore
 App::new(url::router())
     .area(|area| payments::url::area(area).policy(|p| {
         p.script_src("https://js.stripe.com").frame_src("https://js.stripe.com").connect_src("https://api.stripe.com")
     }))
-    .area(|area| dashboard::url::area(area).policy(|p| p.allow_style_attributes()))
+    .area(|area| help::url::area(area).policy(|p| p.allow_style_attributes()))
 ```
 
 An area only adds (the closure gets `Sources`, which has no way to remove one), so no page allows

@@ -17,16 +17,371 @@ pub struct Sheet {
     pub css: String,
     /// The classes, as written in the file, first use first.
     pub classes: Vec<String>,
+    /// The custom properties its `@property` rules register, in order: each name as written
+    /// (`fill` for `--fill`) and the type of its `syntax`, when markup can set it
+    /// (`style={FILL.pct(42.0)}`).
+    pub properties: Vec<(String, Option<&'static str>)>,
 }
+
+/// The Rust type (in `corten::style::syntax`) of each `@property` syntax markup can set: a
+/// number with one of the units the type allows, so no CSS text from data reaches the page.
+const SYNTAXES: &[(&str, &str)] = &[
+    ("<number>", "Number"),
+    ("<integer>", "Integer"),
+    ("<percentage>", "Percentage"),
+    ("<length>", "Length"),
+    ("<length-percentage>", "LengthPercentage"),
+    ("<angle>", "Angle"),
+    ("<time>", "Time"),
+];
 
 /// Prefixes every class in `src` with `{prefix}__`. A rule outside any at-rule (or in `@media`,
 /// `@supports`, `@container`, `@layer`) must name one of the file's classes, so a component's
 /// styles cannot reach elements it does not render.
 pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
-    let mut s =
-        Scoper { text: src, bytes: src.as_bytes(), i: 0, out: String::with_capacity(src.len()), classes: Vec::new(), prefix };
+    let mut s = Scoper {
+        text: src,
+        bytes: src.as_bytes(),
+        i: 0,
+        out: String::with_capacity(src.len()),
+        classes: Vec::new(),
+        properties: Vec::new(),
+        prefix,
+    };
     s.block(Ctx::Top, true)?;
-    Ok(Sheet { css: s.out, classes: s.classes })
+    let names: Vec<&str> = s.properties.iter().map(|(name, _)| name.as_str()).collect();
+    let css = rename_properties(&s.out, &names, prefix)?;
+    Ok(Sheet { css, classes: s.classes, properties: s.properties })
+}
+
+/// Whether `syntax` (the text of an `@property`'s `syntax`, its escapes decoded) is one the
+/// browser reads, by the algorithm of CSS Properties and Values API Level 1 (5.4, consume a syntax
+/// definition): `*`, or components joined by `|`, each a supported data type name (`<length>`)
+/// or a keyword, either followed by `+` (a list) or `#` (a comma list), but
+/// `<transform-list>`, which is a list already. A keyword is an identifier that starts with a
+/// letter, `_`, a non-ASCII character or an escape (not `-`) and is not a CSS-wide keyword or
+/// `default`. The browser ignores a rule with another syntax.
+fn syntax_valid(syntax: &str) -> bool {
+    const TYPES: &[&str] = &[
+        "angle",
+        "color",
+        "custom-ident",
+        "image",
+        "integer",
+        "length",
+        "length-percentage",
+        "number",
+        "percentage",
+        "resolution",
+        "string",
+        "time",
+        "transform-function",
+        "transform-list",
+        "url",
+    ];
+    let space = |c: &char| matches!(c, ' ' | '\t' | '\n');
+    let chars: Vec<char> = preprocess(syntax).chars().collect();
+    let (mut start, mut end) = (0, chars.len());
+    while start < end && space(&chars[start]) {
+        start += 1;
+    }
+    while end > start && space(&chars[end - 1]) {
+        end -= 1;
+    }
+    let chars = &chars[start..end];
+    if chars.is_empty() {
+        return false;
+    }
+    if chars == ['*'] {
+        return true;
+    }
+    let mut i = 0;
+    loop {
+        while chars.get(i).is_some_and(space) {
+            i += 1;
+        }
+        match chars.get(i) {
+            Some('<') => {
+                let Some(len) = chars[i..].iter().position(|&c| c == '>') else { return false };
+                let name: String = chars[i + 1..i + len].iter().collect();
+                if !TYPES.contains(&name.as_str()) {
+                    return false;
+                }
+                i += len + 1;
+                if name != "transform-list" && matches!(chars.get(i), Some('+' | '#')) {
+                    i += 1;
+                }
+            }
+            Some(&c) if starts_ident(c) || (c == '\\' && chars.get(i + 1) != Some(&'\n')) => {
+                let mut name = String::new();
+                loop {
+                    match chars.get(i) {
+                        Some(&c) if starts_ident(c) || c.is_ascii_digit() || c == '-' => {
+                            name.push(c);
+                            i += 1;
+                        }
+                        Some('\\') if chars.get(i + 1) != Some(&'\n') => {
+                            let (c, next) = escaped(chars, i + 1);
+                            name.push(c);
+                            i = next;
+                        }
+                        _ => break,
+                    }
+                }
+                if ["initial", "inherit", "unset", "revert", "revert-layer", "default"]
+                    .iter()
+                    .any(|k| name.eq_ignore_ascii_case(k))
+                {
+                    return false;
+                }
+                if matches!(chars.get(i), Some('+' | '#')) {
+                    i += 1;
+                }
+            }
+            _ => return false,
+        }
+        while chars.get(i).is_some_and(space) {
+            i += 1;
+        }
+        match chars.get(i) {
+            None => return true,
+            Some('|') => i += 1,
+            Some(_) => return false,
+        }
+    }
+}
+
+/// Whether `c` starts an identifier: a letter, `_` or a non-ASCII character (CSS Syntax Level 3,
+/// ident-start code point).
+fn starts_ident(c: char) -> bool {
+    c.is_ascii_alphabetic() || c == '_' || !c.is_ascii()
+}
+
+/// `text` as CSS reads it: each line break (`\r\n`, `\r`, form feed) one `\n`, and NUL the
+/// replacement character (CSS Syntax Level 3, preprocessing the input stream).
+fn preprocess(text: &str) -> String {
+    text.replace("\r\n", "\n").replace(['\r', '\u{c}'], "\n").replace('\0', "\u{fffd}")
+}
+
+/// A CSS string's contents with its escapes decoded (CSS Syntax Level 3, consume a string token):
+/// `\` and a line break is nothing, and `\` before anything else is the code point it escapes.
+fn unescape(text: &str) -> String {
+    let chars: Vec<char> = preprocess(text).chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        match (chars[i], chars.get(i + 1)) {
+            ('\\', None) => i += 1,
+            ('\\', Some('\n')) => i += 2,
+            ('\\', Some(_)) => {
+                let (c, next) = escaped(&chars, i + 1);
+                out.push(c);
+                i = next;
+            }
+            (c, _) => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// The code point the escape whose `\` is just before `at` stands for, and where the escape
+/// ends (CSS Syntax Level 3, consume an escaped code point): one to six hex digits and one
+/// whitespace after them, the replacement character for zero, a surrogate or past U+10FFFF, or
+/// else the next character itself.
+fn escaped(chars: &[char], at: usize) -> (char, usize) {
+    let hex = chars[at..].iter().take(6).take_while(|c| c.is_ascii_hexdigit()).count();
+    if hex == 0 {
+        return match chars.get(at) {
+            Some(&c) => (c, at + 1),
+            None => ('\u{fffd}', at),
+        };
+    }
+    let value = chars[at..at + hex].iter().fold(0u32, |value, c| value * 16 + c.to_digit(16).unwrap_or(0));
+    let end = at + hex + usize::from(matches!(chars.get(at + hex), Some(' ' | '\t' | '\n')));
+    (if value == 0 { '\u{fffd}' } else { char::from_u32(value).unwrap_or('\u{fffd}') }, end)
+}
+
+/// Whether `value`, an `initial-value`, is one of `kind` (a type of `SYNTAXES`): a number with a
+/// unit the syntax allows (`0` alone for a length), and for a length one of `LENGTHS`, as an initial
+/// value must not depend on a font or a container. The browser ignores a rule whose initial
+/// value does not parse as its syntax, so markup would set a property nothing registered.
+fn initial_fits(kind: &str, value: &str) -> bool {
+    // The number: a sign, digits and a point, and an exponent only when digits follow its `e`
+    // (`1em` is one em, `2e3` two thousand).
+    // CSS's number token: digits, or digits around a point with at least one after it (`.5`, not `1.`).
+    let b = value.as_bytes();
+    let digits = |mut i: usize| {
+        while b.get(i).is_some_and(u8::is_ascii_digit) {
+            i += 1;
+        }
+        i
+    };
+    let start = usize::from(matches!(b.first(), Some(b'+' | b'-')));
+    let mut at = digits(start);
+    if b.get(at) == Some(&b'.') {
+        let after = digits(at + 1);
+        if after == at + 1 {
+            return false;
+        }
+        at = after;
+    }
+    if at == start {
+        return false;
+    }
+    if matches!(b.get(at), Some(b'e' | b'E')) {
+        let sign = usize::from(matches!(b.get(at + 1), Some(b'+' | b'-')));
+        if b.get(at + 1 + sign).is_some_and(u8::is_ascii_digit) {
+            at = digits(at + 1 + sign);
+        }
+    }
+    let (number, unit) = value.split_at(at);
+    let Ok(number) = number.parse::<f64>() else { return false };
+    if !number.is_finite() {
+        return false;
+    }
+    let unit = unit.to_ascii_lowercase();
+    match kind {
+        "Number" => unit.is_empty(),
+        "Integer" => unit.is_empty() && number.fract() == 0.0 && !value.contains(['.', 'e', 'E']),
+        "Percentage" => unit == "%",
+        "Length" => LENGTHS.contains(&unit.as_str()) || (unit.is_empty() && number == 0.0),
+        "LengthPercentage" => unit == "%" || LENGTHS.contains(&unit.as_str()) || (unit.is_empty() && number == 0.0),
+        "Angle" => matches!(unit.as_str(), "deg" | "grad" | "rad" | "turn"),
+        "Time" => matches!(unit.as_str(), "s" | "ms"),
+        _ => true,
+    }
+}
+
+/// The length units an `initial-value` may have. It must be computationally independent: absolute
+/// units and the viewport's, which CSS cannot change, but none that depends on a font or a container
+/// (`1em`, `1cqw`), which the browser refuses (CSS Properties and Values API Level 1, 3.1).
+const LENGTHS: &[&str] = &[
+    "px", "cm", "mm", "q", "in", "pt", "pc", "vw", "vh", "vi", "vb", "vmin", "vmax", "svw", "svh", "svi", "svb", "svmin",
+    "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax", "dvw", "dvh", "dvi", "dvb", "dvmin", "dvmax",
+];
+
+/// `css` with each of `names` (a custom property its `@property` rules register, `fill`)
+/// written `--{prefix}__fill` wherever it is a whole name outside strings: the property is the
+/// component's, as its classes are, so two components can both register a `--fill`.
+///
+/// A declaration of one marked `!important` is an error: markup's values (`style={FILL.pct(..)}`)
+/// are `!important` too, inline after a patch and in a rule of the page's style block on a full
+/// load, and an `!important` rule of the component's with more specificity than that rule would
+/// win on a full load and lose after a patch.
+fn rename_properties(css: &str, names: &[&str], prefix: &str) -> Result<String, String> {
+    if names.is_empty() {
+        return Ok(css.to_string());
+    }
+    let b = css.as_bytes();
+    let ident = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_') || c >= 0x80 || c == b'\\';
+    let mut out = String::with_capacity(css.len() + names.len() * (prefix.len() + 4));
+    let (mut i, mut copied) = (0, 0);
+    while i < b.len() {
+        match b[i] {
+            q @ (b'"' | b'\'') => {
+                i += 1;
+                while i < b.len() && b[i] != q {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            // An attribute selector's value, `[data-kind=--fill]`, is text.
+            b'[' => {
+                while i < b.len() && b[i] != b']' {
+                    i += match b[i] {
+                        b'\\' => 2,
+                        q @ (b'"' | b'\'') => 1 + css[i + 1..].find(q as char).map_or(b.len(), |end| end + 1),
+                        _ => 1,
+                    };
+                }
+            }
+            // An unquoted `url(..)` is a URL, `url(--fill.svg)` a file's name.
+            b'(' if i >= 3 && b[i - 3..i].eq_ignore_ascii_case(b"url") && (i == 3 || !ident(b[i - 4])) => {
+                while i < b.len() && b[i] != b')' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+            }
+            b'-' if b.get(i + 1) == Some(&b'-') && (i == 0 || !ident(b[i - 1])) => {
+                // The whole name, escapes included: `--f\69 ll` is `--fill` to the browser.
+                let mut end = i + 2;
+                while end < b.len() {
+                    if b[end] == b'\\' {
+                        if matches!(b.get(end + 1), None | Some(b'\n' | b'\r' | b'\x0c')) {
+                            break;
+                        }
+                        let hex = b[end + 1..].iter().take(6).take_while(|c| c.is_ascii_hexdigit()).count();
+                        end += 1 + hex.max(1);
+                        if hex > 0 && b.get(end) == Some(&b'\r') && b.get(end + 1) == Some(&b'\n') {
+                            end += 2;
+                        } else if hex > 0 && matches!(b.get(end), Some(b' ' | b'\t' | b'\n' | b'\r' | b'\x0c')) {
+                            end += 1;
+                        }
+                        // A multi-byte character after the `\` is one code point.
+                        while end < b.len() && !css.is_char_boundary(end) {
+                            end += 1;
+                        }
+                    } else if ident(b[end]) {
+                        end += 1;
+                    } else {
+                        break;
+                    }
+                }
+                let written = &css[i + 2..end];
+                let name = if written.contains('\\') { unescape(written) } else { written.to_string() };
+                if names.contains(&name.as_str()) {
+                    let declared =
+                        b[..i].iter().rev().find(|c| !c.is_ascii_whitespace()).is_none_or(|c| matches!(c, b'{' | b';'))
+                            && b[end..].iter().find(|c| !c.is_ascii_whitespace()) == Some(&b':');
+                    if declared && important(&css[end..]) {
+                        return Err(format!(
+                            "--{name}: !important on a property markup sets would beat markup's value on a full load and lose to it after a patch; set it from markup (style={{..}}) or without !important"
+                        ));
+                    }
+                    out.push_str(&css[copied..i + 2]);
+                    out.push_str(prefix);
+                    out.push_str("__");
+                    out.push_str(&name);
+                    copied = end;
+                }
+                i = end;
+            }
+            _ => i += 1,
+        }
+    }
+    out.push_str(&css[copied.min(css.len())..]);
+    Ok(out)
+}
+
+/// Whether the declaration value at the start of `rest` (up to its `;` or `}`, outside strings
+/// and brackets) ends `!important`, in any case and with any space after the `!`.
+fn important(rest: &str) -> bool {
+    let b = rest.as_bytes();
+    let (mut i, mut depth) = (0, 0usize);
+    while i < b.len() {
+        match b[i] {
+            q @ (b'"' | b'\'') => {
+                i += 1;
+                while i < b.len() && b[i] != q {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+            }
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth = depth.saturating_sub(1),
+            b';' | b'}' | b'{' if depth == 0 => break,
+            b'!' if depth == 0 => {
+                let word = rest[i + 1..].trim_start();
+                if word.len() >= 9 && word.as_bytes()[..9].eq_ignore_ascii_case(b"important") {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    false
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -45,6 +400,7 @@ struct Scoper<'a> {
     i: usize,
     out: String,
     classes: Vec<String>,
+    properties: Vec<(String, Option<&'static str>)>,
     prefix: &'a str,
 }
 
@@ -80,12 +436,20 @@ impl Scoper<'_> {
             if end == Some(b'{') {
                 self.i += 1;
                 let inner = if let Some(rule) = text.strip_prefix('@') {
-                    let name = rule.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-')).next().unwrap_or("");
+                    // At-rule names are case-insensitive in CSS: `@MEDIA` is `@media`.
+                    let name =
+                        rule.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-')).next().unwrap_or("").to_ascii_lowercase();
+                    let name = name.as_str();
                     if name == "page" && ctx != Ctx::Raw {
                         self.check_page(rule["page".len()..].trim(), start)?;
                     }
                     match (ctx, name) {
                         (Ctx::Raw, _) => Ctx::Raw,
+                        // A rule nested in a style rule holds style rules or declarations; the
+                        // browser ignores an `@property` there (CSS Nesting).
+                        (Ctx::Style, "property") => {
+                            return Err(self.error(start, "@property registers a property for the whole page: put it at the top of the stylesheet, outside any rule"))
+                        }
                         (_, "media" | "supports" | "container" | "layer" | "scope" | "starting-style") => ctx,
                         (
                             _,
@@ -109,7 +473,11 @@ impl Scoper<'_> {
                     self.out.push_str(&selector);
                 }
                 self.out.push('{');
+                let body = self.out.len();
                 self.block(inner, false)?;
+                if ctx != Ctx::Raw && text.get(..9).is_some_and(|at| at.eq_ignore_ascii_case("@property")) {
+                    self.property(&text["@property".len()..], body, start)?;
+                }
                 self.close();
                 continue;
             }
@@ -148,6 +516,99 @@ impl Scoper<'_> {
             self.out.push_str(value);
             self.out.push(';');
         }
+    }
+
+    /// Records an `@property` rule, whose declarations are in `self.out` from `body`: its name,
+    /// and the type of its syntax when markup can set it. The browser ignores a rule that lacks
+    /// `syntax`, `inherits`, or (for any syntax but `*`) `initial-value`, so each is required.
+    fn property(&mut self, prelude: &str, body: usize, at: usize) -> Result<(), String> {
+        let prelude = prelude.trim();
+        let name = prelude
+            .strip_prefix("--")
+            .filter(|name| !name.is_empty() && name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')));
+        let Some(name) = name else {
+            return Err(self.error(
+                at,
+                format!("@property {prelude}: a custom property's name starts with -- and has letters, digits, - and _"),
+            ));
+        };
+        if name.contains("__") {
+            return Err(self.error(at, format!("--{name}: __ separates the component's name from the property; use - or _")));
+        }
+        if self.properties.iter().any(|(other, _)| other == name) {
+            return Err(self.error(at, format!("@property --{name} is registered twice")));
+        }
+        let (mut syntax, mut inherits, mut initial) = (None, false, None);
+        for declaration in self.out[body..].split(';') {
+            let declaration = split_declaration(declaration).map(|(name, value)| (name.to_ascii_lowercase(), value));
+            match declaration.as_ref().map(|(name, value)| (name.as_str(), *value)) {
+                Some(("syntax", value)) => {
+                    let quoted = value.len() >= 2
+                        && matches!(value.as_bytes()[0], b'"' | b'\'')
+                        && value.as_bytes()[value.len() - 1] == value.as_bytes()[0];
+                    if !quoted {
+                        return Err(self.error(
+                            at,
+                            format!(
+                                "@property --{name}: syntax is a string, syntax: \"{value}\"; the browser ignores it unquoted"
+                            ),
+                        ));
+                    }
+                    syntax = Some(unescape(&value[1..value.len() - 1]).trim_matches([' ', '\t', '\n']).to_string());
+                }
+                Some(("inherits", value)) if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false") => {
+                    inherits = true
+                }
+                Some(("initial-value", value)) => initial = Some(value.trim().to_string()),
+                _ => {}
+            }
+        }
+        if let Some(written) = &syntax {
+            if !syntax_valid(written) {
+                return Err(self.error(at, format!("@property --{name}: syntax: \"{written}\" is not a syntax the browser reads (\"*\", \"<length>\", \"<color>+\", \"auto | <length>\")")));
+            }
+        }
+        let Some(syntax) = syntax else {
+            return Err(self.error(
+                at,
+                format!(
+                    "@property --{name} needs a syntax, such as syntax: \"<percentage>\"; the browser ignores it without one"
+                ),
+            ));
+        };
+        if !inherits {
+            return Err(self.error(
+                at,
+                format!("@property --{name} needs inherits: true or inherits: false; the browser ignores it without one"),
+            ));
+        }
+        if initial.is_none() && syntax != "*" {
+            return Err(self.error(at, format!("@property --{name} needs an initial-value; the browser ignores it without one")));
+        }
+        let kind = SYNTAXES.iter().find(|(written, _)| *written == syntax).map(|(_, kind)| *kind);
+        if let (Some(_), Some(value)) = (kind, &initial) {
+            // A math function's grammar and types are the browser's, and it drops the rule when one
+            // does not fit (`calc(1px 2px)`, `calc(1px * 2px)`); checking them is a CSS math parser
+            // per syntax, so the initial value is written as one value, which the macro can check.
+            if value.contains('(') {
+                return Err(self.error(
+                    at,
+                    format!(
+                        "@property --{name}: initial-value {value}: write one value, such as 6px for calc(2px * 3), which can be checked; the browser drops the rule when a math function does not fit its syntax"
+                    ),
+                ));
+            }
+        }
+        if let (Some(kind), Some(value)) = (kind, &initial) {
+            if !initial_fits(kind, value) {
+                return Err(self.error(
+                    at,
+                    format!("@property --{name}: initial-value {value} is not a {syntax}; the browser ignores the rule"),
+                ));
+            }
+        }
+        self.properties.push((name.to_string(), kind));
+        Ok(())
     }
 
     /// A page's name is the whole app's (`page: name` in any stylesheet picks it), so a component
@@ -383,6 +844,16 @@ pub fn class_ident(class: &str) -> Result<String, String> {
     Ok(out)
 }
 
+/// The constant for a custom property: `bar-width` is `BAR_WIDTH`.
+pub fn var_ident(name: &str) -> Result<String, String> {
+    let words: Vec<String> = name.split(['-', '_']).filter(|w| !w.is_empty()).map(str::to_ascii_uppercase).collect();
+    let out = words.join("_");
+    if out.is_empty() || out.starts_with(|c: char| c.is_ascii_digit()) {
+        return Err(format!("--{name} has no Rust name; start it with a letter"));
+    }
+    Ok(out)
+}
+
 /// The stylesheet or script `file` next to the source file of `span`. When the compiler gives no source
 /// path (some editors' macro servers), the one file with that name under the crate's `src`.
 pub fn locate(file: &str, span: Span) -> Result<PathBuf, Error> {
@@ -433,6 +904,9 @@ pub struct Css {
     pub sheet: Sheet,
     /// The constant for each class, in the order of `sheet.classes`.
     pub idents: Vec<String>,
+    /// The constant for each custom property markup can set (`FILL` for `--fill`), with its
+    /// scoped name and its type.
+    pub vars: Vec<(String, String, &'static str)>,
 }
 
 impl Css {
@@ -456,7 +930,19 @@ impl Css {
             }
             idents.push(ident);
         }
-        Ok(Css { prefix, file, path, sheet, idents })
+        let mut vars: Vec<(String, String, &'static str)> = Vec::new();
+        for (name, kind) in &sheet.properties {
+            let Some(kind) = kind else { continue };
+            let ident = var_ident(name).map_err(|e| (span, format!("{file}: {e}")))?;
+            if let Some(i) = idents.iter().position(|other| *other == ident) {
+                return err(span, format!("{file}: .{} and --{name} are both {ident} in Rust; rename one", sheet.classes[i]));
+            }
+            if let Some((other, ..)) = vars.iter().find(|(other, ..)| *other == ident) {
+                return err(span, format!("{file}: two custom properties are both {other} in Rust; rename one"));
+            }
+            vars.push((ident, format!("--{prefix}__{name}"), kind));
+        }
+        Ok(Css { prefix, file, path, sheet, idents, vars })
     }
 
     fn scoped(&self, class: &str) -> String {
@@ -482,6 +968,21 @@ impl Css {
                 q(
                     "pub const __A0: ::corten::style::Class = ::corten::style::Class::__new(__A1);",
                     &[TokenTree::Ident(Ident::new(ident, owner.span())).into(), literal(&self.scoped(class))],
+                ),
+                owner.span(),
+            ));
+        }
+        // A custom property markup can set: `style={FILL.pct(42.0)}`. One no markup sets is not an
+        // error: a stylesheet registers a property to animate it too.
+        for (ident, name, kind) in &self.vars {
+            consts.extend(respan(
+                q(
+                    "#[allow(dead_code)] pub const __A0: ::corten::style::Var<::corten::style::syntax::__A1> = ::corten::style::Var::__new(__A2);",
+                    &[
+                        TokenTree::Ident(Ident::new(ident, owner.span())).into(),
+                        TokenTree::Ident(Ident::new(kind, owner.span())).into(),
+                        literal(name),
+                    ],
                 ),
                 owner.span(),
             ));
@@ -720,6 +1221,164 @@ mod tests {
         assert!(scope("\n\n@import \"x.css\";", "x").unwrap_err().starts_with("line 3: @import"));
         assert!(scope(".a { color: red", "x").unwrap_err().contains("never closed"));
         assert!(scope(".a__b { color: red }", "x").is_err());
+    }
+
+    #[test]
+    fn a_registered_property_is_the_component_s_and_its_syntax_types_it() {
+        let css = "@property --fill { syntax: '<percentage>'; inherits: false; initial-value: 0% }\n@property --hue { syntax: \"<color>\"; inherits: true; initial-value: red }\n.bar { width: var(--fill); color: var(--hue); --fill-x: 1; transition: --fill 1s; content: \"--fill\"; margin: var(--space-fill) }\n@keyframes grow { to { --fill: 100% } }";
+        let sheet = scope(css, "meter").unwrap();
+        assert_eq!(
+            sheet.css,
+            "@property --meter__fill{syntax:'<percentage>';inherits:false;initial-value:0%}@property --meter__hue{syntax:\"<color>\";inherits:true;initial-value:red}.meter__bar{width:var(--meter__fill);color:var(--meter__hue);--fill-x:1;transition:--meter__fill 1s;content:\"--fill\";margin:var(--space-fill)}@keyframes grow{to{--meter__fill:100%}}"
+        );
+        assert_eq!(sheet.properties, [("fill".to_string(), Some("Percentage")), ("hue".to_string(), None)]);
+        assert_eq!(var_ident("bar-width").unwrap(), "BAR_WIDTH");
+        let error = |css: &str| scope(css, "m").unwrap_err();
+        assert!(error("@property --a { inherits: false; initial-value: 0 }").contains("needs a syntax"));
+        assert!(error("@property --a { syntax: '<number>'; initial-value: 0 }").contains("needs inherits"));
+        assert!(error("@property --a { syntax: '<number>'; inherits: false }").contains("needs an initial-value"));
+        assert!(scope("@property --a { syntax: '*'; inherits: false }", "m").is_ok(), "* needs no initial value");
+        assert!(error("@property --a__b { syntax: '*'; inherits: false }").contains("__ separates"));
+        assert!(error("@property fill { syntax: '*'; inherits: false }").contains("starts with --"));
+        assert!(error("@property --a { syntax: '*'; inherits: false }\n@property --a { syntax: '*'; inherits: false }")
+            .contains("twice"));
+        assert!(error("@property --a { syntax: '<percentage>'; inherits: false; initial-value: 0px }")
+            .contains("is not a <percentage>"));
+        assert!(
+            error("@property --a { syntax: '<integer>'; inherits: false; initial-value: 1.5 }").contains("is not a <integer>")
+        );
+        assert!(error("@property --a { syntax: '<angle>'; inherits: false; initial-value: 0 }").contains("is not a <angle>"));
+        assert!(error("@property --a { syntax: <number>; inherits: false; initial-value: 0 }").contains("syntax is a string"));
+        assert!(error(".bar { @property --a { syntax: '*'; inherits: false } }").contains("outside any rule"));
+        assert!(
+            scope("@property --fill { syntax: '*'; inherits: false }\n.a { --probe: xéé(--fill); }", "m").is_ok(),
+            "text that is not ASCII"
+        );
+        for bad in [
+            "''",
+            "'<not-a-type>'",
+            "'<text>'",
+            "'<length'",
+            "'<transform-list>+'",
+            "'inherit'",
+            "'<length> |'",
+            "'- | <length>'",
+            // A keyword starts like an identifier but not with `-` (Chromium drops `-foo` and `--foo`).
+            "'--foo | compact'",
+            "'-foo | compact'",
+            "'-_x'",
+            "'a b'",
+            "'\\64 efault'",
+        ] {
+            assert!(
+                error(&format!("@property --a {{ syntax: {bad}; inherits: false; initial-value: 0 }}"))
+                    .contains("is not a syntax"),
+                "{bad}"
+            );
+        }
+        for good in [
+            "'*'",
+            "'<color>+'",
+            "'<length>#'",
+            "'auto | <length>'",
+            "'small | medium'",
+            "'open+'",
+            "'é | compact'",
+            "'_x'",
+            "'\\\\61 b | compact'",
+            "'\\61 b | compact'",
+            "'\\3c color>'",
+            "'<string>+'",
+            "'x\\\\2d y'",
+            "' auto\t|  <length> '",
+        ] {
+            assert!(
+                scope(&format!("@property --a {{ syntax: {good}; inherits: false; initial-value: x }}"), "m").is_ok(),
+                "{good}"
+            );
+        }
+        assert_eq!(
+            scope("@PROPERTY --x { SYNTAX: \"<number>\"; INHERITS: false; INITIAL-VALUE: 0 }", "m").unwrap().properties,
+            [("x".to_string(), Some("Number"))],
+            "at-rule and descriptor names are case-insensitive"
+        );
+        assert_eq!(
+            scope("@property --x { syntax: '\\3c percentage>'; inherits: false; initial-value: 0% }", "m").unwrap().properties,
+            [("x".to_string(), Some("Percentage"))],
+            "the syntax is read with its escapes decoded, as the browser reads it"
+        );
+        assert_eq!(
+            scope(".a { width: var(--f\\69 ll); height: var(--\\66ill); color: var(--fill\\é); }\n@property --fill { syntax: '*'; inherits: false }", "m").unwrap().css,
+            ".m__a{width:var(--m__fill);height:var(--m__fill);color:var(--fill\\é)}@property --m__fill{syntax:'*';inherits:false}",
+            "a name written with escapes is the same name to the browser"
+        );
+        // Markup's values are !important, so the component's own may not be: a rule more specific
+        // than the page's style block's would win on a full load and lose after a patch.
+        for bad in [".a.b { --fill: 0% !important }", ".a { color: red; --fill: 0% ! IMPORTANT; }"] {
+            assert!(
+                error(&format!("@property --fill {{ syntax: '<percentage>'; inherits: false; initial-value: 0% }}\n{bad}"))
+                    .contains("!important on a property markup sets"),
+                "{bad}"
+            );
+        }
+        for good in [
+            ".a { --fill: 0%; color: red !important }",
+            ".a { width: var(--fill) !important }",
+            ".a { --other: 0% !important; transition: --fill 1s }",
+            ".a { --fill: 0%; content: '!important' }",
+        ] {
+            assert!(
+                scope(&format!("@property --fill {{ syntax: '<percentage>'; inherits: false; initial-value: 0% }}\n{good}"), "m")
+                    .is_ok(),
+                "{good}"
+            );
+        }
+        assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: 1. }").contains("is not a <number>"));
+        assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: . }").contains("is not a <number>"));
+        assert!(
+            error("@property --a { syntax: '<length>'; inherits: false; initial-value: 1.5em }").contains("is not a <length>")
+        );
+        // The viewport's units, which CSS cannot change (as Chromium, Firefox and WebKit read them).
+        for good in ["2vw", "1dvh", "3svmin"] {
+            assert!(
+                scope(&format!("@property --a {{ syntax: '<length>'; inherits: false; initial-value: {good} }}"), "m").is_ok(),
+                "{good}"
+            );
+        }
+        assert!(error("@property --a { syntax: '<length>'; inherits: false; initial-value: 2cqw }").contains("is not a <length>"));
+        // A math function is the browser's to check (`calc(1px 2px)` drops the rule), so a number
+        // syntax's initial value is written as one value.
+        for bad in ["calc(2px * 3)", "calc()", "calc(1px 2px)", "min(1px, 2px)", "CALC(1px)", "calc(1 + 2"] {
+            assert!(
+                scope(&format!("@property --a {{ syntax: '<length>'; inherits: false; initial-value: {bad} }}"), "m").is_err(),
+                "{bad}"
+            );
+        }
+        assert!(error("@property --a { syntax: '<length>'; inherits: false; initial-value: calc(2px * 3) }")
+            .contains("write one value"));
+        assert!(
+            scope("@property --a { syntax: '<color>'; inherits: false; initial-value: rgb(0 0 0) }", "m").is_ok(),
+            "another syntax's initial value is the browser's"
+        );
+        for ok in [
+            "'<length>'; initial-value: 0",
+            "'<length>'; initial-value: 1.5pt",
+            "'<number>'; initial-value: -2e3",
+            "'<time>'; initial-value: 150ms",
+            "'<color>'; initial-value: red",
+        ] {
+            assert!(scope(&format!("@property --a {{ syntax: {ok}; inherits: TRUE }}"), "m").is_ok(), "{ok}");
+        }
+        let url = scope(
+            "@property --fill { syntax: '*'; inherits: false }\n.a { background: url(--fill.svg); width: var(--fill) }\n.a[data-kind=--fill] { color: red }",
+            "m",
+        )
+        .unwrap();
+        assert!(
+            url.css.contains("url(--fill.svg)") && url.css.contains("var(--m__fill)") && url.css.contains("[data-kind=--fill]"),
+            "a URL is not a property: {}",
+            url.css
+        );
     }
 
     #[test]
