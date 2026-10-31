@@ -103,7 +103,8 @@ impl<P: Prefix> Area<P> {
     ///
     /// A `Route` written by hand has a path of the shape `#[derive(Route)]` writes (each parameter
     /// a whole segment, the text characters a browser sends as they are, here not `|`), so
-    /// [`crate::Req::serves`] knows which route the router picks:
+    /// [`crate::Req::serves`] knows which route the router picks. Text after a parameter in its
+    /// segment (`/feeds/{name}.atom`) takes `#[derive(Route)]`:
     ///
     /// ```compile_fail,E0080
     /// # use corten::prelude::*;
@@ -133,6 +134,8 @@ impl<P: Prefix> Area<P> {
                 "corten: a route's path has the shape #[derive(Route)] writes: whole-segment parameters like /items/{{id}} and plain text (the note below names the route)"
             );
         };
+        // Before the router, which would merge the two or refuse them less clearly.
+        crate::route::assert_no_clash(self.pages.iter().map(|(p, _)| *p).chain([R::WRITTEN]));
         self.routes = self.routes.route(R::PATH, crate::route::with_suffixes::<R, _>(methods.0));
         self.pages.push((R::WRITTEN, methods.1));
         self

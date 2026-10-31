@@ -162,11 +162,13 @@ A parameter may be followed by plain text in its segment, as a file's extension 
 links to `/sitemap/items/3.xml`, and `Params` reads `page` as `3`. A segment that does not end in
 the text (`/sitemap/items/3.json`), or is only the text, is a 404 before the handler runs,
 whatever its method; one whose value is not the type (`x.xml`) is a 400, as any parameter is.
-The router matches the segment whole, so the route takes every path of its shape: a `/{*page}`
-catch-all does not answer `/sitemap/items/3.json` either (`req.serves` agrees), and two routes
-of a module that differ only in that text (`{name}.rss` and `{name}.atom`) do not compile: give
-each a segment of its own. Text before a parameter
-(`item_{id}`) does not compile either.
+The router matches the segment whole, so the route takes every path of its shape, as
+`/sitemap/{kind}/{page}` would: a `/{*page}` catch-all does not answer `/sitemap/items/3.json`
+either (`req.serves` agrees), and the app's middleware sees that 404 with the route's
+`MatchedPath`. Two routes of a module that differ only in that text (`{name}.rss` and
+`{name}.atom`) do not compile, and two in different modules, areas or APIs stop the app at
+startup: give each a segment of its own. Text before a parameter (`item_{id}`) does not compile
+either.
 
 Links write a route's parameters by name with `Display`, so `Params` refuses what would read them
 back differently: a `#[serde(..)]` key on the route struct that links do not follow (`alias`,

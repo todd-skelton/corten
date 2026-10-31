@@ -2463,8 +2463,9 @@ async fn a_parameter_followed_by_text_is_read_without_it() {
     let router = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiFile>(json)).router();
     let (status, _, body) = call_with(router.clone(), "GET", &ApiFile { name: "rates" }.href(), None, None).await;
     assert_eq!((status, &body[..]), (StatusCode::OK, "json"));
-    let (status, _, _) = call_with(router, "GET", "/api/files/rates.csv", None, None).await;
+    let (status, headers, _) = call_with(router, "GET", "/api/files/rates.csv", None, None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/problem+json", "an API's 404");
 }
 
 #[derive(crate::Route)]
@@ -2487,6 +2488,22 @@ fn routes_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
     let rss = crate::Methods::reads(get(|| async { "rss" }));
     let atom = crate::Methods::reads(axum::routing::post(|| async { "atom" }));
     let _ = App::new(Routes::new().__route::<Rss>(rss)).area::<Feeds>(|feeds| feeds.route::<Atom>(atom)).router();
+}
+
+#[derive(crate::Route)]
+#[route("/feeds/{kind}.json")]
+struct FeedJson<'a> {
+    kind: &'a str,
+}
+
+/// The same in one area, with other parameter names: refused by Corten before the router (which
+/// would merge the two methods into one path, or refuse the names with a message about neither).
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn routes_of_an_area_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let json = crate::Methods::reads(axum::routing::post(|| async { "json" }));
+    let _ = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Rss>(rss).route::<FeedJson>(json));
 }
 
 #[tokio::test]

@@ -115,6 +115,8 @@ impl<P: Prefix> Api<P> {
                 "corten: a route of an API is at or under its prefix (the note below names the API's prefix and the route)"
             )
         };
+        // Before the router, which would merge the two or refuse them less clearly.
+        crate::route::assert_no_clash(self.written.iter().copied().chain([R::WRITTEN]));
         self.routes = self.routes.route(R::PATH, crate::route::with_suffixes::<R, _>(methods.0));
         self.written.push(R::WRITTEN);
         self

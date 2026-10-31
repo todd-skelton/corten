@@ -1227,16 +1227,18 @@ fn write_text(url: &str, out: &mut String, html: bool) {
     }
 }
 
+/// A byte a route's path has as text, which a browser sends as it is.
+const fn plain(c: u8) -> bool {
+    c.is_ascii_alphanumeric()
+        || matches!(c, b'-' | b'.' | b'_' | b'~' | b'!' | b'$' | b'*' | b'+' | b',' | b';' | b'=' | b':' | b'@')
+}
+
 /// Whether `path` has the shape `#[derive(Route)]` writes, checked when the app compiles so a
 /// `Route` written by hand is held to it too: each segment is `{name}` (lowercase letters, digits
 /// and `_`), `{*name}` as the last, or text a browser sends as it is (letters, digits and
 /// `-._~!$*+,;=:@`). [`chosen`] matches only this shape, as the router does. (The derive also
 /// refuses a name used twice; that changes no route's match, so it is not checked here.)
 pub(crate) const fn route_shaped(path: &str) -> bool {
-    const fn plain(c: u8) -> bool {
-        c.is_ascii_alphanumeric()
-            || matches!(c, b'-' | b'.' | b'_' | b'~' | b'!' | b'$' | b'*' | b'+' | b',' | b';' | b'=' | b':' | b'@')
-    }
     const fn name(c: u8, first: bool) -> bool {
         c.is_ascii_lowercase() || c == b'_' || (!first && c.is_ascii_digit())
     }
@@ -1419,6 +1421,10 @@ mod local_tests {
             ("/f/{*rest}", "/f/{*rest}.xml", false),
             ("/s/{a}", "/s/{a}.{b}", false),
             ("/s/{a}/b", "/s/{a}/b", true),
+            // Only the text a browser sends as it is.
+            ("/s/{a}", "/s/{a}.x|y", false),
+            ("/s/{a}/b", "/s/{a}?x/b", false),
+            ("/s/{a}", "/s/{a}%20", false),
         ] {
             assert_eq!(super::written_fits(path, written), want, "{path} {written}");
         }
@@ -2234,7 +2240,7 @@ const fn written_fits(path: &str, written: &str) -> bool {
         }
         if closed && p[i] == b'/' && w[j] != b'/' {
             // Text after a parameter, up to the segment's end.
-            if w[j] == b'{' || w[j] == b'}' {
+            if !plain(w[j]) {
                 return false;
             }
             j += 1;
@@ -2255,7 +2261,7 @@ const fn written_fits(path: &str, written: &str) -> bool {
     }
     // Text after the last parameter, to the end.
     while closed && j < w.len() {
-        if w[j] == b'/' || w[j] == b'{' || w[j] == b'}' {
+        if !plain(w[j]) {
             return false;
         }
         j += 1;
@@ -2263,29 +2269,46 @@ const fn written_fits(path: &str, written: &str) -> bool {
     j == w.len()
 }
 
-/// The path axum matches for a route written `written`: the text after each parameter left out
-/// (`/sitemap/{page}` for `/sitemap/{page}.xml`).
-fn matched(written: &str) -> String {
-    written
-        .split('/')
-        .map(|s| if s.starts_with("{") { &s[..s.find('}').map_or(s.len(), |n| n + 1)] } else { s })
-        .collect::<Vec<_>>()
-        .join("/")
+/// A route written `written` as the router sees it, with each parameter's name left out (`{}`,
+/// `{*}`): the path it matches (the text after each parameter left out too, `/sitemap/{}` for
+/// `/sitemap/{page}.xml`) and the path with that text (`/sitemap/{}.xml`).
+fn shape(written: &str) -> (String, String) {
+    let (mut matched, mut whole) = (String::new(), String::new());
+    for (i, segment) in written.split('/').enumerate() {
+        if i > 0 {
+            matched.push('/');
+            whole.push('/');
+        }
+        match (segment.strip_prefix('{'), segment.find('}')) {
+            (Some(name), Some(end)) => {
+                let param = if name.starts_with('*') { "{*}" } else { "{}" };
+                matched.push_str(param);
+                whole.push_str(param);
+                whole.push_str(&segment[end + 1..]);
+            }
+            _ => {
+                matched.push_str(segment);
+                whole.push_str(segment);
+            }
+        }
+    }
+    (matched, whole)
 }
 
 /// Two routes of the app (in any module, area or API) that differ only in the text after a
 /// parameter, which axum matches as one path: a startup panic naming both, since only one could
-/// be reached (a `#[corten::routes]` module already refuses them when it compiles).
+/// be reached (a `#[corten::routes]` module already refuses them when it compiles). Routes that
+/// differ only in their parameters' names are left to the router, which refuses them itself.
 pub(crate) fn assert_no_clash<'a>(written: impl IntoIterator<Item = &'a str>) {
-    let mut seen: Vec<(String, &str)> = Vec::new();
+    let mut seen: Vec<(String, String, &str)> = Vec::new();
     for path in written {
-        let at = matched(path);
-        match seen.iter().find(|(m, _)| *m == at) {
-            Some((_, other)) if *other != path => panic!(
+        let (matched, whole) = shape(path);
+        match seen.iter().find(|(m, _, _)| *m == matched) {
+            Some((_, w, other)) if *w != whole => panic!(
                 "corten: the routes {other:?} and {path:?} differ only in the text after a parameter, which the router does not tell apart: give one a segment of its own"
             ),
             Some(_) => {}
-            None => seen.push((at, path)),
+            None => seen.push((matched, whole, path)),
         }
     }
 }
@@ -2293,7 +2316,8 @@ pub(crate) fn assert_no_clash<'a>(written: impl IntoIterator<Item = &'a str>) {
 /// `methods` for `R`'s path: when a parameter of it is followed by text (`{page}.xml`), a request
 /// whose segment does not end in that text is a 404 before a handler runs, whatever its method. The
 /// route still takes every path of its shape from the router, so another route (a `/{*page}`
-/// catch-all) does not answer `/sitemap/about` either. A route with none is `methods` as it is.
+/// catch-all) does not answer `/sitemap/about` either, and the 404 has the route's `MatchedPath`.
+/// A route with none is `methods` as it is.
 pub(crate) fn with_suffixes<R: Route + ?Sized, S: Clone + Send + Sync + 'static>(
     methods: axum::routing::MethodRouter<S>,
 ) -> axum::routing::MethodRouter<S> {
