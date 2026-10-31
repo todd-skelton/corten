@@ -1153,6 +1153,16 @@ Corten is pre-1.0, so any minor version may change the API.
     job released, a loop that returns at once) on a paused clock; a request's signal still cannot
     be aborted by the app (a `compile_fail` doctest). Nothing a request does changes
     ([#489 A task's shutdown path cannot be tested: Signal::default never aborts and abort is crate-private, so the app wraps Signal in a trait of its own](https://github.com/todd-skelton/corten/issues/489)).
+152. `#[component(js = Owner)]` (`js = path::to::Owner`): a part of a component, a function of its
+    own (a sheet, a row, a field), calls its owner's handlers through `js`, so a large page splits
+    into parts without a script per part (one more request for a one-line handler) or the owner
+    drawing the part's markup and passing it down as a prop. The page loads the owner's one script;
+    the part adds none, and an owner without a script does not compile (a `compile_fail` doctest).
+    A component's `js` module is now beside it (`__corten_js_{Name}`, hidden) instead of inside
+    its `render`, which is how a part reaches it; what renders is unchanged. The item page's
+    `render_cost` (release, callgrind, 3 runs) is 35,602,516,052 instructions against
+    35,613,859,907 on main (-0.03%, layout: the page has no part)
+    ([#492 A sub-component cannot bind its page's script: #[component] has css = Other but no js = Other](https://github.com/todd-skelton/corten/issues/492)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -2356,6 +2366,11 @@ Corten is pre-1.0, so any minor version may change the API.
     parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
     and a form's body are still refused. Links write what they did
     ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
+82. A `corten-macros` script test bounded three parses on the wall clock (under 2 or 3 s), so check 1
+    failed on a busy machine with nothing wrong. Each case now passes in one run under a second, and
+    otherwise is checked by its growth (at a size about four times as long as at a quarter of it,
+    not sixteen), so load slows both runs alike
+    ([#495 A corten-macros script test's wall-clock bound (under 2 s) fails when the machine is busy, so check 1 goes red without a cause](https://github.com/todd-skelton/corten/issues/495)).
 84. The browser smokes retry a page's `goto` or `reload` once on `net::ERR_NETWORK_CHANGED`
     alone, which Chromium raises when Docker changes the machine's network interfaces mid-run (twice
     in CI in a week, each blocking a merge until a rerun); any other failure, a second one included,

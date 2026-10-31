@@ -15,3 +15,8 @@ export function confirm(event, dialog, name) {
 export function shortcut(event, line) {
   if (event.key === "Delete") line.remove();
 }
+
+/** @param {HTMLElement} line */
+export function remove(line) {
+  line.remove();
+}

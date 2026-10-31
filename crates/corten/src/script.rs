@@ -118,8 +118,9 @@
 //! an event reaches it.
 //!
 //! A component is scoped (one root element, marked `data-scope`) when it has refs, one of its
-//! handlers takes `scope`, or its script imports `keep` (state each instance keeps). A variable
-//! that happens to be named `scope` does not count:
+//! handlers takes `scope`, or its script imports `keep` (state each instance keeps); in a part
+//! (`js = Owner`, below), the owner's handlers' `scope` is the owner's root and does not count. A
+//! variable that happens to be named `scope` does not count:
 //!
 //! ```
 //! use corten::prelude::*;
@@ -147,6 +148,87 @@
 //! assert!(StockGrid {}.to_html().starts_with(r#"<table data-scope="stock-grid">"#));
 //! assert_eq!(Mode { mode: "ids" }.to_html(), "<dt>Selection</dt><dd>ids</dd>");
 //! # }
+//! ```
+//!
+//! A part of a component (a sheet, a row, a field drawn by a function of its own) calls its
+//! owner's handlers with `#[component(js = Owner)]` (`js = path::to::Owner` from another module
+//! that can see it): `js` there is the owner's module, so the page loads the owner's one script,
+//! and the part adds none. Its refs are its own, as any component's:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! pub fn CartLine<'a>(name: &'a str, quantity: u32) -> impl Render {
+//!     html! { <li>{name}<Quantity quantity={quantity} /></li> }
+//! }
+//!
+//! /// The line's quantity field, with the line's handlers.
+//! #[component(js = CartLine)]
+//! fn Quantity(quantity: u32) -> impl Render {
+//!     let save = refs();
+//!     html! {
+//!         <span>
+//!             <input value={quantity} on:input={js::enable(save)}>
+//!             <button ref={save} disabled>"Save"</button>
+//!         </span>
+//!     }
+//! }
+//!
+//! let html = CartLine { name: "Lamp", quantity: 2 }.to_html();
+//! assert!(html.contains(r#"<span data-scope="quantity"><input value="2" data-on="input:cart_line.enable(@save)">"#), "{html}");
+//! ```
+//!
+//! A handler of the owner's that takes `scope` gets the owner's root, so the owner has one (a
+//! ref, a handler that takes `scope`, or a script that keeps state); a part whose owner has none
+//! does not compile, and says so:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! pub fn CartLine<'a>(name: &'a str) -> impl Render {
+//!     let line = refs();
+//!     html! { <li ref={line}>{name}<RemoveButton /></li> }
+//! }
+//!
+//! #[component(js = CartLine)]
+//! fn RemoveButton() -> impl Render {
+//!     html! { <button type="button" on:click={js::remove(scope)}>"Remove"</button> }
+//! }
+//!
+//! let html = CartLine { name: "Lamp" }.to_html();
+//! assert!(html.starts_with(r#"<li data-scope="cart-line""#), "{html}");
+//! ```
+//!
+//! ```compile_fail,E0080
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! pub fn CartLine<'a>(name: &'a str) -> impl Render {
+//!     html! { <li>{name}<RemoveButton /></li> }
+//! }
+//!
+//! #[component(js = CartLine)]
+//! fn RemoveButton() -> impl Render {
+//!     html! { <button type="button" on:click={js::remove(scope)}>"Remove"</button> }
+//! }
+//! ```
+//!
+//! The owner has a script, or `js = Owner` does not compile:
+//!
+//! ```compile_fail,E0432
+//! use corten::prelude::*;
+//!
+//! #[component]
+//! fn Plain() -> impl Render {
+//!     html! { <li></li> }
+//! }
+//!
+//! #[component(js = Plain)]
+//! fn Part() -> impl Render {
+//!     html! { <span></span> }
+//! }
 //! ```
 //!
 //! A script is served by its name (`scripts/cart_line.js`), so two components with one name in

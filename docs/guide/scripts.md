@@ -278,6 +278,27 @@ html! {
 }
 ```
 
+**Parts.** A large component splits into parts, functions of their own (a sheet, a row, a
+field), and a part calls its owner's handlers with `#[component(js = Owner)]`
+(`js = super::terms::TermsPage` from another module of the crate that can see it, named by its
+path as `css = Owner` is): `js` there is the owner's module, so the page still loads one script,
+the owner's, and the part adds none. A part's refs are its own, as any component's. The `scope`
+an owner's handler takes is the owner's root, so the owner needs one (a ref, a handler taking
+`scope`, or a script that keeps state; a part whose owner has none does not compile), and a part
+whose handlers take `scope` or keep state renders inside its owner. An owner without a script
+does not compile (E0432, naming the owner's hidden handler module).
+
+```rust,ignore
+#[component(js = TermsPage, css = TermsPage)]
+fn AccountChooser<'a>(accounts: &'a [Account]) -> impl Render {
+    html! {
+        <select name="account" on:change={js::prefill(target)}>
+            for a in accounts { <option value={a.id}>{a.name}</option> }
+        </select>
+    }
+}
+```
+
 A patch removes rows as well as replacing them: `req.patch(html! { for id in &done { {Remove(RowId(id))} } })`
 (`corten::view::Remove`, a `<template id data-remove>` the runtime applies), and adds them with
 `view::Append(RowsId, rows)` (`<template id data-append>`). `RowId` is the
