@@ -208,11 +208,25 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
             // The directives of every line count, as HTTP joins them (a second line is rare: only
             // a header written by hand has one). Only a plain `private` makes the answer private:
             // `private="set-cookie"` still lets a shared cache keep the rest.
-            if entry.iter().any(|line| plain(line.as_bytes(), b"private") || has(line.as_bytes(), b"no-store")) {
-                return;
+            let mut unreadable = false;
+            for line in entry.iter() {
+                let line = line.as_bytes();
+                // One pass over each directive: the name, and whether it has a value.
+                for d in directives(line) {
+                    let (name, value) = match d.iter().position(|&b| b == b'=') {
+                        Some(at) => (&d[..at], true),
+                        None => (d, false),
+                    };
+                    let name = name.trim_ascii();
+                    if name.eq_ignore_ascii_case(b"no-store") || (!value && name.eq_ignore_ascii_case(b"private")) {
+                        return;
+                    }
+                }
+                // `HeaderValue::to_str`'s test: visible ASCII, spaces and tabs.
+                unreadable |= line.iter().any(|&b| !(b == b'\t' || (0x20..0x7f).contains(&b)));
             }
             // A line that is not text cannot be read, so the answer is not shared.
-            if entry.iter().any(|line| line.to_str().is_err()) {
+            if unreadable {
                 entry.insert(PRIVATE);
                 return;
             }
@@ -260,11 +274,6 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
 /// whitespace HTTP allows around a directive (spaces and tabs) is ASCII.
 pub(crate) fn has(line: &[u8], directive: &[u8]) -> bool {
     directives(line).any(|d| d.split(|&b| b == b'=').next().unwrap_or(d).trim_ascii().eq_ignore_ascii_case(directive))
-}
-
-/// True when a `Cache-Control` line has `directive` without a value.
-fn plain(line: &[u8], directive: &[u8]) -> bool {
-    directives(line).any(|d| d.trim_ascii().eq_ignore_ascii_case(directive))
 }
 
 /// A `Cache-Control` line's directives, split at the commas outside a quoted value
