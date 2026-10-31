@@ -484,6 +484,14 @@ impl ToJson for char {
     }
 }
 
+impl ToJson for crate::i18n::Day {
+    /// `"2026-09-02"`.
+    fn write_json(&self, out: &mut Vec<u8>) {
+        use std::io::Write as _;
+        let _ = write!(out, "\"{self}\"");
+    }
+}
+
 impl ToJson for bool {
     #[inline]
     fn write_json(&self, out: &mut Vec<u8>) {

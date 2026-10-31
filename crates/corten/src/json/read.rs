@@ -550,6 +550,14 @@ impl FromJson for String {
     }
 }
 
+impl FromJson for crate::i18n::Day {
+    /// `"2026-09-02"`; anything else falls back to serde_json for its error.
+    #[inline]
+    fn __read(r: &mut Reader<'_>) -> R<Self> {
+        r.string()?.parse().map_err(|_| Fallback)
+    }
+}
+
 impl FromJson for bool {
     #[inline]
     fn __read(r: &mut Reader<'_>) -> R<Self> {

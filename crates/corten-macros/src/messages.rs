@@ -356,9 +356,11 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         #[inline] __A2 fn parse_money(self, text: &str, currency: ::corten::i18n::Currency) -> ::core::option::Option<::corten::i18n::Minor<u64>> {
             ::corten::i18n::__private::parse_money(self.__corten_locale(), text, currency)
         }
-        /// A date in this locale, in UTC unless `.zone(..)` says otherwise: `Mar 22, 2026` (en, `Medium`).
-        #[inline] __A2 fn date(self, at: impl ::core::convert::Into<::std::time::SystemTime>, style: impl ::corten::i18n::DateOnly) -> ::corten::i18n::When {
-            ::corten::i18n::When::date(self.__corten_locale(), at.into(), style)
+        /// A date in this locale: `Mar 22, 2026` (en, `Medium`). An instant is written in UTC unless
+        /// `.zone(..)` says otherwise (or in the visitor's zone, with `App::zoned_dates`); a
+        /// `corten::i18n::Day` is that day in every zone.
+        #[inline] __A2 fn date<__D: ::corten::i18n::DateValue>(self, at: __D, style: impl ::corten::i18n::DateOnly) -> __D::Text {
+            ::corten::i18n::DateValue::date_text(at, self.__corten_locale(), style)
         }
         /// A time with its zone in this locale, in UTC unless `.zone(..)` says otherwise: `3:04 PM UTC` (en, `Short`).
         #[inline] __A2 fn time(self, at: impl ::core::convert::Into<::std::time::SystemTime>, style: ::corten::i18n::TimeStyle) -> ::corten::i18n::When {

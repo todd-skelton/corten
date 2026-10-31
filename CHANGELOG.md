@@ -1190,6 +1190,21 @@ Corten is pre-1.0, so any minor version may change the API.
     `zoned_dates` and a zone cookie (the zone looked up once per request, about 380 per date for
     its offset)
     ([#387 Dates in the visitor's zone need a tz crate, a ClientZone argument on every handler and a prop through every component, and the first page is UTC](https://github.com/todd-skelton/corten/issues/387)).
+154. `corten::i18n::Day`: a calendar date with no instant behind it (a report's window, a week's
+    start, a due date, an API's `"2026-09-02"`). `t.date(day, style)` writes it as that day in every
+    zone, as an `OnDay`, which has no `.zone(..)` and no time (`t.time` and `t.date_time` take an
+    instant), so a day cannot be written as an instant by mistake (`compile_fail` doctests). With
+    `App::zoned_dates` a day kept as midnight UTC read a day early west of UTC. `Day` parses
+    `YYYY-MM-DD` only (what `<input type="date">` sends), reads and writes JSON and serde as that
+    text, renders as it in `html!` (`<time datetime={on_day.datetime()}>`), is a `string` in
+    `corten::types` declarations, and has `plus(n)` and `midnight_utc()` (an `Option`: a
+    `SystemTime` does not reach year 1 on every platform; a day is written from its calendar date,
+    so `t.date` writes every one). `t.date` takes a `DateValue`: an instant as before, or a `Day`;
+    a closure that passes its untyped parameter to `t.date` needs the parameter's type. A script's
+    `format("2026-09-02")` with no offset writes the same day (checked by `npm run check`).
+    The item page's `render_cost` (release, callgrind, 3 runs) is 35,607,619,833 instructions
+    against 35,621,122,132 for the zones change it builds on (-0.04%; the page writes no date).
+    ([#502 i18n: no way to write a calendar date (no instant behind it) that never shifts with the zone](https://github.com/todd-skelton/corten/issues/502)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

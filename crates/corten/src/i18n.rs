@@ -341,9 +341,9 @@ pub use visitor::Visitor;
 pub(crate) use visitor::ZoneScope;
 
 pub use format::{
-    parse_timestamp, Amount, Count, Currency, DateFormat, DateOnly, DateStyle, Datetime, DayStyle, Decimal, Formatted,
-    InvalidDecimal, Minor, MoneyFormat, MonthStyle, Number, NumberFormat, Offset, PercentFormat, Relative, RelativeStyle,
-    TimeStyle, Utc, When, Zone,
+    parse_timestamp, Amount, Count, Currency, DateFormat, DateOnly, DateStyle, DateValue, Datetime, Day, DayStyle, Decimal,
+    Formatted, InvalidDay, InvalidDecimal, Minor, MoneyFormat, MonthStyle, Number, NumberFormat, Offset, OnDay, PercentFormat,
+    Relative, RelativeStyle, TimeStyle, Utc, When, Zone,
 };
 
 /// Compiles catalogs into a messages type. See the [module docs](self).
@@ -534,6 +534,13 @@ impl Arg for Formatted {
 }
 
 impl Arg for When {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        // Locale data and digits, as for `Formatted`.
+        self.render(sink.out)
+    }
+}
+
+impl Arg for OnDay {
     fn write_arg(&self, sink: &mut Sink<'_>) {
         // Locale data and digits, as for `Formatted`.
         self.render(sink.out)
@@ -861,6 +868,68 @@ impl<F: Fn(&mut Sink<'_>)> Display for Text<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A day parses as `YYYY-MM-DD` only, writes back the same, and is written as that day.
+    #[test]
+    fn a_day_is_its_calendar_date_in_every_zone() {
+        let day: Day = "2026-09-02".parse().unwrap();
+        assert_eq!((day.year(), day.month(), day.day()), (2026, 9, 2));
+        assert_eq!(day.to_string(), "2026-09-02");
+        assert_eq!(Day::new(2024, 2, 29).map(|d| d.to_string()).as_deref(), Some("2024-02-29"));
+        for text in [
+            "2026-9-2",
+            "2026-09-02T00:00:00Z",
+            "2026-02-30",
+            "2025-02-29",
+            "1900-02-29",
+            "2026-13-01",
+            "2026-00-10",
+            "+026-09-02",
+            " 2026-09-02",
+            "2026/09/02",
+            "0000-01-01",
+            "",
+        ] {
+            assert_eq!(text.parse::<Day>(), Err(InvalidDay), "{text:?}");
+        }
+        assert_eq!("2000-02-29".parse::<Day>().map(|d| d.day()), Ok(29));
+        assert_eq!(day.plus(29).map(|d| d.to_string()).as_deref(), Some("2026-10-01"));
+        assert_eq!(day.plus(-245).map(|d| d.to_string()).as_deref(), Some("2025-12-31"));
+        assert_eq!(Day::new(9999, 12, 31).unwrap().plus(1), None);
+        assert_eq!(
+            Day::new(1969, 12, 31).unwrap().midnight_utc(),
+            Some(std::time::UNIX_EPOCH - std::time::Duration::from_secs(86_400))
+        );
+        assert!(Day::new(2026, 9, 1).unwrap() < day);
+        let en = Msg::for_locale("en");
+        assert_eq!(en.date(day, DateStyle::Medium).to_string(), "Sep 2, 2026");
+        assert_eq!(en.date(day, DayStyle::Short).to_string(), "Sep 2");
+        assert_eq!(en.date(day, MonthStyle::Long).to_string(), "September 2026");
+        assert_eq!(en.date(day, DateStyle::Medium).datetime().to_string(), "2026-09-02");
+        // An instant at the same midnight is still an instant, in the zone it is given.
+        assert_eq!(en.date(day.midnight_utc().unwrap(), DateStyle::Medium).zone(Offset::hours(-5)).to_string(), "Sep 1, 2026");
+        // Every day is written from its calendar date, before the earliest instant a platform has
+        // too (1601 on Windows).
+        for (text, written) in [
+            ("0001-01-01", "Jan 1, 1"),
+            ("1600-02-29", "Feb 29, 1600"),
+            ("1600-12-31", "Dec 31, 1600"),
+            ("9999-12-31", "Dec 31, 9999"),
+        ] {
+            assert_eq!(en.date(text.parse::<Day>().unwrap(), DateStyle::Medium).to_string(), written, "{text}");
+        }
+    }
+
+    #[cfg(feature = "json")]
+    #[test]
+    fn a_day_is_its_text_in_json() {
+        let day = Day::new(2026, 9, 2).unwrap();
+        assert_eq!(crate::json::to_vec(&day), br#""2026-09-02""#);
+        assert_eq!(crate::json::from_str::<Day>(r#""2026-09-02""#).unwrap(), day);
+        assert!(crate::json::from_str::<Day>(r#""2026-09-31""#).is_err());
+        assert_eq!(serde_json::to_string(&day).unwrap(), r#""2026-09-02""#);
+        assert_eq!(serde_json::from_str::<Day>(r#""2026-09-02""#).unwrap(), day);
+    }
 
     /// Money typed in a locale is read back in minor units, as `t.money` writes it.
     #[test]
