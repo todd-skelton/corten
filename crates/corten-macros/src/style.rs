@@ -17,16 +17,81 @@ pub struct Sheet {
     pub css: String,
     /// The classes, as written in the file, first use first.
     pub classes: Vec<String>,
+    /// The custom properties its `@property` rules register, in order: each name as written
+    /// (`fill` for `--fill`) and the type of its `syntax`, when markup can set it
+    /// (`style={FILL.pct(42.0)}`).
+    pub properties: Vec<(String, Option<&'static str>)>,
 }
+
+/// The Rust type (in `corten::style::syntax`) of each `@property` syntax markup can set: a
+/// number with one of the units the type allows, so no CSS text from data reaches the page.
+const SYNTAXES: &[(&str, &str)] = &[
+    ("<number>", "Number"),
+    ("<integer>", "Integer"),
+    ("<percentage>", "Percentage"),
+    ("<length>", "Length"),
+    ("<length-percentage>", "LengthPercentage"),
+    ("<angle>", "Angle"),
+    ("<time>", "Time"),
+];
 
 /// Prefixes every class in `src` with `{prefix}__`. A rule outside any at-rule (or in `@media`,
 /// `@supports`, `@container`, `@layer`) must name one of the file's classes, so a component's
 /// styles cannot reach elements it does not render.
 pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
-    let mut s =
-        Scoper { text: src, bytes: src.as_bytes(), i: 0, out: String::with_capacity(src.len()), classes: Vec::new(), prefix };
+    let mut s = Scoper {
+        text: src,
+        bytes: src.as_bytes(),
+        i: 0,
+        out: String::with_capacity(src.len()),
+        classes: Vec::new(),
+        properties: Vec::new(),
+        prefix,
+    };
     s.block(Ctx::Top, true)?;
-    Ok(Sheet { css: s.out, classes: s.classes })
+    let names: Vec<&str> = s.properties.iter().map(|(name, _)| name.as_str()).collect();
+    let css = rename_properties(&s.out, &names, prefix);
+    Ok(Sheet { css, classes: s.classes, properties: s.properties })
+}
+
+/// `css` with each of `names` (a custom property its `@property` rules register, `fill`)
+/// written `--{prefix}__fill` wherever it is a whole name outside strings: the property is the
+/// component's, as its classes are, so two components can both register a `--fill`.
+fn rename_properties(css: &str, names: &[&str], prefix: &str) -> String {
+    if names.is_empty() {
+        return css.to_string();
+    }
+    let b = css.as_bytes();
+    let ident = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_') || c >= 0x80 || c == b'\\';
+    let mut out = String::with_capacity(css.len() + names.len() * (prefix.len() + 4));
+    let (mut i, mut copied) = (0, 0);
+    while i < b.len() {
+        match b[i] {
+            q @ (b'"' | b'\'') => {
+                i += 1;
+                while i < b.len() && b[i] != q {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            b'-' if b.get(i + 1) == Some(&b'-') && (i == 0 || !ident(b[i - 1])) => {
+                let mut end = i + 2;
+                while end < b.len() && ident(b[end]) {
+                    end += 1;
+                }
+                if names.contains(&&css[i + 2..end]) {
+                    out.push_str(&css[copied..i + 2]);
+                    out.push_str(prefix);
+                    out.push_str("__");
+                    copied = i + 2;
+                }
+                i = end;
+            }
+            _ => i += 1,
+        }
+    }
+    out.push_str(&css[copied.min(css.len())..]);
+    out
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -45,6 +110,7 @@ struct Scoper<'a> {
     i: usize,
     out: String,
     classes: Vec<String>,
+    properties: Vec<(String, Option<&'static str>)>,
     prefix: &'a str,
 }
 
@@ -109,7 +175,11 @@ impl Scoper<'_> {
                     self.out.push_str(&selector);
                 }
                 self.out.push('{');
+                let body = self.out.len();
                 self.block(inner, false)?;
+                if ctx != Ctx::Raw && text.starts_with("@property") {
+                    self.property(&text["@property".len()..], body, start)?;
+                }
                 self.close();
                 continue;
             }
@@ -148,6 +218,48 @@ impl Scoper<'_> {
             self.out.push_str(value);
             self.out.push(';');
         }
+    }
+
+    /// Records an `@property` rule, whose declarations are in `self.out` from `body`: its name,
+    /// and the type of its syntax when markup can set it. The browser ignores a rule that lacks
+    /// `syntax`, `inherits`, or (for any syntax but `*`) `initial-value`, so each is required.
+    fn property(&mut self, prelude: &str, body: usize, at: usize) -> Result<(), String> {
+        let prelude = prelude.trim();
+        let name = prelude.strip_prefix("--").filter(|name| {
+            !name.is_empty() && name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
+        });
+        let Some(name) = name else {
+            return Err(self.error(at, format!("@property {prelude}: a custom property's name starts with -- and has letters, digits, - and _")));
+        };
+        if name.contains("__") {
+            return Err(self.error(at, format!("--{name}: __ separates the component's name from the property; use - or _")));
+        }
+        if self.properties.iter().any(|(other, _)| other == name) {
+            return Err(self.error(at, format!("@property --{name} is registered twice")));
+        }
+        let (mut syntax, mut inherits, mut initial) = (None, false, false);
+        for declaration in self.out[body..].split(';') {
+            match split_declaration(declaration) {
+                Some(("syntax", value)) => syntax = Some(value.trim_matches(|c| c == '"' || c == '\'').trim().to_string()),
+                Some(("inherits", value)) if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false") => {
+                    inherits = true
+                }
+                Some(("initial-value", _)) => initial = true,
+                _ => {}
+            }
+        }
+        let Some(syntax) = syntax else {
+            return Err(self.error(at, format!("@property --{name} needs a syntax, such as syntax: \"<percentage>\"; the browser ignores it without one")));
+        };
+        if !inherits {
+            return Err(self.error(at, format!("@property --{name} needs inherits: true or inherits: false; the browser ignores it without one")));
+        }
+        if !initial && syntax != "*" {
+            return Err(self.error(at, format!("@property --{name} needs an initial-value; the browser ignores it without one")));
+        }
+        let kind = SYNTAXES.iter().find(|(written, _)| *written == syntax).map(|(_, kind)| *kind);
+        self.properties.push((name.to_string(), kind));
+        Ok(())
     }
 
     /// A page's name is the whole app's (`page: name` in any stylesheet picks it), so a component
@@ -383,6 +495,16 @@ pub fn class_ident(class: &str) -> Result<String, String> {
     Ok(out)
 }
 
+/// The constant for a custom property: `bar-width` is `BAR_WIDTH`.
+pub fn var_ident(name: &str) -> Result<String, String> {
+    let words: Vec<String> = name.split(['-', '_']).filter(|w| !w.is_empty()).map(str::to_ascii_uppercase).collect();
+    let out = words.join("_");
+    if out.is_empty() || out.starts_with(|c: char| c.is_ascii_digit()) {
+        return Err(format!("--{name} has no Rust name; start it with a letter"));
+    }
+    Ok(out)
+}
+
 /// The stylesheet or script `file` next to the source file of `span`. When the compiler gives no source
 /// path (some editors' macro servers), the one file with that name under the crate's `src`.
 pub fn locate(file: &str, span: Span) -> Result<PathBuf, Error> {
@@ -433,6 +555,9 @@ pub struct Css {
     pub sheet: Sheet,
     /// The constant for each class, in the order of `sheet.classes`.
     pub idents: Vec<String>,
+    /// The constant for each custom property markup can set (`FILL` for `--fill`), with its
+    /// scoped name and its type.
+    pub vars: Vec<(String, String, &'static str)>,
 }
 
 impl Css {
@@ -456,7 +581,19 @@ impl Css {
             }
             idents.push(ident);
         }
-        Ok(Css { prefix, file, path, sheet, idents })
+        let mut vars: Vec<(String, String, &'static str)> = Vec::new();
+        for (name, kind) in &sheet.properties {
+            let Some(kind) = kind else { continue };
+            let ident = var_ident(name).map_err(|e| (span, format!("{file}: {e}")))?;
+            if let Some(i) = idents.iter().position(|other| *other == ident) {
+                return err(span, format!("{file}: .{} and --{name} are both {ident} in Rust; rename one", sheet.classes[i]));
+            }
+            if let Some((other, ..)) = vars.iter().find(|(other, ..)| *other == ident) {
+                return err(span, format!("{file}: two custom properties are both {other} in Rust; rename one"));
+            }
+            vars.push((ident, format!("--{prefix}__{name}"), kind));
+        }
+        Ok(Css { prefix, file, path, sheet, idents, vars })
     }
 
     fn scoped(&self, class: &str) -> String {
@@ -482,6 +619,21 @@ impl Css {
                 q(
                     "pub const __A0: ::corten::style::Class = ::corten::style::Class::__new(__A1);",
                     &[TokenTree::Ident(Ident::new(ident, owner.span())).into(), literal(&self.scoped(class))],
+                ),
+                owner.span(),
+            ));
+        }
+        // A custom property markup can set: `style={FILL.pct(42.0)}`. One no markup sets is not an
+        // error: a stylesheet registers a property to animate it too.
+        for (ident, name, kind) in &self.vars {
+            consts.extend(respan(
+                q(
+                    "#[allow(dead_code)] pub const __A0: ::corten::style::Var<::corten::style::syntax::__A1> = ::corten::style::Var::__new(__A2);",
+                    &[
+                        TokenTree::Ident(Ident::new(ident, owner.span())).into(),
+                        TokenTree::Ident(Ident::new(kind, owner.span())).into(),
+                        literal(name),
+                    ],
                 ),
                 owner.span(),
             ));
@@ -720,6 +872,26 @@ mod tests {
         assert!(scope("\n\n@import \"x.css\";", "x").unwrap_err().starts_with("line 3: @import"));
         assert!(scope(".a { color: red", "x").unwrap_err().contains("never closed"));
         assert!(scope(".a__b { color: red }", "x").is_err());
+    }
+
+    #[test]
+    fn a_registered_property_is_the_component_s_and_its_syntax_types_it() {
+        let css = "@property --fill { syntax: '<percentage>'; inherits: false; initial-value: 0% }\n@property --hue { syntax: \"<color>\"; inherits: true; initial-value: red }\n.bar { width: var(--fill); color: var(--hue); --fill-x: 1; transition: --fill 1s; content: \"--fill\"; margin: var(--space-fill) }\n@keyframes grow { to { --fill: 100% } }";
+        let sheet = scope(css, "meter").unwrap();
+        assert_eq!(
+            sheet.css,
+            "@property --meter__fill{syntax:'<percentage>';inherits:false;initial-value:0%}@property --meter__hue{syntax:\"<color>\";inherits:true;initial-value:red}.meter__bar{width:var(--meter__fill);color:var(--meter__hue);--fill-x:1;transition:--meter__fill 1s;content:\"--fill\";margin:var(--space-fill)}@keyframes grow{to{--meter__fill:100%}}"
+        );
+        assert_eq!(sheet.properties, [("fill".to_string(), Some("Percentage")), ("hue".to_string(), None)]);
+        assert_eq!(var_ident("bar-width").unwrap(), "BAR_WIDTH");
+        let error = |css: &str| scope(css, "m").unwrap_err();
+        assert!(error("@property --a { inherits: false; initial-value: 0 }").contains("needs a syntax"));
+        assert!(error("@property --a { syntax: '<number>'; initial-value: 0 }").contains("needs inherits"));
+        assert!(error("@property --a { syntax: '<number>'; inherits: false }").contains("needs an initial-value"));
+        assert!(scope("@property --a { syntax: '*'; inherits: false }", "m").is_ok(), "* needs no initial value");
+        assert!(error("@property --a__b { syntax: '*'; inherits: false }").contains("__ separates"));
+        assert!(error("@property fill { syntax: '*'; inherits: false }").contains("starts with --"));
+        assert!(error("@property --a { syntax: '*'; inherits: false }\n@property --a { syntax: '*'; inherits: false }").contains("twice"));
     }
 
     #[test]

@@ -1129,6 +1129,17 @@ Corten is pre-1.0, so any minor version may change the API.
     keys its tabs differ in, so selecting a tab keeps a choice's key (it took the tab link's whole
     query)
     ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
+150. A size drawn from data is a custom property: a component's stylesheet registers it
+    (`@property --fill { syntax: "<percentage>"; inherits: false; initial-value: 0% }`), and
+    `style={FILL.pct(used)}` sets it, with a method per unit its syntax allows (`px`, `deg`,
+    `set(3)`); CSS text, another unit or another component's property does not compile. A
+    registered property is the component's (`--meter__fill`), and an `@property` the browser
+    would ignore does not compile. A full page gets one `<style>` at `<Corten />` with a rule per
+    distinct value, allowed by its hash in that response's `style-src`, so it paints with the
+    sizes, needs no script or nonce and allows no style attribute; the runtime sets the values a
+    patch, navigation or live fragment brings through the CSSOM. `examples/seller-desk`'s
+    statement draws each set's share as a bar. MEASURED
+    ([#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

@@ -212,8 +212,102 @@
 //!     html! { <ul></ul> }
 //! }
 //! ```
+//!
+//! # Values from data
+//!
+//! A size or position computed as the page renders (a meter's fill, a bar's length, a mark on a
+//! timeline) is a custom property the stylesheet registers with `@property` and reads with
+//! `var()`, set in the markup with `style={..}`:
+//!
+//! ```css
+//! /* meter.css */
+//! @property --fill { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+//! .meter { background: linear-gradient(to right, currentColor var(--fill), transparent var(--fill)); }
+//! ```
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn Meter(used: f64, nudge: Option<f64>) -> impl Render {
+//!     html! { <div class={Meter} style={(FILL.pct(used), nudge.map(|px| NUDGE.px(px)))}></div> }
+//! }
+//!
+//! assert_eq!(
+//!     Meter { used: 42.5, nudge: None }.to_html(),
+//!     r#"<div class="meter__meter" data-vars="--meter__fill:42.5%"></div>"#
+//! );
+//! assert!(Meter.style.unwrap().css.starts_with("@property --meter__fill{syntax:\"<percentage>\""));
+//! ```
+//!
+//! - Each `@property` whose `syntax` is a number (`<number>`, `<integer>`, `<percentage>`,
+//!   `<length>`, `<length-percentage>`, `<angle>`, `<time>`) is a constant named in capitals,
+//!   `--fill` is `FILL` (a [`Var`]), whose methods are the units its syntax allows:
+//!   `FILL.pct(42.0)`, `GAP.px(4.0)`, `SPAN.set(3)`. A value is a number and a unit, so no CSS
+//!   text from data reaches the page, and a number that is not finite sets nothing.
+//! - The property is the component's, as its classes are: `--fill` is `--meter__fill` everywhere
+//!   in the file, so two components can both register a `--fill`. A rule the browser would ignore
+//!   (no `syntax`, `inherits` or `initial-value`) does not compile.
+//! - `style={..}` takes one value, an `Option` (`None` sets nothing) or a tuple or array of them,
+//!   and writes `data-vars`. A full page gets one `<style>` at `<Corten />` with a rule for each
+//!   distinct value (`[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%}`), allowed by its
+//!   hash in that response's CSP, so it paints with the sizes and no script, and no style
+//!   attribute is allowed anywhere. A patch, a client navigation and a `<corten-live>` fragment
+//!   arrive under the policy the document loaded with, so the runtime sets their values through
+//!   the CSSOM, which the policy allows. A style attribute written as text (`style="width: 4px"`)
+//!   stays blocked unless the area allows them.
+//!
+//! CSS text is not a value:
+//!
+//! ```compile_fail,E0277
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn Meter(used: f64) -> impl Render {
+//!     html! { <div class={Meter} style={format!("width: {used}%")}></div> }
+//! }
+//! ```
+//!
+//! nor is a unit the property's syntax does not allow (`--fill` is a `<percentage>`):
+//!
+//! ```compile_fail,E0599
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn Meter(used: f64) -> impl Render {
+//!     html! { <div class={Meter} style={FILL.px(used)}></div> }
+//! }
+//! ```
+//!
+//! and another component cannot set a component's property:
+//!
+//! ```compile_fail,E0425
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn Meter(used: f64) -> impl Render {
+//!     html! { <div class={Meter} style={FILL.pct(used)}></div> }
+//! }
+//!
+//! #[component]
+//! fn Other(used: f64) -> impl Render {
+//!     html! { <div style={FILL.pct(used)}></div> }
+//! }
+//! ```
+//!
+//! `data-vars` is Corten's to write:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! let view = html! { <div data-vars="--fill:4px"></div> };
+//! ```
 
 use std::cell::RefCell;
+
+mod vars;
+pub(crate) use vars::collect as collect_vars;
+pub use vars::{syntax, Declaration, Var, Vars};
 
 /// Design tokens as CSS and Rust, from W3C Design Tokens files (DTCG 2025.10). See [the module](self)
 /// and `examples/card-market/tokens/`.
@@ -636,6 +730,7 @@ pub(crate) fn custom_properties(css: &str) -> (Vec<&str>, Vec<&str>) {
 
 #[doc(hidden)]
 pub mod __private {
+    pub use super::vars::__private::vars_attr;
     use super::{ClassList, RENDERED};
 
     /// ` class="a b"`, or nothing when the list is empty.

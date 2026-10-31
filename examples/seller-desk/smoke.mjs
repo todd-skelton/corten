@@ -304,6 +304,33 @@ try {
   const refused = await fits();
   check("on a phone a refused price's error fits too", refused.inside && !refused.sideways && refused.parts >= 3, JSON.stringify(refused));
 
+  // The statement draws each set's share as a bar from data (`style={SHARE.pct(..)}`), under a CSP
+  // that allows no style attribute: a full load gets the values from the page's style block (allowed
+  // by its hash), a client navigation and a patch from the runtime, through the CSSOM.
+  const shares = () => page.$$eval("tbody [data-vars]", (bars) => bars.map((bar) => {
+    const [name, want] = /** @type {string} */ (bar.getAttribute("data-vars")).split(":");
+    return { want, got: getComputedStyle(bar).getPropertyValue(name).trim() };
+  }));
+  const drawn = (/** @type {{ want: string, got: string }[]} */ list) => list.length > 1 && list.every((s) => s.got === s.want) && list.some((s) => s.want !== "0%");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => { /** @type {any} */ (window).__stayed = true; });
+  await page.click('header a[href="/statement"]');
+  await page.waitForSelector("tbody [data-vars]");
+  const navigated = await shares();
+  const swapped = await page.evaluate(() => /** @type {any} */ (window).__stayed === true);
+  check("a client navigation's bars get their shares from the runtime", swapped && drawn(navigated), JSON.stringify({ swapped, bars: navigated.slice(0, 3) }));
+  await page.goto(new URL("/statement", base).href);
+  const loaded = await shares();
+  check("a full load's bars get their shares from the page's style block", drawn(loaded), JSON.stringify(loaded.slice(0, 3)));
+  const patched = await page.evaluate(async () => {
+    const { patch } = await import("corten");
+    const name = /** @type {string} */ (document.querySelector("tbody [data-vars]")?.getAttribute("data-vars")).split(":")[0];
+    document.querySelector("main")?.append(Object.assign(document.createElement("span"), { id: "vars-probe" }));
+    await patch(`<span id="vars-probe" data-vars="${name}:61.5%"></span>`);
+    return getComputedStyle(/** @type {Element} */ (document.getElementById("vars-probe"))).getPropertyValue(name).trim();
+  });
+  check("a patch's values are set by the runtime", patched === "61.5%", patched);
+
   // Memory with the page settled.
   const heap = await page.evaluate(() => {
     /** @type {any} */ (window).gc?.();

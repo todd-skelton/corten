@@ -780,7 +780,14 @@ impl Req {
         let mut out = String::with_capacity(size.load(Ordering::Relaxed));
         HEAD_AT.set(None);
         crate::view::SHELL.set(0);
-        let modules = self.render_into(Parted(doc, part), &mut out)?;
+        // A full page's custom properties (`style={..}`) go in one style block its CSP allows by
+        // hash; a swap's are set by the runtime, under the CSP the document loaded with.
+        let (modules, vars) = if swap {
+            (self.render_into(Parted(doc, part), &mut out)?, String::new())
+        } else {
+            let (modules, vars) = crate::style::collect_vars(|| self.render_into(Parted(doc, part), &mut out));
+            (modules?, vars)
+        };
         let Some(at) = HEAD_AT.take() else {
             return Err(Error::new("corten: the document's <head> has no <Corten />"));
         };
@@ -789,8 +796,14 @@ impl Req {
         if swap {
             self.section_links(&mut tags);
         } else {
-            tags.reserve(1024);
+            tags.reserve(1024 + vars.len());
             self.head_tags(&modules, key, &mut tags);
+            // After every stylesheet the page links, so its values win a tie as an inline style would.
+            if !vars.is_empty() {
+                tags.push_str("<style>");
+                tags.push_str(&vars);
+                tags.push_str("</style>");
+            }
         }
         if !tags.is_empty() {
             out.insert_str(at, &tags);
@@ -798,7 +811,11 @@ impl Req {
         size.store(out.len() + out.len() / 8, Ordering::Relaxed);
         // Only a swap says it is one: a document a cache gave to a navigation fetch by mistake
         // makes the runtime load the URL in full.
-        Ok(HtmlResponse::new(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER)), key)))
+        let mut res = self.finish(html_response(status, out, swap.then_some(PAGE_HEADER)), key);
+        if !vars.is_empty() {
+            res.extensions_mut().insert(crate::security::StyleBlock(crate::security::hash_source(&vars)));
+        }
+        Ok(HtmlResponse::new(res))
     }
 
     /// The versioned URL of a static file, named by the constant [`crate::assets::embed!`] made

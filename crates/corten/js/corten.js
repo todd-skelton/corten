@@ -684,6 +684,26 @@ function parse(html) {
 }
 
 /**
+ * Gives the elements in `root` (itself included) the custom properties the server wrote for
+ * them: `style={FILL.pct(42.0)}` in markup is `data-vars="--meter__fill:42%"`. A full page brings
+ * them in a style block its CSP allows by hash; markup a patch or a navigation brings in is
+ * under the policy the document loaded with, which allows neither that block nor a style
+ * attribute, so they are set through the CSSOM, which the policy does not govern. Called once
+ * the markup is in the document, before the browser paints it.
+ * @param {Element} root
+ */
+function setVars(root) {
+  for (const el of [root, ...Array.from(root.querySelectorAll("[data-vars]"))]) {
+    const vars = el.getAttribute("data-vars");
+    if (!vars || !(el instanceof HTMLElement || el instanceof SVGElement)) continue;
+    for (const one of vars.split(";")) {
+      const at = one.indexOf(":");
+      el.style.setProperty(one.slice(0, at), one.slice(at + 1));
+    }
+  }
+}
+
+/**
  * Imports the modules the handlers in `node` name, including those in its templates' content
  * (rows a script will move into the page).
  * @param {ParentNode} node
@@ -753,6 +773,7 @@ async function apply(html, signal, sent, took) {
   // not this page: mark it as a navigation would. Only then: a patch without one (a ticker's)
   // only looks through what it put.
   if (navs || put.some(holdsNav)) markCurrent();
+  for (const el of put) setVars(el);
   if (again) readPatchAgain(again, put);
 }
 
@@ -1084,6 +1105,7 @@ async function swapPage(html, signal, stay) {
   serve(content);
   const [x, y] = [scrollX, scrollY];
   main.replaceChildren(content);
+  setVars(main);
   scrolledIn.clear();
   view?.();
   if (stay) scrollTo(x, y);

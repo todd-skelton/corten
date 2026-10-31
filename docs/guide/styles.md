@@ -59,10 +59,47 @@ over the browser's own rule. `hidden="until-found"` is left to the browser, so f
 still reveal it. When only areas have stylesheets, each area's file starts with the rule. An
 app with no component stylesheet has neither file, so if its `static/style.css` gives a hidden
 element a `display` (styling corten-ui's parts there, say), it adds the rule itself. Inline
-`style=` stays blocked by the CSP; one-off values come from the token utilities instead. Pages that must draw a size from data
-(a meter's fill, marks on a timeline) are an area that allows style attributes,
-`.policy(|p| p.allow_style_attributes())` ([app guide](app.md#a-policy-for-part-of-the-app)), so
-the rest of the app keeps the protection.
+`style="..."` stays blocked by the CSP; one-off values come from the token utilities, and a size
+drawn from data from a custom property ([below](#values-from-data)).
+
+## Values from data
+
+A size or position the page computes (a meter's fill, a bar's length, a mark on a timeline) is a
+custom property the component's stylesheet registers with `@property` and reads with `var()`,
+set in its markup with `style={..}`. `examples/seller-desk`'s statement draws each set's share of
+the stock's value this way:
+
+```css
+/* statement_table.css */
+@property --share { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+.bar { width: 6rem; background: linear-gradient(to right, var(--accent) var(--share), var(--tint) var(--share)); }
+```
+
+```rust,ignore
+<span class={Bar} style={SHARE.pct(share)}></span>
+```
+
+| You write | Corten checks or generates |
+|---|---|
+| `@property --share { syntax: "<percentage>"; .. }` | the constant `SHARE: Var<Percentage>` in the component's markup, and `--statement-table__share` everywhere in the file: the property is the component's, as its classes are |
+| `SHARE.pct(12.5)`, `GAP.px(4.0)`, `TURN.deg(90.0)`, `SPAN.set(3)` | the units the syntax allows (`<number>`, `<integer>`, `<percentage>`, `<length>`, `<length-percentage>`, `<angle>`, `<time>`); another unit, CSS text (`style={format!(..)}`) or another component's property does not compile, and a number that is not finite sets nothing, so the property keeps its `initial-value` |
+| `style={(SHARE.pct(s), nudge.map(|n| GAP.px(n)))}` | one attribute, `data-vars="--statement-table__share:12.5%"`; `None` sets nothing, and with nothing to set there is no attribute |
+| an `@property` without `syntax`, `inherits` or `initial-value` | a compile error: the browser would ignore the rule |
+
+A full page gets one `<style>` at `<Corten />`, after its stylesheets, with a rule for each
+distinct value (`[data-vars="--statement-table__share:12.5%"]{..}`), and that response's CSP
+allows it by its hash in `style-src`. So the page paints with its sizes and no script, no style
+attribute is allowed anywhere, and a cached page is still the same bytes (no nonce). Markup a patch,
+a client navigation or a `<corten-live>` fragment brings is under the policy the document loaded
+with, which allows neither, so the runtime sets those values through the CSSOM
+(`el.style.setProperty`), which the policy does not govern, before the browser paints them. A row
+a script copies out of a `<template>` holds the server's values for the template's row, not its
+own: a script that fills rows draws their sizes itself. A property registered with another syntax
+(`<color>`, to animate it) is scoped the same way and has no constant.
+
+An area that allows style attributes, `.policy(|p| p.allow_style_attributes())`
+([app guide](app.md#a-policy-for-part-of-the-app)), is for markup the app does not write as
+`html!`, such as rich text from a CMS.
 
 ## Design tokens
 
