@@ -72,9 +72,7 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App {
         .orientation(Orientation::Portrait)
         .categories(&["shopping"])
         .screenshot(Screenshot::new(views::Static::CARDS_ITEM_1_SVG, "250x350").label("A card for sale"))
-        .shortcut(
-            Shortcut::new("All cards", &routes::Category { slug: "cards" }).icon(views::Static::ICONS_192_PNG, "192x192"),
-        );
+        .shortcut(Shortcut::new("All cards", &routes::Category { slug: "cards" }).icon(views::Static::ICONS_192_PNG, "192x192"));
     // Agents in a browser on another site (AGENT_ORIGINS, comma separated) may call the tools.
     let origins = std::env::var("AGENT_ORIGINS").unwrap_or_default();
     let tools = tools(source.clone(), tokens).route();

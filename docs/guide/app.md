@@ -600,11 +600,11 @@ A misspelled or removed file does not compile. The PWA names its files the same 
 `Manifest::icon(Static::ICONS_192_PNG, "192x192")`, `Screenshot::new(Static::SHOTS_CART_PNG, "1280x720")`
 and `Pwa::import_script(Static::SW_PUSH_JS)`; an icon another site serves is a `Uri`, as every URL
 outside the app is. The manifest's other members are typed too: `display`, `display_override` and
-`orientation` take enums, and a `Shortcut` names its page by its route
-(`Shortcut::new("Watchlist", &Watchlist)`). A name that comes from
-data (a stored picture's path) is `req.find_asset(name)`, `None` when the directory has no such
-file. Files are hashed
-when the app starts, and each is served from memory at a URL with that version.
+`orientation` take enums, and the `id` and a `Shortcut` name a page of the app by its route
+(`Shortcut::new("Watchlist", &Watchlist)`, with `icon` or `maskable_icon` as the manifest has).
+A name that comes from data (a stored picture's path) is `req.find_asset(name)`, `None` when the
+directory has no such file. Files are hashed when the app starts, and each is served from memory at
+a URL with that version.
 
 An edited file rebuilds the crate. A file added to the directory with no change to the code is in
 the program from the next build that compiles the crate (a macro cannot ask cargo to watch a

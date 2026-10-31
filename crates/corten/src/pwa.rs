@@ -280,10 +280,18 @@ impl Shortcut {
     }
 
     /// An icon for the shortcut, as [`Manifest::icon`] takes one (96x96 at least).
-    pub fn icon(mut self, src: impl Into<IconSrc>, sizes: &str) -> Self {
-        let IconSrc(src) = src.into();
+    pub fn icon(self, src: impl Into<IconSrc>, sizes: &str) -> Self {
+        self.with_icon(src.into(), sizes, None)
+    }
+
+    /// An icon with `"purpose": "maskable"`, as [`Manifest::maskable_icon`].
+    pub fn maskable_icon(self, src: impl Into<IconSrc>, sizes: &str) -> Self {
+        self.with_icon(src.into(), sizes, Some("maskable"))
+    }
+
+    fn with_icon(mut self, IconSrc(src): IconSrc, sizes: &str, purpose: Option<&'static str>) -> Self {
         let mime = src.image_type();
-        self.icons.push((src, sizes.into(), mime, None));
+        self.icons.push((src, sizes.into(), mime, purpose));
         self
     }
 }
@@ -856,7 +864,8 @@ mod tests {
                 Shortcut::new("Watchlist", &Watchlist)
                     .short_name("Watch")
                     .description("Cards you follow")
-                    .icon(Uri::from_static("/i/w.png"), "96x96"),
+                    .icon(Uri::from_static("/i/w.png"), "96x96")
+                    .maskable_icon(Uri::from_static("/i/m.png"), "192x192"),
             );
         assert_eq!(
             m.to_json(),
@@ -867,7 +876,8 @@ mod tests {
                 r#""screenshots":[{"src":"/s/wide.webp","sizes":"1280x720","type":"image/webp","form_factor":"wide","label":"Cart"},"#,
                 r#"{"src":"/s/narrow.png","sizes":"720x1280","type":"image/png","form_factor":"narrow"}],"#,
                 r#""shortcuts":[{"name":"Watchlist","url":"/watchlist","short_name":"Watch","description":"Cards you follow","#,
-                r#""icons":[{"src":"/i/w.png","sizes":"96x96","type":"image/png"}]}]}"#
+                r#""icons":[{"src":"/i/w.png","sizes":"96x96","type":"image/png"},"#,
+                r#"{"src":"/i/m.png","sizes":"192x192","type":"image/png","purpose":"maskable"}]}]}"#
             )
         );
     }
