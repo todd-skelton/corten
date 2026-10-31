@@ -2451,6 +2451,12 @@ Corten is pre-1.0, so any minor version may change the API.
     caller is the debug-build check that a page's handlers call a module the app serves, so it is
     built in debug builds only. Nothing a page renders changes
     ([#500 A release build warns that Assets::module_tag is never used: its only caller is a debug-build check](https://github.com/todd-skelton/corten/issues/500)).
+88. Corten's unit tests no longer leave directories in the system temp directory: an asset
+    fixture and the types test's directory are each removed when dropped, a failing test's too.
+    A run of the asset and type tests left 9 directories; it now leaves none (measured).
+    `any_change_changes_the_version` had passed only because an earlier fixture was still on disk,
+    and now writes the files it compares. Nothing an app does changes
+    ([#511 Corten's unit tests leave a directory in the temp directory for each asset fixture on every run](https://github.com/todd-skelton/corten/issues/511)).
 
 ### Documentation
 
