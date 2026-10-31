@@ -1184,8 +1184,11 @@ Corten is pre-1.0, so any minor version may change the API.
     (about 850 bytes before compression against about 70 for the date alone). The minified format
     module grows by 18 bytes (3,008 to 3,026); the runtime is unchanged. The item page's
     `render_cost` (release, callgrind, 3 runs, without the feature, which card-market does not
-    turn on) is 35,621,122,132 instructions against 35,603,094,486 on main (+0.05%); with it, the
-    gallery's zoned page is measured below
+    turn on) is 35,621,122,132 instructions against 35,603,094,486 on main (+0.05%). A page that
+    writes ten dates (callgrind, release, per request) runs 34,952 instructions without the
+    feature, 36,363 with it in an app that does not write zoned dates, and 42,854 with
+    `zoned_dates` and a zone cookie (the zone looked up once per request, about 380 per date for
+    its offset)
     ([#387 Dates in the visitor's zone need a tz crate, a ClientZone argument on every handler and a prop through every component, and the first page is UTC](https://github.com/todd-skelton/corten/issues/387)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
