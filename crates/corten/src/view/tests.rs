@@ -197,6 +197,43 @@ fn a_view_lent_to_a_prop_borrows_what_it_uses() {
     assert_eq!(view.to_html(), "<main><div>Ship</div>Ship</main>");
 }
 
+/// Frames a view it is given, keeping it: a call like `form::keep_query`.
+fn framed<V: Render>(view: V) -> impl Render {
+    html! { <i>{view}</i> }
+}
+
+/// A view lent to a call in markup (`&html! { .. }` as a whole argument) borrows what it uses, as
+/// one lent to a prop does, so the rest of the page reads the same local (#485). One given by value
+/// or in a closure of its own owns what it uses.
+#[test]
+fn a_view_lent_to_a_call_borrows_what_it_uses() {
+    let owned = String::from("PSA 9");
+    let grades = [String::from("9"), String::from("10")];
+    let view = html! {
+        <div>
+            {framed(&html! { <b>{&owned}</b> })}
+            {framed(&corten::html! { {&owned} }).to_html().len()}
+            {grades.iter().map(|g| framed(html! { {g} })).collect::<Vec<_>>()}
+            {&html! { <u>{&owned}</u> }}
+            <p>{&owned}</p>
+        </div>
+    };
+    assert_eq!(view.to_html(), "<div><i><b>PSA 9</b></i>12<i>9</i><i>10</i><u>PSA 9</u><p>PSA 9</p></div>");
+    // A macro's arguments are left as written.
+    let view = html! { <p>{stringify!(&html! { <b></b> })}</p> };
+    assert!(!view.to_html().contains("__in"), "{}", html! { <p>{stringify!(&html! { <b></b> })}</p> }.to_html());
+}
+
+/// A view returned from a function holds a lent call: it borrows from the view's own captures.
+fn graded(owned: String) -> impl Render {
+    html! { <p>{framed(&html! { {&owned} })}{&owned}</p> }
+}
+
+#[test]
+fn a_returned_view_lends_to_its_calls() {
+    assert_eq!(graded(String::from("PSA 9")).to_html(), "<p><i>PSA 9</i>PSA 9</p>");
+}
+
 /// A view returned from a function still owns what it uses, and so does a view given to a prop by
 /// value, which the component may keep.
 fn shipped(name: String) -> impl Render {

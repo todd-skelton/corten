@@ -252,7 +252,7 @@ pub use page::{
 };
 pub use route::{routes, Elsewhere, Href, Local, Methods, OnSite, Params, ParamsRejection, Prefix, Route, Routes, UrlValue};
 pub use script::{event, Handler, Ref, Script};
-pub use signal::{Abort, Signal};
+pub use signal::{Abort, Shutdown, Signal};
 pub use style::Style;
 pub use view::{component, html, raw, Document, Patch, Render};
 

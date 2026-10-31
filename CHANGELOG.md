@@ -1148,7 +1148,22 @@ Corten is pre-1.0, so any minor version may change the API.
     0.08% more instructions (median of 3, callgrind, release build: 35,619,673,804 against
     35,592,439,055 on its base), the look for the notice cookie in each request's `Cookie`.
     ([#385 A post that redirects cannot say what it did on the page it lands on, so each screen carries its message in a query value](https://github.com/todd-skelton/corten/issues/385)).
-151. A size drawn from data is a custom property: a component's stylesheet registers it
+151. `Signal::task()`: a task's signal and its `Shutdown` handle, whose `begin()` aborts the signal
+    with `Abort::Shutdown` as `serve` does, so a test of an app's task covers its shutdown path (a
+    job released, a loop that returns at once) on a paused clock; a request's signal still cannot
+    be aborted by the app (a `compile_fail` doctest). Nothing a request does changes
+    ([#489 A task's shutdown path cannot be tested: Signal::default never aborts and abort is crate-private, so the app wraps Signal in a trait of its own](https://github.com/todd-skelton/corten/issues/489)).
+152. `#[component(js = Owner)]` (`js = path::to::Owner`): a part of a component, a function of its
+    own (a sheet, a row, a field), calls its owner's handlers through `js`, so a large page splits
+    into parts without a script per part (one more request for a one-line handler) or the owner
+    drawing the part's markup and passing it down as a prop. The page loads the owner's one script;
+    the part adds none, and an owner without a script does not compile (a `compile_fail` doctest).
+    A component's `js` module is now beside it (`__corten_js_{Name}`, hidden) instead of inside
+    its `render`, which is how a part reaches it; what renders is unchanged. The item page's
+    `render_cost` (release, callgrind, 3 runs) is 35,602,516,052 instructions against
+    35,613,859,907 on main (-0.03%, layout: the page has no part)
+    ([#492 A sub-component cannot bind its page's script: #[component] has css = Other but no js = Other](https://github.com/todd-skelton/corten/issues/492)).
+153. A size drawn from data is a custom property: a component's stylesheet registers it
     (`@property --fill { syntax: "<percentage>"; inherits: false; initial-value: 0% }`), and
     `style={FILL.pct(used)}` sets it, with a method per unit its syntax allows (`px`, `deg`,
     `set(3)`); CSS text, another unit or another component's property does not compile. A
@@ -1862,7 +1877,9 @@ Corten is pre-1.0, so any minor version may change the API.
     its base (median of 3, callgrind, release build), within the typed build's own range of 22.5
     million, so no difference. To migrate:
     1. An app's own helper typed `FieldName` (now `FieldName<Untyped>`) takes a type parameter,
-       `fn hint<T>(f: FieldName<T>)`, and one typed `FieldName<Group>` for a group's names is now
+       `fn hint<T>(f: FieldName<T>)`, or the type when it draws one kind of control
+       (`fn whole_number(f: FieldName<String>)`; the errors point at the calls, the fix is the
+       helper's signature), and one typed `FieldName<Group>` for a group's names is now
        `FieldName<T, Group>`: the place moved to the second parameter.
     2. Names of fields of different types are different types: a list of them, or a comparison of
        two, takes `.untyped()` (`[f.email.untyped(), f.price.untyped()]`).
@@ -1877,6 +1894,18 @@ Corten is pre-1.0, so any minor version may change the API.
     load (stopping with the reason when it cannot), and logs when `perf` attaches and when the
     load starts. CI's and CONTRIBUTING's publish dry run builds in a target of its own
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
+95. A view lent to a call written in markup (`{keep_query(&at, &html! { .. })}`, a whole argument)
+    borrows what it uses, as one lent to a prop does since item 70, so the rest of the page reads
+    the same local; it was a `move` closure and a second read was E0382. A view given by value, or
+    in a closure of its own (`.map(|g| f(html! { .. }))`), still owns what it uses, and so does one
+    in a macro's arguments (`format!(..)`). A callee that needs the view `'static` or `Send` takes
+    it by value; a lent view that changes a captured `mut` local now changes the page's one (it
+    changed a copy). `{&html! { .. }}` alone is lent too. `keep_query`'s docs and the guide now
+    lend the controls, and say to clear the fields a form resets on the route it is given. The item
+    page's render runs 0.07% more instructions (median of 3, callgrind, release build:
+    35,618,729,963 against 35,592,439,055 on its base), which has no lent call: noise between
+    builds of the same markup.
+    ([#485 A view lent to a call inside markup ({keep_query(&r, &html! { .. })}) still takes ownership of the locals it uses, so a local also read elsewhere fails with E0382](https://github.com/todd-skelton/corten/issues/485)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -2571,6 +2600,21 @@ Corten is pre-1.0, so any minor version may change the API.
     cases through both in a test, which `corten check` runs. Corten does not compile Rust to the
     script or add a runner of its own: a test already does it
     ([#444 A value a script computes as the user types is also drawn by the server, so its arithmetic is written twice (Rust and JS) with nothing checking they agree](https://github.com/todd-skelton/corten/issues/444)).
+40. The app guide's task loop gives its step the signal, and says why: a run in progress is outside
+    the loop's `select!`, so one that can take longer than `App::shutdown_grace` (a remote read
+    with a 10 s timeout) stops its slow awaits at the signal, and Corten does not race the whole
+    step, which would leave half a write. A new section, "A queue a request fills", has a worker's
+    loop: the claim and lease are the app's SQL; the job's work, made once and pinned, races its
+    renewal (bounded by a timeout, the next a period after it ended) and the signal, which is safe
+    because each of its writes is whole and a job can be done again; the work is dropped before the
+    claim is released; `finished` and the work's writes are fenced by the claim, so a lost lease
+    writes nothing; a retry's delay is the queue's (`run_after`), so a job that fails at once is not
+    claimed again at once; a claim error is logged and waited out; the idle wait is a `sleep` and
+    a `Notify`, not an interval. `App::task`'s example gives its refresh the signal and tests its
+    shutdown with `Signal::task`. Corten has no job queue or worker type
+    and no `every` helper: the queue is the app's storage, and a helper that raced the step would
+    drop work mid-write
+    ([#488 A worker for jobs that requests queue builds its own leased claim, heartbeat, requeue, progress and retry on App::task, once per worker](https://github.com/todd-skelton/corten/issues/488)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
