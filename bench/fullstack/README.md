@@ -433,13 +433,21 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
 
 1. Machine: a DigitalOcean CPU-optimized droplet (`c-8`: 8 dedicated vCPUs, Intel Xeon Platinum
    8168 at 2.7 GHz in r8, 16 GB), Ubuntu 24.04, kernel 6.8, Docker 29.9, Node 24, created for the run
-   and destroyed after it (`droplet.mjs`). If the droplet stops answering for 15 minutes or the
-   round's log stops growing for an hour, `droplet.mjs` power-cycles it and goes on from the next
-   step, at most twice a round (the full comparison only; `--suite live` and `--suite browser`
-   fail instead). The skipped step is named in `run.log` and in `summary.json` (`skipped`), and
-   its results are partly or wholly missing from the round. When a round fails, `droplet.mjs`
-   tries to download what it measured before destroying the droplet, and prints the command to
-   delete it by hand if DigitalOcean does not answer. Droplets of one size are
+   and destroyed after it (`droplet.mjs`). The round runs on the droplet by itself, as a systemd
+   unit (`corten-bench-<round>`), so it does not need the machine that started it:
+   `droplet.mjs --detach` starts it and leaves, and `droplet.mjs <round> --collect` later
+   downloads the results and destroys the droplet once the round has ended (or says where it is).
+   On the droplet, `run-all.mjs --unattended` gives each call a time limit (at least twice the
+   longest it took in r5-r8) and stops one that runs past it or prints nothing for an hour. A kernel
+   lockup (r8's) panics the kernel, which reboots the droplet; the unit starts again at boot and
+   the round goes on from the next step. A droplet that does not answer for 15 minutes while
+   `droplet.mjs` waits or collects is power-cycled, with the same effect (the full comparison
+   only; `--collect` gives up, leaving the droplet, only when DigitalOcean cannot be reached
+   either). Either way the step it
+   was in is skipped (the full comparison only: `--suite live` and `--suite browser` start no
+   further), named in `run.log` and in `summary.json` (`skipped`), and its results are partly or
+   wholly missing from the round. A round that stops short keeps what it measured, and the
+   droplet is destroyed only after its results are downloaded. Droplets of one size are
    not all the same CPU (r1's, r4's, r5's and r8's were a Platinum 8168, r2's, r3's, r6's and
    r7's a Platinum 8280), so times are compared within a round, never across rounds.
 2. Cores: the app under test pinned to core 1 with 1 GiB of memory, the item API to cores 2-3,
@@ -536,7 +544,9 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
 
 ```sh
 # On a fresh droplet, created and destroyed for the run (needs doctl and an SSH key there):
-node bench/fullstack/droplet.mjs r9 --ssh-key <id> [--region sfo2]
+node bench/fullstack/droplet.mjs r9 --ssh-key <id> [--region sfo2]   # waits for the round
+node bench/fullstack/droplet.mjs r9 --ssh-key <id> --detach          # or start it and leave,
+node bench/fullstack/droplet.mjs r9 --collect                        # then collect it later
 # Or by hand, from the repository root: the images, the fixture, then everything.
 docker build -f examples/card-market/Dockerfile -t cb-corten .
 for app in nextjs tanstack-start sveltekit react-router leptos django rails laravel aspnet spring phoenix astro nuxt; do
