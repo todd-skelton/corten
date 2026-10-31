@@ -1232,6 +1232,17 @@ Corten is pre-1.0, so any minor version may change the API.
     23,393 (runs 23,393 to 23,394) for the same markup without them, about 10,500 of it the SHA-256
     of its 124-byte block (three compressions)
     ([#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
+157. `pwa::Manifest` sets the manifest's other members: `display` (`Display`, standalone unless
+    set), `display_override`, `orientation`, `id` (a page of this app: a route or a `Local`),
+    `lang`, `dir`, `categories`, `screenshot(Screenshot::new(..))` with its form factor and label
+    (Chrome's richer install dialog), and `shortcut(Shortcut::new(name, &Route))`, a page named by
+    its typed route. A screenshot or a shortcut's icon is a static file's constant or a `Uri`,
+    resolved to its versioned URL as an icon is. A manifest that sets none of them is written as
+    before. `examples/card-market` sets categories, a wide and a narrow screenshot of its home page
+    and a shortcut, and its smoke checks that Chromium reads the manifest without errors, that the
+    screenshots are served at the sizes it says and that the shortcut opens a page. A manifest image's
+    `type` comes from the static directory's own table (a GIF was written `image/png`)
+    ([#515 pwa::Manifest cannot set the manifest's other members (orientation, categories, id, screenshots, shortcuts)](https://github.com/todd-skelton/corten/issues/515)).
 158. A route parameter may be followed by plain text in its segment, a file's extension:
     `#[route("/sitemap/{kind}/{page}.xml")]` with `page: u32` links to `/sitemap/items/3.xml`, and
     `Params` reads `page` as `3`. A segment that does not end in the text, or is only the text, is
@@ -2510,6 +2521,16 @@ Corten is pre-1.0, so any minor version may change the API.
     The skipped step is recorded in `run.log`, `skipped.txt` and `summary.json` (`skipped`). A
     round that fails, or whose process dies without finishing, tries to download what it measured
     before the droplet is destroyed
+    ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
+90. A `bench/fullstack` round runs on its droplet by itself, so a hung connection or a sleeping
+    PC can no longer stop or stall it. `droplet.mjs` starts the round as a systemd unit;
+    `--detach` leaves once it has started and `--collect` downloads a round that has ended and
+    destroys its droplet (or says where it is). `run-all.mjs --unattended` gives every call a time
+    limit and stops one that runs past it or prints nothing for an hour. A kernel lockup panics
+    and reboots the droplet, and the round goes on from the step after the one it was in, so it
+    needs no power cycle from outside. The droplet is destroyed only after its results are
+    downloaded. The step order, limits and resume rule are in `round.mjs`, tested by
+    `round.test.mjs` (`npm run check`)
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
 
 ### Documentation
