@@ -107,7 +107,10 @@ compile, a letter outside ASCII is an error, and a top-level group (a Rust enum)
 utility (a CSS class) starts with a letter. A token at the top of the file, or a top-level
 group's `$root` (`--brand`), is a custom property with no enum; a `$root` on the file itself has
 no name to give it, so it is an error. Values are written in CSS: an sRGB color whose
-`hex` agrees with its components is the hex, other color spaces are CSS Color 4 (`oklch(..)`,
+`hex` agrees with its components is the hex (a `hex` more than one 8-bit step from them in a
+channel does not compile, naming both and the hex the components are; a color written as a
+hex alone, `"#1d1b26"` or `{"hex": ..}`, does not compile either, and the error is the object
+to write instead), other color spaces are CSS Color 4 (`oklch(..)`,
 `color(display-p3 ..)`), and dimensions, durations, shadows, borders, transitions, cubic Béziers,
 font families and weights have one CSS value each. A reference stays one: `"{color.ink}"` is
 `var(--color-ink)`, so a theme that changes `ink` changes `link` with it. A JSON pointer into a value (`{"$ref":

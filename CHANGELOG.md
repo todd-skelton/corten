@@ -1205,6 +1205,15 @@ Corten is pre-1.0, so any minor version may change the API.
     The item page's `render_cost` (release, callgrind, 3 runs) is 35,607,619,833 instructions
     against 35,621,122,132 for the zones change it builds on (-0.04%; the page writes no date).
     ([#502 i18n: no way to write a calendar date (no instant behind it) that never shifts with the zone](https://github.com/todd-skelton/corten/issues/502)).
+155. `tokens!`: in an sRGB color, a `hex` more than one 8-bit step from its components in any
+    channel no longer compiles to the components silently; the error names both and the hex
+    the components are (`#ff0000 is not the components [0.1137, 0.1059, 0.149], which are #1d1b26`).
+    One step off is a tool's rounding and the components stay the color; outside sRGB `hex` is the
+    format's gamut-mapped fallback and is not checked. A color written as a hex alone (`"#1d1b26"`,
+    `{"hex": "#f0a"}`, with an alpha `#1d1b2680`), which the format does not allow, fails with
+    the object to write, which compiles to the same color. `corten tokens migrate` is declined:
+    it would put a second token parser in the standard-library-only CLI for a one-time move
+    ([#493 Writing a color token means working out its sRGB components by hand; a hex that disagrees is ignored silently, and the old tokens.json has no migration](https://github.com/todd-skelton/corten/issues/493)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
