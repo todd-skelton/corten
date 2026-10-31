@@ -1,0 +1,6 @@
+{
+  "color": {
+    "$type": "color",
+    "ink": { "$value": { "colorSpace": "srgb", "components": [0.1137, 0.1059, 0.149], "hex": "#ff0000" } }
+  }
+}

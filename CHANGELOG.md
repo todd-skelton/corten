@@ -1232,6 +1232,26 @@ Corten is pre-1.0, so any minor version may change the API.
     23,393 (runs 23,393 to 23,394) for the same markup without them, about 10,500 of it the SHA-256
     of its 124-byte block (three compressions)
     ([#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
+156. `tokens!`: in an sRGB color, a `hex` more than one 8-bit step from its components in any
+    channel no longer compiles to the components silently; the error names both and the hex
+    the components are (`#ff0000 is not the components [0.1137, 0.1059, 0.149], which are #1d1b26`).
+    One step off is a tool's rounding and the components stay the color; outside sRGB `hex` is the
+    format's gamut-mapped fallback and is not checked. A color written as a hex alone (`"#1d1b26"`,
+    `{"hex": "#f0a"}`, with an alpha `#1d1b2680`), which the format does not allow, fails with
+    the object to write, which compiles to the same color. `corten tokens migrate` is declined:
+    it would put a second token parser in the standard-library-only CLI for a one-time move
+    ([#493 Writing a color token means working out its sRGB components by hand; a hex that disagrees is ignored silently, and the old tokens.json has no migration](https://github.com/todd-skelton/corten/issues/493)).
+157. `pwa::Manifest` sets the manifest's other members: `display` (`Display`, standalone unless
+    set), `display_override`, `orientation`, `id` (a page of this app: a route or a `Local`),
+    `lang`, `dir`, `categories`, `screenshot(Screenshot::new(..))` with its form factor and label
+    (Chrome's richer install dialog), and `shortcut(Shortcut::new(name, &Route))`, a page named by
+    its typed route. A screenshot or a shortcut's icon is a static file's constant or a `Uri`,
+    resolved to its versioned URL as an icon is. A manifest that sets none of them is written as
+    before. `examples/card-market` sets categories, a wide and a narrow screenshot of its home page
+    and a shortcut, and its smoke checks that Chromium reads the manifest without errors, that the
+    screenshots are served at the sizes it says and that the shortcut opens a page. A manifest image's
+    `type` comes from the static directory's own table (a GIF was written `image/png`)
+    ([#515 pwa::Manifest cannot set the manifest's other members (orientation, categories, id, screenshots, shortcuts)](https://github.com/todd-skelton/corten/issues/515)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -2496,7 +2516,17 @@ Corten is pre-1.0, so any minor version may change the API.
     round that fails, or whose process dies without finishing, tries to download what it measured
     before the droplet is destroyed
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
-90. A failure under `NoStore` is sent with `Cache-Control: no-store`, as its doc says: the error
+90. A `bench/fullstack` round runs on its droplet by itself, so a hung connection or a sleeping
+    PC can no longer stop or stall it. `droplet.mjs` starts the round as a systemd unit;
+    `--detach` leaves once it has started and `--collect` downloads a round that has ended and
+    destroys its droplet (or says where it is). `run-all.mjs --unattended` gives every call a time
+    limit and stops one that runs past it or prints nothing for an hour. A kernel lockup panics
+    and reboots the droplet, and the round goes on from the step after the one it was in, so it
+    needs no power cycle from outside. The droplet is destroyed only after its results are
+    downloaded. The step order, limits and resume rule are in `round.mjs`, tested by
+    `round.test.mjs` (`npm run check`)
+    ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
+91. A failure under `NoStore` is sent with `Cache-Control: no-store`, as its doc says: the error
     page that replaces the failed answer kept the default, `private, no-cache`, which let the
     browser keep an expired code's page or someone else's statement's 404 and restore it from its
     back/forward cache. A failure's `Cache-Control` with `no-store` (`NoStore`'s, or one written
