@@ -143,15 +143,19 @@ export function rows(parent, View, template) {
   };
   /** @type {Element | null | undefined} */
   let proto;
+  /** Whether the template's row has custom properties to give its copies. */
+  let protoVars = false;
   const use = (/** @type {HTMLTemplateElement | undefined} */ t) => {
-    if (t) proto = t.content.firstElementChild;
+    if (!t) return;
+    proto = t.content.firstElementChild;
+    protoVars = !!proto && (proto.hasAttribute("data-vars") || !!proto.querySelector("[data-vars]"));
   };
   use(template);
   /** @param {D} data */
   const make = (data) => {
     if (!proto) throw new Error("corten: rows() makes new rows from a <template> with one row in it", { cause: parent });
     const el = /** @type {Element} */ (proto.cloneNode(true));
-    vars(el);
+    if (protoVars) vars(el);
     View.fill(el, data);
     return el;
   };

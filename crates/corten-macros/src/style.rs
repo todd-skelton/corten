@@ -91,7 +91,12 @@ fn syntax_valid(syntax: &str) -> bool {
         } else {
             // A keyword: an identifier, not one of the CSS-wide keywords.
             let mut chars = component.chars();
-            let starts = chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '-');
+            // An identifier starts with a letter or `_`, or `-` and then one of those or `-`.
+            let starts = match chars.next() {
+                Some('-') => chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '-'),
+                Some(c) => c.is_ascii_alphabetic() || c == '_',
+                None => false,
+            };
             starts
                 && component.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
                 && !["initial", "inherit", "unset", "revert", "revert-layer", "default"]
@@ -186,7 +191,7 @@ fn rename_properties(css: &str, names: &[&str], prefix: &str) -> String {
                 }
             }
             // An unquoted `url(..)` is a URL, `url(--fill.svg)` a file's name.
-            b'(' if i >= 3 && css[i - 3..i].eq_ignore_ascii_case("url") && (i == 3 || !ident(b[i - 4])) => {
+            b'(' if i >= 3 && b[i - 3..i].eq_ignore_ascii_case(b"url") && (i == 3 || !ident(b[i - 4])) => {
                 while i < b.len() && b[i] != b')' {
                     i += if b[i] == b'\\' { 2 } else { 1 };
                 }
@@ -272,6 +277,11 @@ impl Scoper<'_> {
                     }
                     match (ctx, name) {
                         (Ctx::Raw, _) => Ctx::Raw,
+                        // A rule nested in a style rule holds style rules or declarations; the
+                        // browser ignores an `@property` there (CSS Nesting).
+                        (Ctx::Style, "property") => {
+                            return Err(self.error(start, "@property registers a property for the whole page: put it at the top of the stylesheet, outside any rule"))
+                        }
                         (_, "media" | "supports" | "container" | "layer" | "scope" | "starting-style") => ctx,
                         (
                             _,
@@ -1058,7 +1068,12 @@ mod tests {
         );
         assert!(error("@property --a { syntax: '<angle>'; inherits: false; initial-value: 0 }").contains("is not a <angle>"));
         assert!(error("@property --a { syntax: <number>; inherits: false; initial-value: 0 }").contains("syntax is a string"));
-        for bad in ["''", "'<not-a-type>'", "'<length'", "'<transform-list>+'", "'inherit'", "'<length> |'"] {
+        assert!(error(".bar { @property --a { syntax: '*'; inherits: false } }").contains("outside any rule"));
+        assert!(
+            scope("@property --fill { syntax: '*'; inherits: false }\n.a { --probe: xéé(--fill); }", "m").is_ok(),
+            "text that is not ASCII"
+        );
+        for bad in ["''", "'<not-a-type>'", "'<length'", "'<transform-list>+'", "'inherit'", "'<length> |'", "'- | <length>'"] {
             assert!(
                 error(&format!("@property --a {{ syntax: {bad}; inherits: false; initial-value: 0 }}"))
                     .contains("is not a syntax"),
