@@ -499,7 +499,7 @@ fn find_holes(node: &Node, path: &mut Vec<usize>, names: &[&str], holes: &mut Ve
     let Node::Element { name, attrs, children } = node else { return };
     for attr in attrs {
         if let Attr::Expr(attr, expr) = attr {
-            if let (false, Some(param)) = (attr == "class", param_of(expr, names)) {
+            if let (false, Some(param)) = (attr == "class" || attr == "style", param_of(expr, names)) {
                 holes.push(Hole { param, path: path.clone(), attr: Some(attr.clone()), tag: name.clone() });
             }
         }
@@ -864,11 +864,19 @@ impl Cursor {
                     if name == "key" {
                         name = "data-key".into();
                     }
-                    if name == "data-nav" || name == "data-nav-group" {
+                    // HTML attribute names are case-insensitive: `data-Vars` is `data-vars`.
+                    let lower = name.to_ascii_lowercase();
+                    if lower == "data-nav" || lower == "data-nav-group" {
                         return err(span, format!("{name} is printed by Corten: write <a {{..req.nav(&url::News)}}> (or req.nav_section, or a link of req.nav_of), which writes href, data-nav, data-nav-group and aria-current from one mention of the route"));
                     }
-                    if name == "data-ref" || name == "data-on" || name == "data-scope" {
+                    if lower == "data-ref" || lower == "data-on" || lower == "data-scope" {
                         return err(span, "data-ref, data-on and data-scope are printed by Corten: write ref={rows} (with let (rows) = refs();) or on:click={js::show(rows)}");
+                    }
+                    if lower == "style" && name != "style" {
+                        return err(span, format!("write style, not {name}: style={{FILL.pct(42.0)}} is checked only as style"));
+                    }
+                    if lower == "data-vars" {
+                        return err(span, "data-vars is printed by Corten: write style={FILL.pct(42.0)}, with --fill registered by an @property in the component's stylesheet");
                     }
                     if name == "ref" || name.starts_with("on:") {
                         let braced = is_punct(self.peek(), '=')
@@ -934,7 +942,16 @@ impl Cursor {
                         self.next();
                         match self.value(false)? {
                             (Some(text), _) => attrs.push(Attr::Static(name, text)),
-                            (None, expr) => attrs.push(Attr::Expr(name, expr)),
+                            (None, expr) => {
+                                // One `data-vars` per element: a browser keeps the first of two.
+                                if name == "style" && attrs.iter().any(|a| matches!(a, Attr::Expr(n, _) if n == "style")) {
+                                    return err(
+                                        span,
+                                        "one style={..} per element: give it a tuple, style={(FILL.pct(42.0), GAP.px(4.0))}",
+                                    );
+                                }
+                                attrs.push(Attr::Expr(name, expr))
+                            }
                         }
                     } else {
                         attrs.push(Attr::Bare(name));
@@ -1505,6 +1522,10 @@ impl Gen {
                 Attr::Expr(attr, expr) if attr == "class" => {
                     self.code(q("::corten::style::__private::class_attr(&(__A0), __OUT);", std::slice::from_ref(expr)))
                 }
+                // Custom properties of the component's stylesheet: `style={(FILL.pct(42.0), GAP.px(4.0))}`.
+                Attr::Expr(attr, expr) if attr == "style" => {
+                    self.code(q("::corten::style::__private::vars_attr(&(__A0), __OUT);", std::slice::from_ref(expr)))
+                }
                 // A patch's top-level element: the id also says whether it is a `#[derive(Id)]`.
                 Attr::Expr(attr, expr) if attr == "id" && self.id_shape.is_some() => {
                     let name = self.id_shape.take().expect("checked");
@@ -1526,6 +1547,7 @@ impl Gen {
                     let written: Vec<String> = attrs
                         .iter()
                         .filter_map(|other| match other {
+                            Attr::Expr(name, _) if name == "style" => Some("\"data-vars\"".into()),
                             Attr::Bare(name) | Attr::Static(name, _) | Attr::Expr(name, _) => {
                                 Some(format!("{:?}", name.to_ascii_lowercase()))
                             }

@@ -59,10 +59,57 @@ over the browser's own rule. `hidden="until-found"` is left to the browser, so f
 still reveal it. When only areas have stylesheets, each area's file starts with the rule. An
 app with no component stylesheet has neither file, so if its `static/style.css` gives a hidden
 element a `display` (styling corten-ui's parts there, say), it adds the rule itself. Inline
-`style=` stays blocked by the CSP; one-off values come from the token utilities instead. Pages that must draw a size from data
-(a meter's fill, marks on a timeline) are an area that allows style attributes,
-`.policy(|p| p.allow_style_attributes())` ([app guide](app.md#a-policy-for-part-of-the-app)), so
-the rest of the app keeps the protection.
+`style="..."` stays blocked by the CSP; one-off values come from the token utilities, and a size
+drawn from data from a custom property ([below](#values-from-data)).
+
+## Values from data
+
+A size or position the page computes (a meter's fill, a bar's length, a mark on a timeline) is a
+custom property the component's stylesheet registers with `@property` and reads with `var()`,
+set in its markup with `style={..}`. `examples/seller-desk`'s statement draws each set's share of
+the stock's value this way:
+
+```css
+/* statement_table.css */
+@property --share { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+.bar { width: 6rem; background: linear-gradient(to right, var(--accent) var(--share), var(--tint) var(--share)); }
+```
+
+```rust,ignore
+<span class={Bar} style={SHARE.pct(share)}></span>
+```
+
+| You write | Corten checks or generates |
+|---|---|
+| `@property --share { syntax: "<percentage>"; .. }` | the constant `SHARE: Var<Percentage>` in the component's markup, and `--statement-table__share` everywhere in the file: the property is the component's, as its classes are |
+| `SHARE.pct(12.5)`, `GAP.px(4.0)`, `TURN.deg(90.0)`, `SPAN.set(3)` | a method per unit the syntax allows (every CSS unit but `in`, a Rust keyword: an inch is `px(96.0)`) (`<number>`, `<integer>`, `<percentage>`, `<length>`, `<length-percentage>`, `<angle>`, `<time>`); another unit, CSS text (`style={format!(..)}`) or another component's property does not compile, and a number that is not finite sets nothing, so the property keeps its `initial-value` |
+| `style={(SHARE.pct(s), nudge.map(|n| GAP.px(n)))}` | one attribute, `data-vars="--statement-table__share:12.5%"`; `None` sets nothing, and with nothing to set there is no attribute |
+| an `@property` without `syntax`, `inherits` or `initial-value`, with a `syntax` the browser does not read (`<text>`, a keyword such as `-compact` that starts with `-`), or with a number syntax and an `initial-value` that is not one, or depends on the font or a container (`1em`, `1cqw`), or is a math function (write one value, `6px` rather than `calc(2px * 3)`: the browser drops the rule when a math function does not fit, and checking one would take a CSS math parser) | a compile error: the browser would ignore the rule, or the macro could not tell; another syntax's `initial-value` (`<color>`) is left to the browser |
+
+A full page gets one `<style>` at `<Corten />`, after its stylesheets, with a rule for each
+distinct value (`[data-vars="--statement-table__share:12.5%"]{..}`), marked `!important`, as
+the runtime's inline values are, so a value from markup wins over the component's rules on a full
+page and after a patch alike (an `!important` declaration of a property markup sets does not
+compile: one more specific than the block's rule would win on a full page only), and that response's CSP
+allows it by its hash in `style-src`. So the page paints with its sizes and no script, no style
+attribute is allowed anywhere, and a cached page is still the same bytes (no nonce). Markup a patch,
+a client navigation or a `<corten-live>` fragment brings is under the policy the document loaded
+with, which allows neither, so the runtime sets those values through the CSSOM
+(`el.style.setProperty`), which the policy does not govern, before the browser paints them. A row
+`rows()` copies out of a `<template>` gets the server's values for the template's row the same
+way, not its own: a script that fills rows draws their sizes itself. A property registered with another syntax
+(`<color>`, to animate it) is scoped the same way and has no constant.
+
+The block costs a page that uses it the hash of its text: measured with callgrind (release
+build, in process), four meters with three distinct values took a page from 21,911 instructions a
+request to 40,115, about 8,400 of it the SHA-256. A page that sets none runs about 130 more than
+before. Each distinct value is written twice in the block and once in its attribute, which
+compresses well when values repeat; a chart of hundreds of distinct values belongs in SVG
+attributes, which need no CSS at all.
+
+An area that allows style attributes, `.policy(|p| p.allow_style_attributes())`
+([app guide](app.md#a-policy-for-part-of-the-app)), is for markup the app does not write as
+`html!`, such as rich text from a CMS.
 
 ## Design tokens
 

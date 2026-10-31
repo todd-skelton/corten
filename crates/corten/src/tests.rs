@@ -614,6 +614,53 @@ async fn the_csp_allows_the_import_map_by_hash_and_a_nonce_only_when_the_shell_a
     assert_eq!(popups["cross-origin-opener-policy"], "same-origin-allow-popups");
 }
 
+/// A meter whose fill comes from data (`meter.css` registers `--fill`).
+#[crate::component(css)]
+fn Meter(used: f64) -> impl Render {
+    html! { <div class={Meter} style={FILL.pct(used)}></div> }
+}
+
+fn meters() -> Router {
+    Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            let meters = html! {
+                <Meter used={42.5} />
+                <Meter used={7.0} />
+                <Meter used={42.5} />
+                <Meter used={f64::NAN} />
+            };
+            req.test_page("Meters", meters)
+        }),
+    )
+}
+
+/// A full page's custom properties are one style block at `<Corten />`, allowed by its hash in
+/// that response's CSP; a navigation's are left to the runtime, under the document's policy.
+#[tokio::test]
+async fn a_page_s_custom_properties_are_one_style_block_its_csp_allows_by_hash() {
+    let (_, headers, body) = call(app(meters(), None), "GET", None).await;
+    let rules = r#"[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%!important}[data-vars="--meter__fill:7%"]{--meter__fill:7%!important}"#;
+    assert!(body.contains(&format!("<style>{rules}</style></head>")), "each value once, after the page's stylesheets: {body}");
+    assert!(body.contains(r#"<div class="meter__meter" data-vars="--meter__fill:7%"></div><div class="meter__meter" data-vars="--meter__fill:42.5%"></div><div class="meter__meter"></div>"#), "a value that is not finite sets nothing: {body}");
+    let csp = headers["content-security-policy"].to_str().unwrap();
+    assert!(csp.contains(&format!("style-src 'self' {};", security::hash_source(rules))), "{csp}");
+    assert!(!csp.contains("style-src-attr") && !csp.contains("unsafe"), "{csp}");
+    let (_, again, same) = call(app(meters(), None), "GET", None).await;
+    assert_eq!(
+        (&again["content-security-policy"], &same),
+        (&headers["content-security-policy"], &body),
+        "the same bytes, so a cache can keep it"
+    );
+
+    let (_, headers, body) = call(app(meters(), None), "GET", Some("nav")).await;
+    assert!(body.contains(r#"data-vars="--meter__fill:42.5%""#) && !body.contains("<style>"), "{body}");
+    let csp = headers["content-security-policy"].to_str().unwrap();
+    assert!(csp.contains("style-src 'self';"), "{csp}");
+    let (_, headers, _) = call(app(routes(), None), "GET", None).await;
+    assert!(headers["content-security-policy"].to_str().unwrap().contains("style-src 'self';"), "a page with none is as before");
+}
+
 #[tokio::test]
 async fn the_app_refuses_cross_site_writes() {
     let router = app(routes(), None);
