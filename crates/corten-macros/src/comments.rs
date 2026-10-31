@@ -47,7 +47,7 @@ const BEFORE_REGEX: &[&str] = &[
 
 /// `source` without its comments: a line comment is removed to its line's end, a block comment
 /// becomes the line breaks it held, or a space when it held none and code follows it. Strings, template literals and regular expressions are copied as they are.
-pub fn without_comments(source: &str) -> String {
+pub fn strip(source: &str) -> String {
     let bytes = source.as_bytes();
     let mut out = String::with_capacity(source.len());
     let mut at = 0;
@@ -77,7 +77,8 @@ pub fn without_comments(source: &str) -> String {
         // What this token leaves for the next `(` and word; most tokens clear both.
         let (mut next_condition, mut next_dot) = (false, false);
         match b {
-            _ if b.is_ascii_whitespace() => {
+            // JavaScript's whitespace includes the vertical tab, which Rust's ASCII whitespace does not.
+            _ if b.is_ascii_whitespace() || b == 0x0b => {
                 at += 1;
                 continue;
             }
@@ -96,14 +97,18 @@ pub fn without_comments(source: &str) -> String {
                 let comment = &source[at..end];
                 if !kept(comment) {
                     out.push_str(&source[copied..at]);
-                    let lines = comment.matches('\n').count();
-                    let rest_of_line = source[end..].split('\n').next().unwrap_or("");
-                    let ends_line = rest_of_line.trim().is_empty();
-                    if lines > 0 || ends_line {
+                    let breaks = line_breaks(comment);
+                    // Only the spaces after it are looked at, so a long line of comments stays
+                    // linear.
+                    let next = source[end..].bytes().find(|c| !matches!(c, b' ' | b'\t'));
+                    let ends_line = matches!(next, None | Some(b'\n' | b'\r'));
+                    if !breaks.is_empty() || ends_line {
                         trim_end_of_line(&mut out);
                     }
-                    if lines > 0 {
-                        out.extend(std::iter::repeat_n('\n', lines));
+                    if !breaks.is_empty() {
+                        // The comment's own line breaks: one is a statement's end for ASI, and each
+                        // keeps a line number.
+                        out.push_str(&breaks);
                     } else if !ends_line && !out.is_empty() && !out.ends_with([' ', '\t', '\n']) {
                         // `return/**/x` stays two words.
                         out.push(' ');
@@ -140,8 +145,9 @@ pub fn without_comments(source: &str) -> String {
                 if opens.pop() == Some(Open::Substitution) {
                     in_template = true;
                 } else {
-                    // A block's end starts a statement, which may be a regular expression; an
-                    // object literal divided by something is far rarer.
+                    // A block's end starts a statement, which may be a regular expression. An
+                    // object or class divided by something (`({}) / 2`) is read wrongly, and
+                    // its line's text after a `//` in a string may be cut: no script divides one.
                     before = Before::Operator;
                 }
                 at += 1;
@@ -193,6 +199,23 @@ pub fn without_comments(source: &str) -> String {
         dot = next_dot;
     }
     out.push_str(&source[copied..]);
+    out
+}
+
+/// The line terminators in `comment`, in order: `\n`, `\r\n`, a lone `\r`, U+2028 and U+2029.
+fn line_breaks(comment: &str) -> String {
+    let mut out = String::new();
+    let mut chars = comment.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' if chars.peek() == Some(&'\n') => {
+                chars.next();
+                out.push_str("\r\n");
+            }
+            '\n' | '\r' | '\u{2028}' | '\u{2029}' => out.push(c),
+            _ => {}
+        }
+    }
     out
 }
 
@@ -287,7 +310,7 @@ fn regex(source: &str, at: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::without_comments as strip;
+    use super::strip;
 
     #[test]
     fn comments_go_and_every_line_stays_where_it_was() {
@@ -305,6 +328,23 @@ mod tests {
         {
             assert_eq!(strip(kept), kept, "a licence, or a comment the browser reads, stays");
         }
+    }
+
+    #[test]
+    fn a_block_comments_line_breaks_stay_whatever_they_are() {
+        assert_eq!(strip("return/*\u{2028}*/1;"), "return\u{2028}1;", "still returns undefined");
+        assert_eq!(strip("return/*\r*/1;"), "return\r1;");
+        assert_eq!(strip("a /* x\r\ny */ b"), "a\r\n b");
+        assert_eq!(
+            strip("x = a\u{b}/ 2 + \"/\" + \"//kept\";"),
+            "x = a\u{b}/ 2 + \"/\" + \"//kept\";",
+            "a vertical tab is a space"
+        );
+        // Linear in a long line of comments (it took seconds when each looked to the line's end).
+        let long = "a /* x */ ".repeat(200_000);
+        let start = std::time::Instant::now();
+        assert_eq!(strip(&long).len(), "a  ".len() * 200_000 - 1);
+        assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
     }
 
     #[test]

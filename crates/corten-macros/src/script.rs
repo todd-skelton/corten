@@ -117,7 +117,7 @@ impl Module {
             }
         }
         let keeps = keeps(&source).map_err(at)?;
-        let served = crate::comments::without_comments(&source);
+        let served = crate::comments::strip(&source);
         Ok(Module { name, file, path: path.display().to_string(), served, handlers, groups, keeps, imports, siblings })
     }
 
