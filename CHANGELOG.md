@@ -2366,6 +2366,11 @@ Corten is pre-1.0, so any minor version may change the API.
     parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
     and a form's body are still refused. Links write what they did
     ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
+82. A `corten-macros` script test bounded three parses on the wall clock (under 2 or 3 s), so check 1
+    failed on a busy machine with nothing wrong. Each case now passes in one run under a second, and
+    otherwise is checked by its growth (at a size about four times as long as at a quarter of it,
+    not sixteen), so load slows both runs alike
+    ([#495 A corten-macros script test's wall-clock bound (under 2 s) fails when the machine is busy, so check 1 goes red without a cause](https://github.com/todd-skelton/corten/issues/495)).
 
 ### Documentation
 
