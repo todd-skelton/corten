@@ -77,9 +77,12 @@ const retry = async (times, work) => {
 
 let host = flag("host");
 let dropletId = null;
-const tagged = () => (run("doctl", ["compute", "droplet", "list", "--tag-name", "corten-bench", "--format", "ID,Name,PublicIPv4", "--no-header"], { quiet: true, allowFail: true })
-  .stdout ?? "").split("\n").map((l) => l.trim().split(/\s+/));
-const dropletAt = (ip) => tagged().find(([, , a]) => a === ip)?.[0] ?? null;
+let runTag = null;
+// The corten-bench droplets as [id, name, ip]. Throws when DigitalOcean cannot list them, so no
+// decision about which droplet is ours is made from an empty list.
+const tagged = () => run("doctl", ["compute", "droplet", "list", "--tag-name", "corten-bench", "--format", "ID,Name,PublicIPv4", "--no-header"], { quiet: true, timeout: minute })
+  .stdout.split("\n").map((l) => l.trim().split(/\s+/)).filter(([id]) => id);
+const dropletAt = (ip) => { try { return tagged().find(([, , a]) => a === ip)?.[0] ?? null; } catch { return null; } };
 const destroy = () => {
   if (dropletId && !args.includes("--keep")) {
     console.log(`destroying droplet ${dropletId}`);
@@ -90,7 +93,12 @@ const destroy = () => {
       deleted = run("doctl", ["compute", "droplet", "delete", dropletId, "--force"], { allowFail: true, timeout: minute }).status === 0;
     }
     if (!deleted) console.log(`could not delete droplet ${dropletId}: delete it with doctl compute droplet delete ${dropletId} --force`);
-    dropletId = null;
+    else dropletId = null;
+  }
+  // The run's own tag, once its droplet is gone (best effort: an empty tag costs nothing).
+  if (runTag && !dropletId && !args.includes("--keep")) {
+    run("doctl", ["compute", "tag", "delete", runTag, "--force"], { quiet: true, allowFail: true, timeout: minute });
+    runTag = null;
   }
 };
 process.on("SIGINT", () => { destroy(); process.exit(130); });
@@ -165,18 +173,29 @@ try {
     const key = flag("ssh-key");
     if (!key) throw new Error("--ssh-key <DigitalOcean key id> is required to create a droplet");
     const name = `corten-bench-${suite === "fullstack" ? "" : `${suite}-`}${round}`;
+    // A tag only this run's droplet has: after a failed create, a droplet carrying it is certainly
+    // this run's, whatever else was created meanwhile.
+    runTag = `corten-bench-run-${Date.now().toString(36)}-${process.pid}`;
     // A droplet already named so (a --keep run's) is never reused or, below, mistaken for this one.
     const before = tagged();
     if (before.some(([, n]) => n === name)) throw new Error(`a corten-bench droplet named ${name} already exists: delete it or pick another round`);
     const created = run("doctl", ["compute", "droplet", "create", name, "--size", flag("size", "c-8"), "--region", flag("region", "sfo2"),
-      "--image", "ubuntu-24-04-x64", "--ssh-keys", key, "--tag-name", "corten-bench", "--wait", "--format", "ID,PublicIPv4", "--no-header"], { quiet: true, allowFail: true, timeout: 10 * minute });
+      "--image", "ubuntu-24-04-x64", "--ssh-keys", key, "--tag-names", `corten-bench,${runTag}`, "--wait", "--format", "ID,PublicIPv4", "--no-header"], { quiet: true, allowFail: true, timeout: 10 * minute });
     if (created.status !== 0) {
       // The droplet may exist even though the call failed or timed out: find it so finally deletes it.
-      const known = new Set(before.map(([id]) => id));
-      dropletId = tagged().find(([id, n]) => n === name && !known.has(id))?.[0] ?? null;
+      const ours = run("doctl", ["compute", "droplet", "list", "--tag-name", runTag, "--format", "ID", "--no-header"], { quiet: true, allowFail: true, timeout: minute });
+      const ids = ours.status === 0 ? ours.stdout.split("\n").map((l) => l.trim()).filter(Boolean) : [];
+      if (ids.length === 1) dropletId = ids[0];
+      else if (ours.status !== 0) console.log(`check for a droplet left by this run: doctl compute droplet list --tag-name ${runTag}`);
       throw new Error(`could not create droplet ${name}: ${String(created.error?.message ?? created.stderr).trim()}`);
     }
     [dropletId, host] = created.stdout.trim().split(/\s+/);
+    // --wait can return before the droplet has its public address (seen on 2026-10-31).
+    for (let i = 0; i < 30 && !host; i += 1) {
+      await sleep(10_000);
+      host = run("doctl", ["compute", "droplet", "get", dropletId, "--format", "PublicIPv4", "--no-header"], { quiet: true, allowFail: true, timeout: minute }).stdout?.trim();
+    }
+    if (!host) throw new Error(`droplet ${dropletId} has no public address after five minutes`);
     console.log(`droplet ${dropletId} at ${host}`);
     await answers(30);
   }
@@ -245,16 +264,18 @@ try {
   let silentSince = null;
   let silentPolls = 0;
   let floor = 0;
+  let bootId = null;
   let recoveries = 0;
   let gone = 0;
   for (;;) {
     await sleep(minute);
-    const r = ssh(`cat ${log}; ${running} || echo __stopped__`, { quiet: true, allowFail: true });
+    const r = ssh(`cat /proc/sys/kernel/random/boot_id; cat ${log}; ${running} || echo __stopped__`, { quiet: true, allowFail: true });
     let why = null;
     if (r.status === 0) {
       silentSince = null;
       silentPolls = 0;
-      const text = r.stdout.replace("__stopped__\n", "");
+      bootId = r.stdout.split("\n")[0];
+      const text = r.stdout.split("\n").slice(1).join("\n").replace("__stopped__\n", "");
       if (text !== lastLog) { changedAt = Date.now(); quietPolls = 0; } else quietPolls += 1;
       lastLog = text;
       // Two polls in a row with no round process and no last line: it died without finishing.
@@ -294,14 +315,14 @@ try {
     const id = dropletId ?? dropletAt(host);
     if (!id) throw new Error(`the round on ${host} is stuck (${why}) and no corten-bench droplet has that address to power-cycle`);
     console.log(`the round is stuck in step ${step}, ${why}: power-cycling droplet ${id}`);
-    const cycledAt = Date.now();
-    run("doctl", ["compute", "droplet-action", "power-cycle", id, "--wait"], { quiet: true, allowFail: true, timeout: 10 * minute });
+    const cycled = run("doctl", ["compute", "droplet-action", "power-cycle", id, "--wait"], { quiet: true, allowFail: true, timeout: 10 * minute });
     if (!(await answers(60))) throw new Error(`droplet ${id} did not answer after a power cycle`);
-    // Only a droplet that restarted (so no process of the round is left) gets the round again.
-    const up = ssh(`cut -d. -f1 /proc/uptime; ${running} && echo __running__; true`, { quiet: true, allowFail: true });
-    const uptime = Number(up.stdout?.split("\n")[0]);
-    if (up.status !== 0 || !(uptime * 1000 < Date.now() - cycledAt + minute) || up.stdout.includes("__running__")) {
-      console.log(`droplet ${id} did not restart (up ${uptime} s): watching the round again`);
+    // Only a droplet that restarted (a new boot id, so no process of the round is left) gets the
+    // round again.
+    const up = ssh(`cat /proc/sys/kernel/random/boot_id; ${running} && echo __running__; true`, { quiet: true, allowFail: true });
+    const newBoot = up.stdout?.split("\n")[0];
+    if (cycled.status !== 0 || up.status !== 0 || !bootId || newBoot === bootId || up.stdout.includes("__running__")) {
+      console.log(`droplet ${id} did not restart (power cycle ${cycled.status === 0 ? "reported done" : "failed"}): watching the round again`);
       silentSince = null;
       silentPolls = 0;
       changedAt = Date.now();

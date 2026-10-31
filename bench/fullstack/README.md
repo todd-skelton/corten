@@ -437,8 +437,9 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
    round's log stops growing for an hour, `droplet.mjs` power-cycles it and goes on from the next
    step, at most twice a round (the full comparison only; `--suite live` and `--suite browser`
    fail instead). The skipped step is named in `run.log` and in `summary.json` (`skipped`), and
-   its results are partly or wholly missing from the round. A round that fails keeps what it
-   measured: `droplet.mjs` downloads it before destroying the droplet. Droplets of one size are
+   its results are partly or wholly missing from the round. When a round fails, `droplet.mjs`
+   tries to download what it measured before destroying the droplet, and prints the command to
+   delete it by hand if DigitalOcean does not answer. Droplets of one size are
    not all the same CPU (r1's, r4's, r5's and r8's were a Platinum 8168, r2's, r3's, r6's and
    r7's a Platinum 8280), so times are compared within a round, never across rounds.
 2. Cores: the app under test pinned to core 1 with 1 GiB of memory, the item API to cores 2-3,
