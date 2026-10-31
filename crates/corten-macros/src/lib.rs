@@ -456,7 +456,8 @@ impl {impl_generics} ::corten::form::Fields for {name} {type_generics} {where_cl
 /// lifetime) cannot be named in the names' struct, which has none, so it is `Untyped`.
 fn value_type(ty: &[TokenTree], type_generics: &str) -> String {
     let mut ty = ty.to_vec();
-    for wrapper in ["Option", "Vec"] {
+    // `Option<Vec<T>>`, `Vec<Option<T>>`: each control sends one `T`.
+    for wrapper in ["Option", "Vec", "Option"] {
         let open = ty.iter().position(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == '<'));
         let last_name = ty[..open.unwrap_or(ty.len())].iter().rev().find_map(|t| match t {
             TokenTree::Ident(id) => Some(id.to_string()),
@@ -482,7 +483,16 @@ fn value_type(ty: &[TokenTree], type_generics: &str) -> String {
         }
         stream.iter().any(|t| walk(t, &generics))
     };
-    if ty.is_empty() || uses_generics(&ty) {
+    // Text borrowed from the request (`&'a str`, `Cow<'a, str>`) is text: a control sends it as a
+    // `String` field's does.
+    let name = |t: &TokenTree| matches!(t, TokenTree::Ident(id) if id.to_string() == "str");
+    let borrowed_text = matches!(ty.first(), Some(TokenTree::Punct(p)) if p.as_char() == '&') && ty.last().is_some_and(name)
+        || ty.iter().any(|t| matches!(t, TokenTree::Ident(id) if id.to_string() == "Cow")) && ty.iter().any(name);
+    // A path through `$crate` (a form a `macro_rules!` writes) cannot be written again as text.
+    let dollar = ty.iter().any(|t| t.to_string().starts_with('$'));
+    if borrowed_text {
+        "::std::string::String".into()
+    } else if ty.is_empty() || dollar || uses_generics(&ty) {
         "::corten::form::Untyped".into()
     } else {
         ty.into_iter().collect::<TokenStream>().to_string()

@@ -413,8 +413,10 @@ deref!(Form);
 ///
 /// `T` is the value the field's control sends: the field's type, without an `Option` or a `Vec`
 /// around it (`condition: Option<Condition>` is a `FieldName<Condition>`), so a control that takes
-/// a typed name (a picker of conditions, a submit key) cannot be given another field's. A field
-/// whose type uses the struct's own generics is [`Untyped`].
+/// a typed name (a picker of conditions, a submit key) cannot be given another field's. Text
+/// borrowed from the request (`&'a str`, `Cow<'a, str>`) is a `String`'s. A field whose type uses
+/// the struct's own generics or another lifetime is [`Untyped`]; [`FieldName::untyped`] drops the
+/// type of any name, for a list of several fields' names.
 ///
 /// `P` is where the field is: the form itself ([`Root`], the default), a group
 /// (`f.ship_to.street`, posted `ship_to.street`) or a row of [`Rows`]
@@ -435,6 +437,26 @@ deref!(Form);
 /// let tags: FieldName<String> = Sell::FIELDS.tags;
 /// assert_eq!((condition.as_str(), tags.as_str()), ("condition", "tags"));
 /// assert_eq!(std::mem::size_of_val(&condition), std::mem::size_of::<&str>());
+/// ```
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Search<'a> {
+///     q: &'a str,
+///     #[serde(borrow)]
+///     note: std::borrow::Cow<'a, str>,
+///     sizes: Option<Vec<u8>>,
+///     #[serde(default)]
+///     picks: Vec<Option<u8>>,
+/// }
+///
+/// let f = Search::FIELDS;
+/// let _: (FieldName<String>, FieldName<String>) = (f.q, f.note);
+/// let _: (FieldName<u8>, FieldName<u8>) = (f.sizes, f.picks);
+/// let names = [f.q.untyped(), f.sizes.untyped()];
+/// assert_eq!(names.map(|n| n.as_str()), ["q", "sizes"]);
 /// ```
 ///
 /// A name of one field's type is not another's:
@@ -488,10 +510,10 @@ impl<P: Place, T> FieldName<T, P> {
         FieldName { at, name, value: std::marker::PhantomData }
     }
 
-    /// The same name without its value type, for a component that keeps names of several types
-    /// in one place (a number field's, which takes any number).
-    #[doc(hidden)]
-    pub const fn __untyped(self) -> FieldName<Untyped, P> {
+    /// The same name without its value type: for the app's own helper that keeps names of several
+    /// types in one list (`[f.email.untyped(), f.price.untyped()]`), or a control of its own that
+    /// sends text whatever the field reads. A typed control does not take it back.
+    pub const fn untyped(self) -> FieldName<Untyped, P> {
         FieldName { at: self.at, name: self.name, value: std::marker::PhantomData }
     }
 }
@@ -1147,13 +1169,13 @@ struct Kept {
 }
 
 impl Kept {
-    fn new<P: Place, T>(field: FieldName<T, P>) -> Self {
+    fn new<P: Place>(field: FieldName<Untyped, P>) -> Self {
         Kept { at: field.at.kept(), name: field.name }
     }
 
     /// Whether this is `field`: for a form's own field, a comparison of two names.
     #[inline]
-    fn is<P: Place, T>(&self, field: &FieldName<T, P>) -> bool {
+    fn is<P: Place>(&self, field: &FieldName<Untyped, P>) -> bool {
         self.name == field.name && field.at.is_kept(&self.at)
     }
 }
@@ -1184,7 +1206,7 @@ impl PartialEq<&str> for Named<'_> {
 
 impl<P: Place, T> PartialEq<FieldName<T, P>> for Named<'_> {
     fn eq(&self, field: &FieldName<T, P>) -> bool {
-        self.0.is(field)
+        self.0.is(&field.untyped())
     }
 }
 
@@ -1239,6 +1261,11 @@ impl Errors {
 
     /// Records `message` for `field`, unless the field already has one.
     pub fn add<P: Place, T>(&mut self, field: FieldName<T, P>, message: impl Into<String>) {
+        // The type is for the caller: one copy of the work per place, not per field type.
+        self.add_untyped(field.untyped(), message.into())
+    }
+
+    fn add_untyped<P: Place>(&mut self, field: FieldName<Untyped, P>, message: String) {
         if self.find(&field).is_some() {
             return;
         }
@@ -1254,12 +1281,12 @@ impl Errors {
                 }
             }
         }
-        self.fields.push((Kept::new(field), message.into()));
+        self.fields.push((Kept::new(field), message));
     }
 
     /// Where `field`'s message is: a row's by the index, any other by reading the list of messages
     /// (one per field given one, rows' included).
-    fn find<P: Place, T>(&self, field: &FieldName<T, P>) -> Option<usize> {
+    fn find<P: Place>(&self, field: &FieldName<Untyped, P>) -> Option<usize> {
         match field.at.row() {
             None => self.fields.iter().position(|(f, _)| f.is(field)),
             Some((rows, key)) => {
@@ -1309,11 +1336,11 @@ impl Errors {
     }
 
     pub fn get<P: Place, T>(&self, field: FieldName<T, P>) -> Option<&str> {
-        self.find(&field).map(|i| self.fields[i].1.as_str())
+        self.find(&field.untyped()).map(|i| self.fields[i].1.as_str())
     }
 
     pub fn has<P: Place, T>(&self, field: FieldName<T, P>) -> bool {
-        self.find(&field).is_some()
+        self.find(&field.untyped()).is_some()
     }
 
     /// The message about the whole form, from [`Errors::add_form`].
@@ -1375,13 +1402,15 @@ impl<I: Id> Within<'_, I> {
     /// gives it here, `{..e.aria(f.email).hint(&EmailHintId)}`, and is described by the hint and
     /// then the error; a tag that writes `aria-describedby` itself as well does not compile.
     pub fn aria<P: Place, T>(&self, field: FieldName<T, P>) -> Aria<'_, I, P> {
-        Aria { form: &self.form, field: field.__untyped(), invalid: self.errors.has(field), hint: None }
+        let field = field.untyped();
+        Aria { form: &self.form, field, invalid: self.errors.has(field), hint: None }
     }
 
     /// `<p class="field-error" id="{form}-{field}-error">message</p>` when `field` has an error,
     /// else nothing: the element [`Within::aria`] points at.
     pub fn message<P: Place, T>(&self, field: FieldName<T, P>) -> FieldMessage<'_, I, P> {
-        FieldMessage { form: &self.form, field: field.__untyped(), message: self.errors.get(field) }
+        let field = field.untyped();
+        FieldMessage { form: &self.form, field, message: self.errors.get(field) }
     }
 }
 
@@ -1527,7 +1556,7 @@ pub struct SubmitKey(Box<str>);
 impl SubmitKey {
     /// The hidden input that carries a new key: `<input type="hidden" name=".." data-submit value="..">`.
     pub fn field(name: FieldName<SubmitKey>) -> SubmitField {
-        SubmitField { name: name.__untyped(), key: uuid_v4(crate::security::random_hex()) }
+        SubmitField { name: name.untyped(), key: uuid_v4(crate::security::random_hex()) }
     }
 
     /// The hidden input that carries this key again, for a form drawn again from the post that
@@ -1561,7 +1590,7 @@ impl SubmitKey {
         // Read only as a UUID (`Deserialize`), so it is 36 ASCII bytes.
         let mut key = [0u8; 36];
         key.copy_from_slice(self.0.as_bytes());
-        SubmitField { name: name.__untyped(), key }
+        SubmitField { name: name.untyped(), key }
     }
 
     /// The UUID, lowercase and hyphenated: `3f2504e0-4f89-41d3-9a0c-0305e82c3301`.

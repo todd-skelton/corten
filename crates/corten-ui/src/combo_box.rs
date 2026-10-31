@@ -86,9 +86,9 @@ impl<S: AsRef<str>> AttrValue for Terms<'_, S> {
 /// use corten::prelude::*;
 /// use corten_ui::{Choice, Picker};
 ///
-/// #[derive(Clone, Copy, PartialEq, UrlValue)]
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
 /// enum Color { Salt, Sand }
-/// #[derive(Clone, Copy, PartialEq, UrlValue)]
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
 /// enum Size { Small }
 /// #[derive(serde::Deserialize, Fields)]
 /// struct Order { color: Color }
@@ -145,7 +145,7 @@ impl<'a, V, S> Picker<'a, V, S> {
     {
         Picker {
             id,
-            name: name.__untyped(),
+            name: name.untyped(),
             value: None,
             placeholder,
             empty,

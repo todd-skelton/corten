@@ -1784,17 +1784,26 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
 93. Breaking: a form's `FieldName` carries the type its control sends, `FieldName<T = Untyped, P = Root>`
-    (`condition: Option<Condition>` is a `FieldName<Condition>`, an `Option` and a `Vec` taken off),
-    so a control given another field's name does not compile: corten-ui's `Picker::new` takes only a
-    field that reads its choices' type, `Number::new` only a field that reads a number,
-    `RequiredWhen` only values of its control's type (or text for a text field or a checkbox), and
-    `SubmitKey::field` only a `SubmitKey` field. `name={..}`, `Errors` and `Within` take a name of
-    any type as before, and a name is still the size of a `&str`, so nothing renders differently:
-    the item page's render ran 35,591,033,717 instructions against 35,611,790,177 on its base
-    (median of 3, callgrind, release build), within the typed build's own range of 22.5 million,
-    so no difference. An
-    app's own helper typed `FieldName` (now `FieldName<Untyped>`) takes a type parameter,
-    `fn hint<T>(f: FieldName<T>)`; a field whose type uses its struct's generics is `Untyped`
+    (`condition: Option<Condition>` is a `FieldName<Condition>`, an `Option` and a `Vec` taken off;
+    `&'a str` and `Cow<'a, str>` are `String`), so a control given another field's name does not
+    compile: corten-ui's `Picker::new` takes only a field that reads its choices' type,
+    `Number::new` only a field that reads a number (`Numeric`), `RequiredWhen` only values of its
+    control's type (`ValueOf`: the field's own type, or text for a text field or a checkbox; now
+    any `Display`, so a number field's values are numbers), and `SubmitKey::field` and
+    `SubmitKey::again` only a `SubmitKey` field. `name={..}`, `Errors` and `Within` take a name
+    of any type as before, and a name is still the size of a `&str`, so nothing renders
+    differently: the item page's render ran 35,591,033,717 instructions against 35,611,790,177 on
+    its base (median of 3, callgrind, release build), within the typed build's own range of 22.5
+    million, so no difference. To migrate:
+    1. An app's own helper typed `FieldName` (now `FieldName<Untyped>`) takes a type parameter,
+       `fn hint<T>(f: FieldName<T>)`, and one typed `FieldName<Group>` for a group's names is now
+       `FieldName<T, Group>`: the place moved to the second parameter.
+    2. Names of fields of different types are different types: a list of them, or a comparison of
+       two, takes `.untyped()` (`[f.email.untyped(), f.price.untyped()]`).
+    3. A typed control takes no field whose type it cannot see through: one using its struct's
+       generics or a lifetime other than borrowed text, a `Box`, a type alias or a path through
+       `$crate` is `Untyped` or its own type, so a `Picker` or `NumberField` on it is written by
+       hand or the field's type spelled out
     ([#358 A form's FieldName carries no type, so a Picker<Condition> can name another field](https://github.com/todd-skelton/corten/issues/358)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

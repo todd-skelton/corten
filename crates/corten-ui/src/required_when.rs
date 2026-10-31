@@ -51,8 +51,10 @@ use crate::ValueOf;
 /// assert!(html.contains(r#"<fieldset data-on="connect:ui.required_when.connect($t,&quot;kind&quot;,[&quot;partial&quot;],$s)"><label>"#), "{html}");
 /// ```
 ///
-/// The values are the control's own: a word of its enum, text for a text field, or the `value` a
-/// checkbox (a `bool` field) sends, so a word of another field's enum does not compile:
+/// The values are the control's own, written as its `Display` as a route writes a field: a word of
+/// its enum, a number for a number field (`values={&[3]}` for `line: i32`), text for a text field,
+/// or the `value` a checkbox (a `bool` field) sends, so a word of another field's enum does not
+/// compile:
 ///
 /// ```compile_fail,E0277
 /// use corten::prelude::*;
@@ -69,6 +71,19 @@ use crate::ValueOf;
 /// let html = html! { <RequiredWhen control={Refund::FIELDS.kind} values={&[Ship::Post]}>"Amount"</RequiredWhen> };
 /// ```
 ///
+/// A number field's values are numbers:
+///
+/// ```
+/// use corten::prelude::*;
+/// use corten_ui::RequiredWhen;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Order { line: i32, note: Option<String> }
+///
+/// let html = html! { <RequiredWhen control={Order::FIELDS.line} values={&[3]}>"Note"</RequiredWhen> }.to_html();
+/// assert!(html.contains(r#"connect($t,&quot;line&quot;,[&quot;3&quot;],$s)"#), "{html}");
+/// ```
+///
 /// The control is a field of the form struct, so a misspelled name does not compile:
 ///
 /// ```compile_fail,E0308
@@ -78,13 +93,14 @@ use crate::ValueOf;
 /// let html = html! { <RequiredWhen control="kind" values={&["partial"]}>"Amount"</RequiredWhen> };
 /// ```
 #[component(js)]
-pub fn RequiredWhen<'a, F, V: ValueOf<F> + AsRef<str>, C: Render>(
+pub fn RequiredWhen<'a, F, V: ValueOf<F> + std::fmt::Display, C: Render>(
     control: FieldName<F>,
     values: &'a [V],
     children: C,
 ) -> impl Render {
+    let values: Vec<String> = values.iter().map(V::to_string).collect();
     html! {
-        <fieldset on:connect={js::connect(target, control.as_str(), values, signal)}>
+        <fieldset on:connect={js::connect(target, control.as_str(), &values, signal)}>
             {children}
         </fieldset>
     }

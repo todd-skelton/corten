@@ -72,7 +72,7 @@ impl<'a> Number<'a> {
     pub fn new<T: Numeric>(id: &'a str, name: FieldName<T>, decrease: &'a str, increase: &'a str) -> Self {
         Number {
             id,
-            name: name.__untyped(),
+            name: name.untyped(),
             value: None,
             min: None,
             max: None,

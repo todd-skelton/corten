@@ -208,6 +208,7 @@ pub trait ValueOf<F> {}
 
 impl<V> ValueOf<V> for V {}
 impl ValueOf<String> for &str {}
+impl ValueOf<String> for &String {}
 impl ValueOf<bool> for &str {}
 
 /// `"true"` or `"false"`, for ARIA states, which are text.
