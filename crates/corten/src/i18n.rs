@@ -887,6 +887,7 @@ mod tests {
             "+026-09-02",
             " 2026-09-02",
             "2026/09/02",
+            "0000-01-01",
             "",
         ] {
             assert_eq!(text.parse::<Day>(), Err(InvalidDay), "{text:?}");
@@ -909,7 +910,12 @@ mod tests {
         assert_eq!(en.date(day.midnight_utc().unwrap(), DateStyle::Medium).zone(Offset::hours(-5)).to_string(), "Sep 1, 2026");
         // Every day is written from its calendar date, before the earliest instant a platform has
         // too (1601 on Windows).
-        for (text, written) in [("0000-01-01", "Jan 1, 0"), ("1600-12-31", "Dec 31, 1600"), ("9999-12-31", "Dec 31, 9999")] {
+        for (text, written) in [
+            ("0001-01-01", "Jan 1, 1"),
+            ("1600-02-29", "Feb 29, 1600"),
+            ("1600-12-31", "Dec 31, 1600"),
+            ("9999-12-31", "Dec 31, 9999"),
+        ] {
             assert_eq!(en.date(text.parse::<Day>().unwrap(), DateStyle::Medium).to_string(), written, "{text}");
         }
     }

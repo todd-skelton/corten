@@ -1198,11 +1198,12 @@ Corten is pre-1.0, so any minor version may change the API.
     `YYYY-MM-DD` only (what `<input type="date">` sends), reads and writes JSON and serde as that
     text, renders as it in `html!` (`<time datetime={on_day.datetime()}>`), is a `string` in
     `corten::types` declarations, and has `plus(n)` and `midnight_utc()` (an `Option`: a
-    `SystemTime` does not reach year 0 on every platform; a day is written from its calendar date,
+    `SystemTime` does not reach year 1 on every platform; a day is written from its calendar date,
     so `t.date` writes every one). `t.date` takes a `DateValue`: an instant as before, or a `Day`;
     a closure that passes its untyped parameter to `t.date` needs the parameter's type. A script's
     `format("2026-09-02")` with no offset writes the same day (checked by `npm run check`).
-    RENDER_TBD
+    The item page's `render_cost` (release, callgrind, 3 runs) is 35,607,619,833 instructions
+    against 35,621,122,132 for the zones change it builds on (-0.04%; the page writes no date).
     ([#502 i18n: no way to write a calendar date (no instant behind it) that never shifts with the zone](https://github.com/todd-skelton/corten/issues/502)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

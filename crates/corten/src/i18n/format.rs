@@ -1359,15 +1359,16 @@ pub struct Day {
 }
 
 impl Day {
-    /// The day `year`-`month`-`day` (proleptic Gregorian, years 0 to 9999), or `None` for a
+    /// The day `year`-`month`-`day` (proleptic Gregorian, years 1 to 9999, as `Intl` writes
+    /// them), or `None` for a
     /// date that does not exist (`2026, 2, 30`).
     pub fn new(year: i32, month: u32, day: u32) -> Option<Day> {
         let valid =
-            (0..=9999).contains(&year) && (1..=12).contains(&month) && day >= 1 && day <= days_in_month(i64::from(year), month);
+            (1..=9999).contains(&year) && (1..=12).contains(&month) && day >= 1 && day <= days_in_month(i64::from(year), month);
         valid.then(|| Day { days: days_from_civil(i64::from(year), month, day) as i32 })
     }
 
-    /// 0 to 9999.
+    /// 1 to 9999.
     pub fn year(self) -> i32 {
         civil_from_days(i64::from(self.days)).0 as i32
     }
@@ -1387,7 +1388,7 @@ impl Day {
     pub fn plus(self, n: i32) -> Option<Day> {
         let days = self.days.checked_add(n)?;
         let year = civil_from_days(i64::from(days)).0;
-        (0..=9999).contains(&year).then_some(Day { days })
+        (1..=9999).contains(&year).then_some(Day { days })
     }
 
     /// Midnight UTC of the day, for something that needs an instant (a query's bound); writing
