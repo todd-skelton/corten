@@ -185,8 +185,8 @@
 //!   with seconds). `at` is a `SystemTime` or anything that converts to one (`chrono`'s, `jiff`'s
 //!   and `time`'s timestamps do), and [`parse_timestamp`] reads RFC 3339 text. The zone is UTC,
 //!   so a page reads the same wherever it is rendered, except that with the `zones` feature and
-//!   [`crate::App::client_zone`] it is the visitor's while Corten renders a request's answer
-//!   ([`crate::Req::zone`]); `.zone(z)` takes a [`Zone`]: an [`Offset`], or a zone with daylight
+//!   `App::zoned_dates` it is the visitor's while Corten renders a request's answer
+//!   (`req.zone()`); `.zone(z)` takes a [`Zone`]: an [`Offset`], or a zone with daylight
 //!   saving time that gives its offset at the instant (`Visitor`). Another zone is written as its
 //!   offset (`GMT-5`).
 //! - `t.date(at, MonthStyle)`: the month and year without the day (`Short` is `Mar 2026`, `Long`

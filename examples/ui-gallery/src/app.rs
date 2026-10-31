@@ -69,7 +69,7 @@ pub mod url {
 pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery, crate::gallery::Sku];
 
 pub fn app() -> App {
-    App::new(url::router()).assets(Static).components(COMPONENTS).components(corten_ui::COMPONENTS).client_zone()
+    App::new(url::router()).assets(Static).components(COMPONENTS).components(corten_ui::COMPONENTS).zoned_dates()
 }
 
 /// The document around every page, with the toaster: what an answer says (`toast`) or, after a

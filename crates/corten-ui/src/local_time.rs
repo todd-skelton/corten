@@ -3,13 +3,19 @@ use corten::{i18n::When, prelude::*};
 /// A date or time in the visitor's zone, right on the first page too.
 ///
 /// The server writes it as `t.date`, `t.time` and `t.date_time` do: in the visitor's zone
-/// once their browser has reported it (`App::client_zone` and Corten's `zones` feature), inside a
+/// once their browser has reported it (`App::zoned_dates`, Corten's `zones` feature), inside a
 /// `<time datetime>` that says the instant. A browser's first page comes before that report, so
 /// there the server writes UTC, and its script (`local_time.js`) writes the same text again in the
 /// browser's zone, with the server's own format for the locale and style (so a later page, written
 /// by the server, reads the same). A `Public` page, the same for everyone, is written that way on
-/// every visit. Only those pages load the script. Without JavaScript they stay in UTC. Without `App::client_zone` and the `zones` feature it is the date as
-/// written, on every page: Corten writes no zone, and the script never runs.
+/// every visit. Only those pages load the script. Without JavaScript they stay in UTC. Without
+/// `App::zoned_dates` it is the date as written, on every page: Corten writes no zone, and the
+/// script never runs.
+///
+/// Where the script runs, each date carries its format to the browser: about 850 bytes before
+/// compression against about 70 for the date alone (the gallery's medium date and short time,
+/// `en`), so a first or `Public` page with many dates (a list) is the place for one zone the
+/// server chooses (`.zone(..)`) or the date alone, rather than one `LocalTime` per row.
 ///
 /// Parts: the `time` element alone.
 ///

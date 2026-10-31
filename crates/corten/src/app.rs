@@ -293,6 +293,8 @@ pub struct App<M = ()> {
     ready: Option<ReadyFn>,
     locales: Option<&'static [&'static str]>,
     client_zone: bool,
+    #[cfg(feature = "zones")]
+    zoned_dates: bool,
     dev: Option<bool>,
     components: Vec<crate::Component>,
     areas: Vec<Placed>,
@@ -335,6 +337,8 @@ impl App {
             ready: None,
             locales: None,
             client_zone: false,
+            #[cfg(feature = "zones")]
+            zoned_dates: false,
             dev: None,
             components: Vec::new(),
             areas: Vec::new(),
@@ -368,6 +372,8 @@ impl App {
             ready: self.ready,
             locales: self.locales,
             client_zone: self.client_zone,
+            #[cfg(feature = "zones")]
+            zoned_dates: self.zoned_dates,
             dev: self.dev,
             components: self.components,
             areas: self.areas,
@@ -507,11 +513,26 @@ impl<M: Middleware> App<M> {
     /// Learn each visitor's time zone, for [`ClientZone`](crate::ClientZone): the runtime keeps
     /// the browser's (`America/Chicago`) in a cookie, `corten-zone`, set on the first page that
     /// loads it, so the requests after that (a form's post, the next page) carry it. With the
-    /// `zones` feature, dates are then written in it while Corten renders an answer, and
-    /// [`crate::Req::zone`] gives it with its rules. Off unless set: an app that writes every date
-    /// in UTC or one zone of its own sets no cookie.
+    /// `zones` feature, `req.zone()` gives it with its rules, and `App::zoned_dates` writes dates
+    /// in it. Off unless set: an app that writes every date in UTC or one zone of its own sets no
+    /// cookie.
     pub fn client_zone(mut self) -> Self {
         self.client_zone = true;
+        self
+    }
+
+    /// Write dates in the visitor's zone (`zones` feature): while Corten renders a request's
+    /// answer (a page, a patch, a live part's fragments), `t.date`, `t.time` and `t.date_time`
+    /// with no `.zone(..)` of their own are written in the zone the browser reported, and the
+    /// answer is private. Learns the zone ([`App::client_zone`]) too. A `Public` answer, the same
+    /// for everyone, is written in UTC (corten-ui's `LocalTime` writes it again in the browser).
+    ///
+    /// The app says so itself, not the feature: a crate that turns the feature on (a library, the
+    /// workspace's `--all-features`) changes no app's dates.
+    #[cfg(feature = "zones")]
+    pub fn zoned_dates(mut self) -> Self {
+        self.client_zone = true;
+        self.zoned_dates = true;
         self
     }
 
@@ -828,6 +849,10 @@ impl<M: Middleware> App<M> {
         shared.offline = offline;
         shared.locales = self.locales;
         shared.client_zone = self.client_zone;
+        #[cfg(feature = "zones")]
+        {
+            shared.zoned_dates = self.zoned_dates;
+        }
         shared.dev = dev;
         // The same path routed in two places (the app's routes and an area's) is one route to axum,
         // with the methods of both.
@@ -853,6 +878,7 @@ impl<M: Middleware> App<M> {
         let policy = proxies_from_env(hosts_from_env(self.policy));
         shared.proxies = policy.proxies().to_vec();
         shared.allowed_origins = policy.allowed_origins().to_vec();
+        shared.plain_notice = !policy.sends_hsts();
         let area_sources: Vec<_> =
             self.areas.iter().filter(|area| !area.sources.is_empty()).map(|area| (area.prefix, &area.sources)).collect();
         let policy = Applied::new(policy, &shared.import_map, &area_sources);
@@ -1492,8 +1518,9 @@ impl<S: Steps> Layer<S> {
         scope: S::Scope<'a>,
     ) -> (Response, bool, Mode) {
         // Dropped with this future if the client leaves first; then the response's.
-        // The zone the browser reported, read once: its page and a live part's fragments are
-        // written in it (none for a `Public` answer, `Signal::zone`).
+        // The zone the browser reported, read once: `req.zone()`, and with `zoned_dates` the
+        // page and a live part's fragments are written in it (none for a `Public` answer,
+        // `Signal::zone`).
         #[cfg(feature = "zones")]
         let signal = match self.shared.client_zone {
             true => Signal::for_app_in(self.shared.clone(), crate::client::ZoneName::of(req.headers())),
@@ -1507,7 +1534,11 @@ impl<S: Steps> Layer<S> {
         let next = Next { steps: &self.steps, scope, route };
         let res = page::render_errors(&self.shared, req, next, deadline, &watch.0, api, mode).await;
         let personal = watch.0.is_personal();
-        (signal::follow(res, watch, self.shared.client_zone), personal, mode)
+        #[cfg(feature = "zones")]
+        let zoned = self.shared.zoned_dates;
+        #[cfg(not(feature = "zones"))]
+        let zoned = false;
+        (signal::follow(res, watch, zoned), personal, mode)
     }
 }
 

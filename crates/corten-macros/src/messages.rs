@@ -357,7 +357,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             ::corten::i18n::__private::parse_money(self.__corten_locale(), text, currency)
         }
         /// A date in this locale: `Mar 22, 2026` (en, `Medium`). An instant is written in UTC unless
-        /// `.zone(..)` says otherwise (or in the visitor's zone, with `App::client_zone`); a
+        /// `.zone(..)` says otherwise (or in the visitor's zone, with `App::zoned_dates`); a
         /// `corten::i18n::Day` is that day in every zone.
         #[inline] __A2 fn date<__D: ::corten::i18n::DateValue>(self, at: __D, style: impl ::corten::i18n::DateOnly) -> __D::Text {
             ::corten::i18n::DateValue::date_text(at, self.__corten_locale(), style)
