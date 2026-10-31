@@ -32,3 +32,6 @@ agent's skill installer, or read it there.
    as constants, `class={Title}`, never as strings. `static/style.css` is only element defaults
    and the layout. List every component with a script or stylesheet once in `App::components`.
 6. Pages and actions work without JavaScript: links are links and forms post.
+7. The app is the library, `src/lib.rs`: modules are declared there, and `src/main.rs` only serves
+   `app()`. A test target in `tests/` or a tool in `examples/` uses `{{crate}}::app()`, `url`, and a
+   module made `pub` when it needs one.
