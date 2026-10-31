@@ -1,4 +1,4 @@
-//! The visitor's time zone (`zones` feature, [`crate::App::client_zone`]): [`Visitor`], and the
+//! The visitor's time zone (`zones` feature, `App::zoned_dates`): [`Visitor`], and the
 //! zone dates are written in while Corten renders a request's answer, so a handler takes no zone
 //! and a component is given none.
 

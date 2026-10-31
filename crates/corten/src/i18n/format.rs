@@ -361,7 +361,7 @@ pub enum DateStyle {
 /// set's release month, a statement's period. Written as Intl writes `{ year, month }`, in the
 /// locale's order and with its month names (which some languages inflect differently here).
 /// A month kept as an instant at UTC midnight is written `.zone(Utc)`, or with
-/// [`crate::App::client_zone`] it reads a month early west of UTC on its first day.
+/// `App::zoned_dates` it reads a month early west of UTC on its first day.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MonthStyle {
     /// `Mar 2026`
@@ -374,7 +374,7 @@ pub enum MonthStyle {
 /// ("Week of Mar 2"), a timeline whose year the page says once. Written as Intl writes
 /// `{ month, day }`, in the locale's order and with its month names (`2 mars` in `fr`). A day
 /// kept as an instant at UTC midnight is written `.zone(Utc)`, or with
-/// [`crate::App::client_zone`] it reads a day early west of UTC.
+/// `App::zoned_dates` it reads a day early west of UTC.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DayStyle {
     /// `Mar 2`
@@ -996,9 +996,8 @@ impl Display for Formatted {
 }
 
 /// A date, a time or both in a locale: what `t.date`, `t.time` and `t.date_time` return. In UTC
-/// unless [`When::zone`] says otherwise, or, with the `zones` feature and
-/// [`crate::App::client_zone`], in the visitor's zone while Corten renders the request's answer
-/// ([`crate::Req::zone`]). It renders in `html!` as text or an attribute value, and is a message
+/// unless [`When::zone`] says otherwise, or, with the `zones` feature and `App::zoned_dates`, in
+/// the visitor's zone while Corten renders the request's answer. It renders in `html!` as text or an attribute value, and is a message
 /// argument ([`super::Arg`]).
 #[derive(Clone, Copy)]
 pub struct When {
@@ -1044,10 +1043,12 @@ impl When {
         DateFormat { data: self.data, style: self.style, offset: 0 }
     }
 
-    /// Written in UTC only because the visitor's zone is not known yet: the app learns it
-    /// ([`crate::App::client_zone`], the `zones` feature), [`When::zone`] did not choose one, and
-    /// the request is the browser's first (no zone cookie yet) or its answer is `Public`, the same
-    /// for everyone. A script can write it again in the browser's zone (corten-ui's `LocalTime`).
+    /// Written in UTC only because the visitor's zone is not known yet: the app writes dates in
+    /// its visitors' zones (`App::zoned_dates`, the `zones` feature), [`When::zone`] did not
+    /// choose one, it is rendered as part of a request's answer, and the request is the browser's
+    /// first (no zone cookie yet), names a zone the tz database lacks, or its answer is `Public`,
+    /// the same for everyone. False otherwise, outside a request's render too. A script can write
+    /// it again in the browser's zone (corten-ui's `LocalTime`).
     pub fn zone_unknown(&self) -> bool {
         !self.zoned && super::visitor::unknown()
     }

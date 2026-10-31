@@ -2962,8 +2962,8 @@ async fn a_handler_reads_the_visitors_time_zone_once_the_app_asks_for_it() {
     }
 }
 
-/// With the `zones` feature, a date is written in the visitor's zone while Corten renders the
-/// request's answer, which is then private; the first page, before the browser has reported its
+/// With the `zones` feature and `App::zoned_dates`, a date is written in the visitor's zone while
+/// Corten renders the request's answer, which is then private; the first page, before the browser has reported its
 /// zone, is in UTC and says so (`zone_unknown`); `.zone(..)` still chooses. `req.zone()` is the
 /// zone with its rules.
 #[cfg(feature = "zones")]
@@ -3048,7 +3048,7 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
         (cache, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
     };
     let utc = "<p>Mar 22, 2026, 3:04 PM UTC</p>";
-    let zoned = App::new(routes()).client_zone().router();
+    let zoned = App::new(routes()).zoned_dates().router();
     let (cache, page) = get_with(zoned.clone(), "/", Some("corten-zone=America/Chicago")).await;
     assert!(page.contains(&format!("<p>Mar 22, 2026, 10:04 AM GMT-5</p><p>known</p>{utc}")), "{page}");
     assert!(cache.contains("private"), "written for this visitor: {cache}");
@@ -3078,7 +3078,7 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
             res
         }
     }
-    let rebuilt = App::new(routes()).client_zone().middleware(Rebuild).router();
+    let rebuilt = App::new(routes()).zoned_dates().middleware(Rebuild).router();
     for uri in ["/public", "/public-live"] {
         let (cache, page) = get_with(rebuilt.clone(), uri, Some("corten-zone=America/Chicago")).await;
         assert!(page.contains("3:04 PM UTC") && cache.starts_with("public"), "{uri}: {cache}: {page}");
@@ -3101,12 +3101,19 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
             .0,
         ),
     );
-    let failing = App::new(failing).client_zone().error_page(dated_error, ()).router();
+    let failing = App::new(failing).zoned_dates().error_page(dated_error, ()).router();
     let (cache, page) = get_with(failing, "/public-fails", Some("corten-zone=America/Chicago")).await;
     assert!(page.contains("10:04 AM GMT-5") && cache.contains("private"), "{cache}: {page}");
     // An app that does not learn zones writes UTC and knows it is meant to.
-    let (_, page) = get_with(App::new(routes()).router(), "/", Some("corten-zone=America/Chicago")).await;
+    let (plain, page) = get_with(App::new(routes()).router(), "/", Some("corten-zone=America/Chicago")).await;
     assert!(page.contains(&format!("{utc}<p>known</p>{utc}")), "{page}");
+    // Nor does one that learns them for `ClientZone` and `req.zone()` alone: the feature, which
+    // another crate may turn on, does not change an app's dates; `zoned_dates` does.
+    let learns = App::new(routes()).client_zone().router();
+    let (cache, page) = get_with(learns.clone(), "/", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains(&format!("{utc}<p>known</p>{utc}")), "{page}");
+    assert_eq!(cache, plain, "answered as the app that does not learn zones");
+    assert_eq!(get_with(learns, "/offset", Some("corten-zone=America/Chicago")).await.1, "-18000");
     // Outside a request's render: UTC.
     assert_eq!(
         ZoneMsg::for_locale("en").date_time(at, DateStyle::Medium, TimeStyle::Short).to_string(),

@@ -625,6 +625,9 @@ pub(crate) struct Shared {
     pub locales: Option<&'static [&'static str]>,
     /// [`crate::App::client_zone`]: the runtime keeps the browser's time zone in a cookie.
     pub client_zone: bool,
+    /// [`crate::App::zoned_dates`]: dates are written in the visitor's zone while Corten renders.
+    #[cfg(feature = "zones")]
+    pub zoned_dates: bool,
     /// Dev mode: error pages show the error.
     pub dev: bool,
     /// The names of the components the app lists (`App::components` and `Area::components`).
@@ -672,6 +675,8 @@ impl Shared {
             offline: None,
             locales: None,
             client_zone: false,
+            #[cfg(feature = "zones")]
+            zoned_dates: false,
             dev: false,
             components: Default::default(),
             sections: Vec::new(),
@@ -845,9 +850,10 @@ impl Req {
     /// The visitor's time zone (`zones` feature, [`crate::App::client_zone`]), with its rules: a
     /// date the user picked (`<input type="date">`) becomes the instant it means where they are.
     /// UTC until the browser has reported it (its first page) and for a name the tz database
-    /// lacks. A page needs it for nothing else: while Corten renders the answer, `t.date`,
-    /// `t.time` and `t.date_time` write in it unless `.zone(..)` chooses another. A known zone
-    /// makes the answer private. For a [`crate::Public`] answer, which is the same for everyone,
+    /// lacks. Looked up in the tz database at each call, so a handler keeps it. With
+    /// [`crate::App::zoned_dates`] a page needs it for nothing else: while Corten renders the
+    /// answer, `t.date`, `t.time` and `t.date_time` write in it unless `.zone(..)` chooses
+    /// another. A known zone makes the answer private. For a [`crate::Public`] answer, which is the same for everyone,
     /// it is UTC and dates are written in UTC (corten-ui's `LocalTime` writes one again in the
     /// browser's zone).
     #[cfg(feature = "zones")]
@@ -875,7 +881,7 @@ impl Req {
     /// While Corten renders this request's answer: dates in the visitor's zone.
     #[cfg(feature = "zones")]
     fn zone_scope(&self) -> Option<crate::i18n::ZoneScope> {
-        self.shared.client_zone.then(|| crate::i18n::ZoneScope::enter(crate::i18n::Scope::of(self.signal.zone(), &self.signal)))
+        self.shared.zoned_dates.then(|| crate::i18n::ZoneScope::enter(crate::i18n::Scope::of(self.signal.zone(), &self.signal)))
     }
 
     fn accept_language(&self) -> Option<&str> {

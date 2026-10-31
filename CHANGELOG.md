@@ -1164,7 +1164,8 @@ Corten is pre-1.0, so any minor version may change the API.
     35,613,859,907 on main (-0.03%, layout: the page has no part)
     ([#492 A sub-component cannot bind its page's script: #[component] has css = Other but no js = Other](https://github.com/todd-skelton/corten/issues/492)).
 153. The `zones` feature: the visitor's time zone with its rules, from Corten. With
-    `App::client_zone()`, while Corten renders a request's answer (a page, a patch), `t.date`,
+    `App::zoned_dates()` (which the app sets: the feature alone, which another crate may turn on,
+    changes no app's dates), while Corten renders a request's answer (a page, a patch), `t.date`,
     `t.time` and `t.date_time` write in the zone the browser reported, with its daylight saving
     rules (jiff and its bundled tz database, so an image without `/usr/share/zoneinfo` has them),
     and the answer is private; a live part's fragments too. A value that names a day (a due date
@@ -1178,9 +1179,13 @@ Corten is pre-1.0, so any minor version may change the API.
     there the server does not know the zone yet and writes UTC, and its script writes it again in
     the browser's zone with the server's own format (`DateFormat` takes an offset,
     `format(at, { offset })`); later pages are the server's. `When` has `datetime()`, `format()` and
-    `zone_unknown()`. The minified format module grows by 18 bytes (3,008 to 3,026); the runtime
-    is unchanged. The item page's `render_cost` (release, callgrind, 3 runs) is 35,621,122,132
-    instructions against 35,603,094,486 on main (+0.05%)
+    `zone_unknown()`. A date rendered once and kept across requests takes `.zone(..)`, or it is in
+    the zone of the request that rendered it. Each `LocalTime` whose script runs carries its format
+    (about 850 bytes before compression against about 70 for the date alone). The minified format
+    module grows by 18 bytes (3,008 to 3,026); the runtime is unchanged. The item page's
+    `render_cost` (release, callgrind, 3 runs, without the feature, which card-market does not
+    turn on) is 35,621,122,132 instructions against 35,603,094,486 on main (+0.05%); with it, the
+    gallery's zoned page is measured below
     ([#387 Dates in the visitor's zone need a tz crate, a ClientZone argument on every handler and a prop through every component, and the first page is UTC](https://github.com/todd-skelton/corten/issues/387)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

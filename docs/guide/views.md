@@ -321,8 +321,9 @@ the year (`Mar 2`, `2 mars`), for a chart's axis or a week's row whose year the 
 neither has a time, so `t.date_time` takes neither. A date is in UTC unless `.zone(Offset::hours(-5))` or a zone
 of your own (`corten::i18n::Zone`, for one with daylight saving time) says otherwise, so a page
 reads the same wherever it is rendered; `parse_timestamp` reads the RFC 3339 text APIs send.
-For dates where the visitor is ("your listings come back on Nov 2"), the app sets
-`App::client_zone()` and turns on Corten's `zones` feature (jiff and its bundled tz database).
+For dates where the visitor is ("your listings come back on Nov 2"), the app turns on Corten's
+`zones` feature (jiff and its bundled tz database) and sets `App::zoned_dates()`; the feature
+alone changes no app's dates, so a library that turns it on does not change yours.
 The runtime keeps the browser's zone (`America/Chicago`) in a cookie from the first page it
 loads, so the form posts and pages after it carry it, and while Corten renders a request's
 answer, `t.date`, `t.time` and `t.date_time` write in that zone, with its daylight saving
@@ -345,7 +346,11 @@ or `format!` in a handler is UTC: only Corten's render knows the zone, and a `re
 takes `.zone(req.zone())` where it formats a date itself. A `Public` answer is the same for
 everyone, so it is written as for a visitor whose zone is not known (UTC, `req.zone()` too) and
 stays shared; its `LocalTime`s are written again in the browser. The zone rules are the bundled database's
-(`jiff-tzdb`), updated with `cargo update -p jiff-tzdb`.
+(`jiff-tzdb`), updated with `cargo update -p jiff-tzdb`. A date rendered once and kept across
+requests (a footer in a `OnceLock`, a fragment a cache shares) takes `.zone(..)`, as a value a
+cache keeps never holds one visitor's data: rendered during a request, it would be in that
+visitor's zone for everyone. `App::client_zone()` alone learns the zone for `req.zone()` and
+`Option<ClientZone>` and writes dates as before.
 
 A time relative to now ("resets in 10 hours", "updated 3 min. ago") is `t.relative(at, now,
 RelativeStyle::Long)` (or `Short`, `Narrow`): in the largest unit it has a whole one of, rounded

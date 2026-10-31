@@ -425,10 +425,9 @@ impl Drop for Watch {
 /// wrapper. A stream takes `watch` along: [`Abort::Responded`] after its last frame, or
 /// [`Abort::Disconnected`] if it is dropped before (the client left).
 ///
-/// `zone`: the visitor's (`zones` feature, [`crate::App::client_zone`]), which a stream's
-/// fragments (a live part, rendered as the stream is read) are written in, as the page was.
-/// `zoned`: the app learns its visitors' zones ([`crate::App::client_zone`]), so a stream's
-/// fragments are written in the request's.
+/// `zoned`: the app writes dates in its visitors' zones (`App::zoned_dates`, `zones` feature), so
+/// a stream's fragments (a live part, rendered as the stream is read) are written in the
+/// request's, as the page was.
 pub(crate) fn follow(res: Response, watch: Watch, #[cfg_attr(not(feature = "zones"), allow(unused))] zoned: bool) -> Response {
     if res.body().size_hint().exact().is_some() {
         watch.0.abort(Abort::Responded);
@@ -445,7 +444,7 @@ pub(crate) fn follow(res: Response, watch: Watch, #[cfg_attr(not(feature = "zone
 struct Followed {
     body: Body,
     watch: Watch,
-    /// With [`crate::App::client_zone`]: the zone the stream's fragments are written in, kept
+    /// With `App::zoned_dates`: the zone the stream's fragments are written in, kept
     /// between polls once it has been looked up.
     #[cfg_attr(not(feature = "zones"), allow(dead_code))]
     zone: Option<crate::i18n::Scope>,
