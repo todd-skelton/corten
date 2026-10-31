@@ -690,7 +690,7 @@ function parse(html) {
  * them in a style block its CSP allows by hash; markup a patch or a navigation brings in is
  * under the policy the document loaded with, which allows neither that block nor a style
  * attribute, so they are set through the CSSOM, which the policy does not govern, `!important`
- * as the block's rules are, so markup wins over every rule of the stylesheet either way. Called once
+ * as the block's rules are, so markup wins over the component's rules either way. Called once
  * the markup is in the document, before the browser paints it.
  * @param {Element} root
  */

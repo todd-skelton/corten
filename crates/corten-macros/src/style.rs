@@ -50,7 +50,7 @@ pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
     };
     s.block(Ctx::Top, true)?;
     let names: Vec<&str> = s.properties.iter().map(|(name, _)| name.as_str()).collect();
-    let css = rename_properties(&s.out, &names, prefix);
+    let css = rename_properties(&s.out, &names, prefix)?;
     Ok(Sheet { css, classes: s.classes, properties: s.properties })
 }
 
@@ -266,9 +266,14 @@ const LENGTHS: &[&str] = &[
 /// `css` with each of `names` (a custom property its `@property` rules register, `fill`)
 /// written `--{prefix}__fill` wherever it is a whole name outside strings: the property is the
 /// component's, as its classes are, so two components can both register a `--fill`.
-fn rename_properties(css: &str, names: &[&str], prefix: &str) -> String {
+///
+/// A declaration of one marked `!important` is an error: markup's values (`style={FILL.pct(..)}`)
+/// are `!important` too, inline after a patch and in a rule of the page's style block on a full
+/// load, and an `!important` rule of the component's with more specificity than that rule would
+/// win on a full load and lose after a patch.
+fn rename_properties(css: &str, names: &[&str], prefix: &str) -> Result<String, String> {
     if names.is_empty() {
-        return css.to_string();
+        return Ok(css.to_string());
     }
     let b = css.as_bytes();
     let ident = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_') || c >= 0x80 || c == b'\\';
@@ -327,6 +332,14 @@ fn rename_properties(css: &str, names: &[&str], prefix: &str) -> String {
                 let written = &css[i + 2..end];
                 let name = if written.contains('\\') { unescape(written) } else { written.to_string() };
                 if names.contains(&name.as_str()) {
+                    let declared =
+                        b[..i].iter().rev().find(|c| !c.is_ascii_whitespace()).is_none_or(|c| matches!(c, b'{' | b';'))
+                            && b[end..].iter().find(|c| !c.is_ascii_whitespace()) == Some(&b':');
+                    if declared && important(&css[end..]) {
+                        return Err(format!(
+                            "--{name}: !important on a property markup sets would beat markup's value on a full load and lose to it after a patch; set it from markup (style={{..}}) or without !important"
+                        ));
+                    }
                     out.push_str(&css[copied..i + 2]);
                     out.push_str(prefix);
                     out.push_str("__");
@@ -339,7 +352,36 @@ fn rename_properties(css: &str, names: &[&str], prefix: &str) -> String {
         }
     }
     out.push_str(&css[copied.min(css.len())..]);
-    out
+    Ok(out)
+}
+
+/// Whether the declaration value at the start of `rest` (up to its `;` or `}`, outside strings
+/// and brackets) ends `!important`, in any case and with any space after the `!`.
+fn important(rest: &str) -> bool {
+    let b = rest.as_bytes();
+    let (mut i, mut depth) = (0, 0usize);
+    while i < b.len() {
+        match b[i] {
+            q @ (b'"' | b'\'') => {
+                i += 1;
+                while i < b.len() && b[i] != q {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+            }
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth = depth.saturating_sub(1),
+            b';' | b'}' | b'{' if depth == 0 => break,
+            b'!' if depth == 0 => {
+                let word = rest[i + 1..].trim_start();
+                if word.len() >= 9 && word.as_bytes()[..9].eq_ignore_ascii_case(b"important") {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    false
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -1270,6 +1312,27 @@ mod tests {
             ".m__a{width:var(--m__fill);height:var(--m__fill);color:var(--fill\\é)}@property --m__fill{syntax:'*';inherits:false}",
             "a name written with escapes is the same name to the browser"
         );
+        // Markup's values are !important, so the component's own may not be: a rule more specific
+        // than the page's style block's would win on a full load and lose after a patch.
+        for bad in [".a.b { --fill: 0% !important }", ".a { color: red; --fill: 0% ! IMPORTANT; }"] {
+            assert!(
+                error(&format!("@property --fill {{ syntax: '<percentage>'; inherits: false; initial-value: 0% }}\n{bad}"))
+                    .contains("!important on a property markup sets"),
+                "{bad}"
+            );
+        }
+        for good in [
+            ".a { --fill: 0%; color: red !important }",
+            ".a { width: var(--fill) !important }",
+            ".a { --other: 0% !important; transition: --fill 1s }",
+            ".a { --fill: 0%; content: '!important' }",
+        ] {
+            assert!(
+                scope(&format!("@property --fill {{ syntax: '<percentage>'; inherits: false; initial-value: 0% }}\n{good}"), "m")
+                    .is_ok(),
+                "{good}"
+            );
+        }
         assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: 1. }").contains("is not a <number>"));
         assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: . }").contains("is not a <number>"));
         assert!(

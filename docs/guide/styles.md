@@ -88,8 +88,9 @@ the stock's value this way:
 
 A full page gets one `<style>` at `<Corten />`, after its stylesheets, with a rule for each
 distinct value (`[data-vars="--statement-table__share:12.5%"]{..}`), marked `!important`, as
-the runtime's inline values are, so a value from markup wins over every rule of the stylesheet,
-`!important` ones included, on a full page and after a patch alike, and that response's CSP
+the runtime's inline values are, so a value from markup wins over the component's rules on a full
+page and after a patch alike (an `!important` declaration of a property markup sets does not
+compile: one more specific than the block's rule would win on a full page only), and that response's CSP
 allows it by its hash in `style-src`. So the page paints with its sizes and no script, no style
 attribute is allowed anywhere, and a cached page is still the same bytes (no nonce). Markup a patch,
 a client navigation or a `<corten-live>` fragment brings is under the policy the document loaded

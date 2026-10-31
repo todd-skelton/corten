@@ -252,8 +252,8 @@
 //! - `style={..}` takes one value, an `Option` (`None` sets nothing) or a tuple or array of them,
 //!   and writes `data-vars`. A full page gets one `<style>` at `<Corten />` with a rule for each
 //!   distinct value (`[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%!important}`, which wins
-//!   over every rule of the stylesheet, `!important` ones included, as the runtime's inline
-//!   `!important` values do), allowed by its
+//!   over the component's rules, as the runtime's inline `!important` values do; an `!important`
+//!   declaration of a property markup sets does not compile), allowed by its
 //!   hash in that response's CSP, so it paints with the sizes and no script, and no style
 //!   attribute is allowed anywhere. A patch, a client navigation and a `<corten-live>` fragment
 //!   arrive under the policy the document loaded with, so the runtime sets their values through
@@ -295,6 +295,19 @@
 //! #[component]
 //! fn Other(used: f64) -> impl Render {
 //!     html! { <div style={FILL.pct(used)}></div> }
+//! }
+//! ```
+//!
+//! Markup's values win over the component's rules, so its stylesheet may not mark a property it
+//! registers `!important` (`pinned_meter.css` has `.meter.full { --fill: 100% !important }`, which
+//! would win on a full page and lose after a patch):
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn PinnedMeter(used: f64) -> impl Render {
+//!     html! { <div class={Meter} style={FILL.pct(used)}></div> }
 //! }
 //! ```
 //!
