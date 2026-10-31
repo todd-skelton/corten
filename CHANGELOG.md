@@ -1814,7 +1814,10 @@ Corten is pre-1.0, so any minor version may change the API.
     in a macro's arguments (`format!(..)`). A callee that needs the view `'static` or `Send` takes
     it by value; a lent view that changes a captured `mut` local now changes the page's one (it
     changed a copy). `{&html! { .. }}` alone is lent too. `keep_query`'s docs and the guide now
-    lend the controls, and say to clear the fields a form resets on the route it is given. RENDER_TBD
+    lend the controls, and say to clear the fields a form resets on the route it is given. The item
+    page's render runs 0.07% more instructions (median of 3, callgrind, release build:
+    35,618,729,963 against 35,592,439,055 on its base), which has no lent call: noise between
+    builds of the same markup.
     ([#485 A view lent to a call inside markup ({keep_query(&r, &html! { .. })}) still takes ownership of the locals it uses, so a local also read elsewhere fails with E0382](https://github.com/todd-skelton/corten/issues/485)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
