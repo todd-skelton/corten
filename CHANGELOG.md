@@ -1270,8 +1270,8 @@ Corten is pre-1.0, so any minor version may change the API.
     now picks a route by its segments' shape and then checks the text, costs 5,350 instructions a
     call (5,344 to 5,364) against 5,210 (5,209 to 5,210) on main, for an app of 12 routes. The
     startup check compares only routes with such text against the others, without allocating:
-    400 routes with none take about 25 microseconds at `App::router`, and 300 with 10 that have
-    text (release build, the check's functions timed alone)
+    400 routes with none take about 25 microseconds at `App::router`, and about 310 when 10 of
+    them have text (release build, the check's functions timed alone)
     ([#514 A route parameter cannot be followed by fixed text in its segment, so /sitemap/{kind}/{page}.xml has no typed route](https://github.com/todd-skelton/corten/issues/514)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
