@@ -753,7 +753,8 @@ pub struct Script {
     pub name: &'static str,
     /// The file, next to the component: `"cart_line.js"`.
     pub file: &'static str,
-    /// Its source, compiled into the binary.
+    /// Its source as the browser receives it, compiled into the binary: the file without its
+    /// comments, each line where it was (a licence comment, `/*! .. */`, stays).
     pub source: &'static str,
     /// The functions it exports, which the markup may call.
     pub handlers: &'static [&'static str],
@@ -1032,7 +1033,6 @@ pub fn served(name: &str, source: &str) -> String {
     if !source.ends_with('\n') {
         out.push('\n');
     }
-    out.push_str("// Corten: hands this module's exports to the runtime.\n");
     out.push_str("import \"corten\";\n");
     out.push_str("import * as __corten_self from \"./");
     out.push_str(name);

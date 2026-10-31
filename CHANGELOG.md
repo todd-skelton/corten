@@ -1938,6 +1938,15 @@ Corten is pre-1.0, so any minor version may change the API.
     could not be reached by (a keyword, `std`, `test`, a dependency such as `tokio`) is refused. An app made before keeps working; the app guide
     says how to move it
     ([#508 corten new makes a bin-only app: tests/, examples/ and a second bin cannot reach its code, so #506's advice cannot be followed](https://github.com/todd-skelton/corten/issues/508)).
+97. Component scripts (`#[component(js)]`, `script!`, `corten-ui`'s) are served without their
+    comments: the macro removes them when the crate compiles and keeps every line where it was, so
+    DevTools and stack traces still show the author's line numbers, and it still reads the JSDoc
+    to check the calls. A licence comment (`/*! .. */`, `@license`, `@preserve`) stays.
+    Measured on the repo's 21 component scripts, served compressed as Corten serves them: brotli
+    18,803 to 9,831 bytes (−47.7%), gzip 22,510 to 11,820 (−47.5%); a seller-desk page's two
+    scripts 3,523 to 1,829 bytes. Nothing a request does changes: the stripped text is what
+    `include_str!` held before
+    ([#513 Explore removing comments from component scripts as they are served, if it cuts bytes shipped enough to matter](https://github.com/todd-skelton/corten/issues/513)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
