@@ -597,8 +597,11 @@ App::new(url::router()).assets(Static)
 ```
 
 A misspelled or removed file does not compile. The PWA names its files the same way:
-`Manifest::icon(Static::ICONS_192_PNG, "192x192")` and `Pwa::import_script(Static::SW_PUSH_JS)`;
-an icon another site serves is a `Uri`, as every URL outside the app is. A name that comes from
+`Manifest::icon(Static::ICONS_192_PNG, "192x192")`, `Screenshot::new(Static::SHOTS_CART_PNG, "1280x720")`
+and `Pwa::import_script(Static::SW_PUSH_JS)`; an icon another site serves is a `Uri`, as every URL
+outside the app is. The manifest's other members are typed too: `display`, `display_override` and
+`orientation` take enums, and a `Shortcut` names its page by its route
+(`Shortcut::new("Watchlist", &Watchlist)`). A name that comes from
 data (a stored picture's path) is `req.find_asset(name)`, `None` when the directory has no such
 file. Files are hashed
 when the app starts, and each is served from memory at a URL with that version.
