@@ -3,6 +3,7 @@
 // Usage: node examples/deck-builder/smoke.mjs http://localhost:18487
 import http from "node:http";
 import { chromium } from "@playwright/test";
+import { steady } from "../../scripts/steady.mjs";
 import { stall } from "../../scripts/stall.mjs";
 
 const base = process.argv[2];
@@ -19,7 +20,7 @@ const timings = {};
 /** @type {string[]} */
 const errors = [];
 
-const browser = await chromium.launch({ headless: true, args: ["--enable-precise-memory-info", "--js-flags=--expose-gc"] });
+const browser = steady(await chromium.launch({ headless: true, args: ["--enable-precise-memory-info", "--js-flags=--expose-gc"] }));
 
 /** A page of its own browser (its own cookies), or another tab of `context`. */
 async function open(context) {

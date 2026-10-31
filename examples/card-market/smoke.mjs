@@ -1,6 +1,7 @@
 // Browser smoke test of the production pieces, against the card-market example (API or fixture mode).
 // Usage: node examples/card-market/smoke.mjs [http://localhost:18410]
 import { chromium } from "@playwright/test";
+import { steady } from "../../scripts/steady.mjs";
 import { stall } from "../../scripts/stall.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18410";
@@ -12,7 +13,7 @@ const check = (name, ok, detail = "") => {
   if (!ok) failures.push(name);
 };
 
-const browser = await chromium.launch({ headless: true });
+const browser = steady(await chromium.launch({ headless: true }));
 try {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -361,11 +362,13 @@ try {
 
   // Back and forward restore a page from memory. Playwright turns the back/forward cache off, and
   // its default headless shell never restores a page; the full Chromium in headless mode does.
-  const restoring = await chromium.launch({
-    channel: "chromium",
-    headless: true,
-    ignoreDefaultArgs: ["--disable-back-forward-cache"],
-  });
+  const restoring = steady(
+    await chromium.launch({
+      channel: "chromium",
+      headless: true,
+      ignoreDefaultArgs: ["--disable-back-forward-cache"],
+    }),
+  );
   try {
     const tab = await (await restoring.newContext()).newPage();
     await tab.addInitScript(() =>

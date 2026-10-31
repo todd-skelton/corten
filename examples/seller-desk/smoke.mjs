@@ -2,6 +2,7 @@
 // Usage: node examples/seller-desk/smoke.mjs http://localhost:18484
 import { readFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
+import { steady } from "../../scripts/steady.mjs";
 import { stall } from "../../scripts/stall.mjs";
 
 const base = process.argv[2];
@@ -16,7 +17,7 @@ const check = (name, ok, detail = "") => {
 /** @type {Record<string, string>} */
 const timings = {};
 
-const browser = await chromium.launch({ headless: true, args: ["--enable-precise-memory-info", "--js-flags=--expose-gc"] });
+const browser = steady(await chromium.launch({ headless: true, args: ["--enable-precise-memory-info", "--js-flags=--expose-gc"] }));
 try {
   const page = await (await browser.newContext()).newPage();
   const errors = [];
