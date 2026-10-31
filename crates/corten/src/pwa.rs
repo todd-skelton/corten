@@ -9,9 +9,9 @@
 //!
 //! [`crate::App::pwa`] serves the manifest and the worker, links the manifest in every page,
 //! registers the worker (not under `corten dev`), caches the static files, and answers
-//! `/offline` with a plain offline page unless the app routes it. Icons and the app's worker
-//! script are files of the static directory, named by the constants
-//! [`crate::assets::embed!`] makes, so a misspelled or removed file does not compile; an icon
+//! `/offline` with a plain offline page unless the app routes it. Icons, screenshots and the app's
+//! worker script are files of the static directory, named by the constants
+//! [`crate::assets::embed!`] makes, so a misspelled or removed file does not compile; an image
 //! served from another site is a `Uri`, as every URL outside the app is.
 //!
 //! What the worker does, and why:
@@ -62,13 +62,261 @@ pub struct Manifest {
     description: Option<String>,
     start_url: String,
     scope: String,
-    display: &'static str,
+    display: Display,
+    display_override: Vec<DisplayOverride>,
+    orientation: Option<Orientation>,
+    id: Option<String>,
+    lang: Option<String>,
+    dir: Option<Dir>,
     theme_color: Option<String>,
     background_color: Option<String>,
-    icons: Vec<(Src, String, &'static str, Option<&'static str>)>,
+    categories: Vec<String>,
+    icons: Vec<Icon>,
+    screenshots: Vec<Screenshot>,
+    shortcuts: Vec<Shortcut>,
 }
 
-/// Where an icon is: a file of the static directory (`Static::ICONS_192_PNG`), or a `Uri` for one
+/// An icon: where it is, its sizes, its type (from the extension) and its purpose.
+type Icon = (Src, String, &'static str, Option<&'static str>);
+
+/// How the installed app's window looks (the manifest's `display`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Display {
+    Fullscreen,
+    /// Its own window without the browser's controls: the default.
+    Standalone,
+    MinimalUi,
+    Browser,
+}
+
+impl Display {
+    fn as_str(self) -> &'static str {
+        match self {
+            Display::Fullscreen => "fullscreen",
+            Display::Standalone => "standalone",
+            Display::MinimalUi => "minimal-ui",
+            Display::Browser => "browser",
+        }
+    }
+}
+
+/// A mode `display_override` asks for before `display`, in order: one of [`Display`]'s, or one
+/// only this list may name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DisplayOverride {
+    /// The app draws in the title bar's area (desktop).
+    WindowControlsOverlay,
+    /// The app's window has tabs.
+    Tabbed,
+    Fullscreen,
+    Standalone,
+    MinimalUi,
+    Browser,
+}
+
+impl DisplayOverride {
+    fn as_str(self) -> &'static str {
+        match self {
+            DisplayOverride::WindowControlsOverlay => "window-controls-overlay",
+            DisplayOverride::Tabbed => "tabbed",
+            DisplayOverride::Fullscreen => "fullscreen",
+            DisplayOverride::Standalone => "standalone",
+            DisplayOverride::MinimalUi => "minimal-ui",
+            DisplayOverride::Browser => "browser",
+        }
+    }
+}
+
+/// The orientation the installed app opens in (the manifest's `orientation`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Orientation {
+    Any,
+    Natural,
+    Landscape,
+    LandscapePrimary,
+    LandscapeSecondary,
+    Portrait,
+    PortraitPrimary,
+    PortraitSecondary,
+}
+
+impl Orientation {
+    fn as_str(self) -> &'static str {
+        match self {
+            Orientation::Any => "any",
+            Orientation::Natural => "natural",
+            Orientation::Landscape => "landscape",
+            Orientation::LandscapePrimary => "landscape-primary",
+            Orientation::LandscapeSecondary => "landscape-secondary",
+            Orientation::Portrait => "portrait",
+            Orientation::PortraitPrimary => "portrait-primary",
+            Orientation::PortraitSecondary => "portrait-secondary",
+        }
+    }
+}
+
+/// The direction of the manifest's text (`dir`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dir {
+    Ltr,
+    Rtl,
+    Auto,
+}
+
+impl Dir {
+    fn as_str(self) -> &'static str {
+        match self {
+            Dir::Ltr => "ltr",
+            Dir::Rtl => "rtl",
+            Dir::Auto => "auto",
+        }
+    }
+}
+
+/// A screenshot the browser's install dialog shows: a file of the static directory
+/// (`Static::SHOTS_CART_PNG`) or a `Uri` of another site, its size, and, for the richer dialog, the
+/// screen it shows and a label. Chrome's richer dialog shows a PNG, JPEG or WebP between 320 and
+/// 3840 pixels a side, its longer side at most 2.3 times its shorter: `Wide` ones on a desktop,
+/// `Narrow` ones (or ones with no form factor) on a phone. The browser checks the image, not
+/// Corten.
+///
+/// A path written as text does not compile: a file of the app is its constant, so a misspelled
+/// one does not compile either.
+///
+/// ```compile_fail,E0277
+/// use corten::pwa::Screenshot;
+/// let _ = Screenshot::new("shots/cart.png", "1280x720");
+/// ```
+///
+/// ```
+/// use corten::pwa::{FormFactor, Manifest, Screenshot};
+/// # use axum::http::Uri;
+/// let src = Uri::from_static("https://cdn.example.com/shots/cart.png");
+/// let shot = Screenshot::new(src, "1280x720").form_factor(FormFactor::Wide).label("Your cart");
+/// let json = Manifest::new("Shop", "Shop").screenshot(shot).to_json();
+/// assert!(json.contains(r#""screenshots":[{"src":"https://cdn.example.com/shots/cart.png","sizes":"1280x720","type":"image/png","form_factor":"wide","label":"Your cart"}]"#));
+/// ```
+#[derive(Clone, Debug)]
+pub struct Screenshot {
+    src: Src,
+    sizes: String,
+    mime: &'static str,
+    form_factor: Option<FormFactor>,
+    label: Option<String>,
+}
+
+impl Screenshot {
+    pub fn new(src: impl Into<IconSrc>, sizes: &str) -> Self {
+        let IconSrc(src) = src.into();
+        let mime = src.image_type();
+        Screenshot { src, sizes: sizes.into(), mime, form_factor: None, label: None }
+    }
+
+    /// The screen it shows: Chrome shows `Wide` ones on a desktop and `Narrow` ones on a phone.
+    pub fn form_factor(mut self, form_factor: FormFactor) -> Self {
+        self.form_factor = Some(form_factor);
+        self
+    }
+
+    /// What it shows, for assistive technology.
+    pub fn label(mut self, text: &str) -> Self {
+        self.label = Some(text.into());
+        self
+    }
+}
+
+/// The screen a [`Screenshot`] shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FormFactor {
+    Wide,
+    Narrow,
+}
+
+impl FormFactor {
+    fn as_str(self) -> &'static str {
+        match self {
+            FormFactor::Wide => "wide",
+            FormFactor::Narrow => "narrow",
+        }
+    }
+}
+
+/// A shortcut the platform offers on the installed app's icon: a name and a page of the app, by its
+/// typed route.
+///
+/// ```
+/// use corten::{prelude::*, pwa::{Manifest, Shortcut}};
+///
+/// #[derive(Route)]
+/// #[route("/watchlist")]
+/// struct Watchlist;
+///
+/// let json = Manifest::new("Shop", "Shop").shortcut(Shortcut::new("Watchlist", &Watchlist).short_name("Watch")).to_json();
+/// assert!(json.contains(r#""shortcuts":[{"name":"Watchlist","url":"/watchlist","short_name":"Watch"}]"#));
+/// ```
+///
+/// A URL written as text is not a shortcut's page, and neither is another site's, which a
+/// browser would drop (a shortcut is a page in the app's scope):
+///
+/// ```compile_fail,E0277
+/// use corten::pwa::Shortcut;
+/// let _ = Shortcut::new("Watchlist", "/watchlist");
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::pwa::Shortcut;
+/// let _ = Shortcut::new("Help", &axum::http::Uri::from_static("https://docs.example.com/help"));
+/// ```
+#[derive(Clone, Debug)]
+pub struct Shortcut {
+    name: String,
+    url: String,
+    short_name: Option<String>,
+    description: Option<String>,
+    icons: Vec<Icon>,
+}
+
+impl Shortcut {
+    pub fn new(name: &str, page: &(impl crate::route::OnSite + ?Sized)) -> Self {
+        Shortcut { name: name.into(), url: crate::route::link(page), short_name: None, description: None, icons: Vec::new() }
+    }
+
+    pub fn short_name(mut self, name: &str) -> Self {
+        self.short_name = Some(name.into());
+        self
+    }
+
+    pub fn description(mut self, text: &str) -> Self {
+        self.description = Some(text.into());
+        self
+    }
+
+    /// An icon for the shortcut, as [`Manifest::icon`] takes one (96x96 at least): not a path as
+    /// text.
+    ///
+    /// ```compile_fail,E0277
+    /// # #[corten::routes] mod url { #[route("/watchlist", get = page)] pub struct Watchlist; }
+    /// # async fn page() -> &'static str { "" }
+    /// use corten::pwa::Shortcut;
+    /// let _ = Shortcut::new("Watchlist", &url::Watchlist).icon("icons/w.png", "96x96");
+    /// ```
+    pub fn icon(self, src: impl Into<IconSrc>, sizes: &str) -> Self {
+        self.with_icon(src.into(), sizes, None)
+    }
+
+    /// An icon with `"purpose": "maskable"`, as [`Manifest::maskable_icon`].
+    pub fn maskable_icon(self, src: impl Into<IconSrc>, sizes: &str) -> Self {
+        self.with_icon(src.into(), sizes, Some("maskable"))
+    }
+
+    fn with_icon(mut self, IconSrc(src): IconSrc, sizes: &str, purpose: Option<&'static str>) -> Self {
+        let mime = src.image_type();
+        self.icons.push((src, sizes.into(), mime, purpose));
+        self
+    }
+}
+
+/// Where an image (an icon or a screenshot) is: a file of the static directory (`Static::ICONS_192_PNG`), or a `Uri` for one
 /// another site serves (`Uri::from_static("https://cdn.example.com/192.png")`), written as is.
 #[derive(Clone, Debug)]
 pub struct IconSrc(Src);
@@ -101,6 +349,14 @@ impl Src {
         }
     }
 
+    /// Its image type, from the extension (a URL's path's, without its query: `a.webp?v=2`).
+    fn image_type(&self) -> &'static str {
+        match self {
+            Src::File(file) => image_type(file.path()),
+            Src::Url(url) => image_type(url.parse::<Uri>().as_ref().map_or(url.as_str(), Uri::path)),
+        }
+    }
+
     /// A file's versioned URL in `assets`. A file the app's directory does not serve (no
     /// `App::assets`, or another app's directory) is a startup panic in every build, since no
     /// browser could load it; it runs once, when the app starts.
@@ -128,10 +384,18 @@ impl Manifest {
             description: None,
             start_url: "/".into(),
             scope: "/".into(),
-            display: "standalone",
+            display: Display::Standalone,
+            display_override: Vec::new(),
+            orientation: None,
+            id: None,
+            lang: None,
+            dir: None,
             theme_color: None,
             background_color: None,
+            categories: Vec::new(),
             icons: Vec::new(),
+            screenshots: Vec::new(),
+            shortcuts: Vec::new(),
         }
     }
 
@@ -147,6 +411,66 @@ impl Manifest {
 
     pub fn theme_color(mut self, color: &str) -> Self {
         self.theme_color = Some(color.into());
+        self
+    }
+
+    /// How the installed app's window looks: [`Display::Standalone`] unless set.
+    pub fn display(mut self, display: Display) -> Self {
+        self.display = display;
+        self
+    }
+
+    /// The modes to try before [`Manifest::display`], in order; a browser uses the first it
+    /// supports.
+    pub fn display_override(mut self, modes: &[DisplayOverride]) -> Self {
+        self.display_override = modes.to_vec();
+        self
+    }
+
+    pub fn orientation(mut self, orientation: Orientation) -> Self {
+        self.orientation = Some(orientation);
+        self
+    }
+
+    /// The app's identity across changes to its `start_url`: a browser treats two manifests with
+    /// the same `id` as one installed app. A path of this site (a typed route, or a
+    /// `Local::parse("/app")`), since a browser ignores an `id` on another origin:
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::pwa::Manifest;
+    /// let _ = Manifest::new("Shop", "Shop").id("https://other.example/app");
+    /// ```
+    pub fn id(mut self, id: &(impl crate::route::OnSite + ?Sized)) -> Self {
+        self.id = Some(crate::route::link(id));
+        self
+    }
+
+    /// The language of the manifest's text, a BCP 47 tag (`"en-US"`).
+    pub fn lang(mut self, tag: &str) -> Self {
+        self.lang = Some(tag.into());
+        self
+    }
+
+    pub fn dir(mut self, dir: Dir) -> Self {
+        self.dir = Some(dir);
+        self
+    }
+
+    /// Store categories, a hint to app catalogs: `&["shopping", "productivity"]`.
+    pub fn categories(mut self, categories: &[&str]) -> Self {
+        self.categories = categories.iter().map(|c| c.to_string()).collect();
+        self
+    }
+
+    /// A screenshot for the install dialog; add one per screen it shows.
+    pub fn screenshot(mut self, screenshot: Screenshot) -> Self {
+        self.screenshots.push(screenshot);
+        self
+    }
+
+    /// A shortcut on the installed app's icon; add one per page.
+    pub fn shortcut(mut self, shortcut: Shortcut) -> Self {
+        self.shortcuts.push(shortcut);
         self
     }
 
@@ -175,13 +499,15 @@ impl Manifest {
     }
 
     fn with_icon(mut self, IconSrc(src): IconSrc, sizes: &str, purpose: Option<&'static str>) -> Self {
-        let mime = match &src {
-            Src::File(file) => image_type(file.path()),
-            // The path's extension, without a query (`a.webp?v=2`).
-            Src::Url(url) => image_type(url.parse::<Uri>().as_ref().map_or(url.as_str(), Uri::path)),
-        };
+        let mime = src.image_type();
         self.icons.push((src, sizes.into(), mime, purpose));
         self
+    }
+
+    /// Every file it names, for [`Pwa::resolve`].
+    fn sources(&mut self) -> impl Iterator<Item = &mut Src> {
+        let shortcut_icons = self.shortcuts.iter_mut().flat_map(|s| s.icons.iter_mut().map(|icon| &mut icon.0));
+        self.icons.iter_mut().map(|icon| &mut icon.0).chain(self.screenshots.iter_mut().map(|s| &mut s.src)).chain(shortcut_icons)
     }
 
     pub fn to_json(&self) -> String {
@@ -191,34 +517,101 @@ impl Manifest {
             json_string(&self.short_name),
             json_string(&self.start_url),
             json_string(&self.scope),
-            self.display
+            self.display.as_str()
         );
-        for (key, value) in
-            [("description", &self.description), ("theme_color", &self.theme_color), ("background_color", &self.background_color)]
-        {
+        if !self.display_override.is_empty() {
+            let modes: Vec<String> = self.display_override.iter().map(|m| format!(r#""{}""#, m.as_str())).collect();
+            out.push_str(&format!(r#","display_override":[{}]"#, modes.join(",")));
+        }
+        let words = [("orientation", self.orientation.map(Orientation::as_str)), ("dir", self.dir.map(Dir::as_str))];
+        for (key, value) in words {
+            if let Some(value) = value {
+                out.push_str(&format!(r#","{key}":"{value}""#));
+            }
+        }
+        for (key, value) in [
+            ("id", &self.id),
+            ("lang", &self.lang),
+            ("description", &self.description),
+            ("theme_color", &self.theme_color),
+            ("background_color", &self.background_color),
+        ] {
             if let Some(value) = value {
                 out.push_str(&format!(r#","{key}":{}"#, json_string(value)));
             }
         }
-        out.push_str(r#","icons":["#);
-        for (i, (src, sizes, mime, purpose)) in self.icons.iter().enumerate() {
-            if i > 0 {
-                out.push(',');
-            }
-            out.push_str(&format!(
-                r#"{{"src":{},"sizes":{},"type":{}"#,
-                json_string(&src.url()),
-                json_string(sizes),
-                json_string(mime)
-            ));
-            if let Some(purpose) = purpose {
-                out.push_str(&format!(r#","purpose":"{purpose}""#));
-            }
-            out.push('}');
+        if !self.categories.is_empty() {
+            let list: Vec<String> = self.categories.iter().map(|c| json_string(c)).collect();
+            out.push_str(&format!(r#","categories":[{}]"#, list.join(",")));
         }
-        out.push_str("]}");
+        out.push_str(r#","icons":"#);
+        icons(&mut out, &self.icons);
+        if !self.screenshots.is_empty() {
+            out.push_str(r#","screenshots":["#);
+            for (i, shot) in self.screenshots.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&format!(
+                    r#"{{"src":{},"sizes":{},"type":{}"#,
+                    json_string(&shot.src.url()),
+                    json_string(&shot.sizes),
+                    json_string(shot.mime)
+                ));
+                if let Some(form_factor) = shot.form_factor {
+                    out.push_str(&format!(r#","form_factor":"{}""#, form_factor.as_str()));
+                }
+                if let Some(label) = &shot.label {
+                    out.push_str(&format!(r#","label":{}"#, json_string(label)));
+                }
+                out.push('}');
+            }
+            out.push(']');
+        }
+        if !self.shortcuts.is_empty() {
+            out.push_str(r#","shortcuts":["#);
+            for (i, shortcut) in self.shortcuts.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&format!(r#"{{"name":{},"url":{}"#, json_string(&shortcut.name), json_string(&shortcut.url)));
+                for (key, value) in [("short_name", &shortcut.short_name), ("description", &shortcut.description)] {
+                    if let Some(value) = value {
+                        out.push_str(&format!(r#","{key}":{}"#, json_string(value)));
+                    }
+                }
+                if !shortcut.icons.is_empty() {
+                    out.push_str(r#","icons":"#);
+                    icons(&mut out, &shortcut.icons);
+                }
+                out.push('}');
+            }
+            out.push(']');
+        }
+        out.push('}');
         out
     }
+}
+
+/// `[{"src":..,"sizes":..,"type":..}, ..]`.
+fn icons(out: &mut String, icons: &[Icon]) {
+    out.push('[');
+    for (i, (src, sizes, mime, purpose)) in icons.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            r#"{{"src":{},"sizes":{},"type":{}"#,
+            json_string(&src.url()),
+            json_string(sizes),
+            json_string(mime)
+        ));
+        if let Some(purpose) = purpose {
+            out.push_str(&format!(r#","purpose":"{purpose}""#));
+        }
+        out.push('}');
+    }
+    out.push(']');
 }
 
 /// The manifest plus the service worker policy.
@@ -297,8 +690,8 @@ impl Pwa {
     /// static files are cached (see [`Pwa::assets`]). Panics when it names a file the app's static
     /// directory does not serve (none given, or another app's).
     pub fn resolve(mut self, assets: Option<&Assets>) -> Self {
-        for icon in &mut self.manifest.icons {
-            icon.0.resolve(assets);
+        for file in self.manifest.sources() {
+            file.resolve(assets);
         }
         for import in &mut self.imports {
             import.resolve(assets);
@@ -362,13 +755,11 @@ impl Pwa {
     }
 }
 
+/// The image's type as the static directory serves it ([`crate::assets`]'s one table); a name
+/// that is not an image's is taken for a PNG, as before.
 fn image_type(path: &str) -> &'static str {
-    match path.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase()).as_deref() {
-        Some("svg") => "image/svg+xml",
-        Some("webp") => "image/webp",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("avif") => "image/avif",
-        Some("ico") => "image/x-icon",
+    match crate::assets::content_type(path) {
+        image if image.starts_with("image/") => image,
         _ => "image/png",
     }
 }
@@ -469,6 +860,99 @@ mod tests {
                 r#"{"src":"https://cdn.example.com/512.webp?v=2","sizes":"512x512","type":"image/webp","purpose":"maskable"}]}"#
             )
         );
+    }
+
+    #[derive(crate::Route)]
+    #[route("/watchlist")]
+    struct Watchlist;
+
+    #[test]
+    fn the_manifests_other_members_are_written_when_set() {
+        let m = Manifest::new("A", "A")
+            .id(&crate::route::Local::parse("/").unwrap())
+            .lang("en-US")
+            .dir(Dir::Ltr)
+            .display(Display::MinimalUi)
+            .display_override(&[DisplayOverride::WindowControlsOverlay, DisplayOverride::Standalone])
+            .orientation(Orientation::PortraitPrimary)
+            .categories(&["shopping", "productivity"])
+            .screenshot(Screenshot::new(Uri::from_static("/s/wide.webp"), "1280x720").form_factor(FormFactor::Wide).label("Cart"))
+            .screenshot(Screenshot::new(Uri::from_static("/s/narrow.png"), "720x1280").form_factor(FormFactor::Narrow))
+            .screenshot(Screenshot::new(Uri::from_static("/s/loop.gif"), "720x1280"))
+            .shortcut(
+                Shortcut::new("Watchlist", &Watchlist)
+                    .short_name("Watch")
+                    .description("Cards you follow")
+                    .icon(Uri::from_static("/i/w.png"), "96x96")
+                    .maskable_icon(Uri::from_static("/i/m.png"), "192x192"),
+            );
+        assert_eq!(
+            m.to_json(),
+            concat!(
+                r#"{"name":"A","short_name":"A","start_url":"/","scope":"/","display":"minimal-ui","#,
+                r#""display_override":["window-controls-overlay","standalone"],"orientation":"portrait-primary","dir":"ltr","#,
+                r#""id":"/","lang":"en-US","categories":["shopping","productivity"],"icons":[],"#,
+                r#""screenshots":[{"src":"/s/wide.webp","sizes":"1280x720","type":"image/webp","form_factor":"wide","label":"Cart"},"#,
+                r#"{"src":"/s/narrow.png","sizes":"720x1280","type":"image/png","form_factor":"narrow"},"#,
+                r#"{"src":"/s/loop.gif","sizes":"720x1280","type":"image/gif"}],"#,
+                r#""shortcuts":[{"name":"Watchlist","url":"/watchlist","short_name":"Watch","description":"Cards you follow","#,
+                r#""icons":[{"src":"/i/w.png","sizes":"96x96","type":"image/png"},"#,
+                r#"{"src":"/i/m.png","sizes":"192x192","type":"image/png","purpose":"maskable"}]}]}"#
+            )
+        );
+    }
+
+    /// Every value each enum writes, as the spec names it.
+    #[test]
+    fn each_mode_is_written_as_the_spec_names_it() {
+        use DisplayOverride as O;
+        let display = [Display::Fullscreen, Display::Standalone, Display::MinimalUi, Display::Browser].map(Display::as_str);
+        assert_eq!(display, ["fullscreen", "standalone", "minimal-ui", "browser"]);
+        let overrides =
+            [O::WindowControlsOverlay, O::Tabbed, O::Fullscreen, O::Standalone, O::MinimalUi, O::Browser].map(O::as_str);
+        assert_eq!(overrides, ["window-controls-overlay", "tabbed", "fullscreen", "standalone", "minimal-ui", "browser"]);
+        let orientations = [
+            Orientation::Any,
+            Orientation::Natural,
+            Orientation::Landscape,
+            Orientation::LandscapePrimary,
+            Orientation::LandscapeSecondary,
+            Orientation::Portrait,
+            Orientation::PortraitPrimary,
+            Orientation::PortraitSecondary,
+        ]
+        .map(Orientation::as_str);
+        let named = [
+            "any",
+            "natural",
+            "landscape",
+            "landscape-primary",
+            "landscape-secondary",
+            "portrait",
+            "portrait-primary",
+            "portrait-secondary",
+        ];
+        assert_eq!(orientations, named);
+        assert_eq!([Dir::Ltr, Dir::Rtl, Dir::Auto].map(Dir::as_str), ["ltr", "rtl", "auto"]);
+        assert_eq!([FormFactor::Wide, FormFactor::Narrow].map(FormFactor::as_str), ["wide", "narrow"]);
+    }
+
+    #[test]
+    fn a_screenshot_and_a_shortcuts_icon_are_their_versioned_urls() {
+        let assets = assets();
+        let m = Manifest::new("A", "A")
+            .screenshot(Screenshot::new(ICON, "192x192"))
+            .shortcut(Shortcut::new("Watchlist", &Watchlist).icon(ICON, "192x192"));
+        let json = Pwa::new(m).resolve(Some(&assets)).manifest.to_json();
+        let url = format!(r#""src":"{}icons/192.png""#, assets.prefix());
+        assert_eq!(json.matches(&url).count(), 2, "{json}");
+    }
+
+    #[test]
+    #[should_panic(expected = "of admin::Static, and the app's static directory is shop::Static")]
+    fn another_apps_screenshot_panics_in_every_build() {
+        let other = Asset::__embedded("admin::Static", "icons/192.png");
+        let _ = Pwa::new(Manifest::new("A", "A").screenshot(Screenshot::new(other, "192x192"))).resolve(Some(&assets()));
     }
 
     #[test]
