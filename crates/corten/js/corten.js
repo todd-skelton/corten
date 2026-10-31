@@ -3,7 +3,8 @@
 // file into dist/corten.js by `npm run build:js`, and imported as "corten".
 //
 // What it does, and nothing else:
-// 1. Same-origin navigations: fetch the next page with `corten: nav` and swap it into <main>.
+// 1. Same-origin navigations: fetch the next page with `corten: nav` and swap it into <main>; a
+//    redirect's notice the page did not draw is `corten:notice` on the document.
 // 2. <form data-patch>: submit with `corten: action` and apply the returned fragments by id (a
 //    `<template id data-remove>` removes its element, `<template id data-append>` adds to it). A newer
 //    submit of a form replaces a pending read and waits for a pending write; a navigation abandons
@@ -1063,13 +1064,14 @@ function focusNear(el, root, fresh) {
  * @param {AbortSignal} [signal]
  * @param {boolean} [stay] keep the user's place: the scroll position (Chromium can reset it when
  *   <main> empties), what scrolls inside the page and the `<details>` open on screen
+ * @param {Notice} [notice] the answer's, kept if the page has to load in full instead
  */
-async function swapPage(html, signal, stay) {
+async function swapPage(html, signal, stay, notice = null) {
   const content = parse(html);
   const [, styled] = await Promise.all([modulesOf(content), stylesOf(content)]);
   signal?.throwIfAborted();
   if (!styled) {
-    reload();
+    reload(notice);
     return;
   }
   const title = content.querySelector("title");
@@ -1093,6 +1095,25 @@ async function swapPage(html, signal, stay) {
   markCurrent();
   readAgainLater();
   readPartsAgain(main);
+}
+
+/**
+ * A page answer's notice (`corten-notice`, `m=<text>`, with `&d` when the page drew it): what
+ * the write that redirected to it said (`req.redirect_with_notice`). Kept across a reload that
+ * draws the page in full instead (`reload`), where nothing draws it.
+ * @typedef {URLSearchParams | null} Notice
+ */
+const NOTICE = "corten-notice";
+/** @param {Response} res @returns {Notice} */
+const noticeOf = (res) => (res.headers.has(NOTICE) ? new URLSearchParams(res.headers.get(NOTICE) ?? "") : null);
+
+/**
+ * After a page answer is drawn: the notice it did not draw as `corten:notice` on the document
+ * (`detail.message`), for the app's toaster. The layout around `<main>` does not run for a swap.
+ * @param {Notice} notice
+ */
+function announce(notice) {
+  if (notice && !notice.has("d")) document.dispatchEvent(new CustomEvent("corten:notice", { detail: { message: notice.get("m") ?? "" } }));
 }
 
 /**
@@ -1337,6 +1358,7 @@ async function visit(url, signal, redirected, again, place, source) {
       return;
     }
     signal.throwIfAborted();
+    const notice = noticeOf(res);
     // Sent to a place on a page (`route.at(id)`): the server names it here, since `fetch` follows a
     // redirect but drops its `#id`.
     const to = res.headers.get("corten-location");
@@ -1345,7 +1367,7 @@ async function visit(url, signal, redirected, again, place, source) {
       return;
     }
     if (!res.headers.has("corten-page") || shellChanged(res)) {
-      reload();
+      reload(notice);
       return;
     }
     // The server redirected (a `Caller` sending someone to sign in). Changing the address with
@@ -1365,7 +1387,8 @@ async function visit(url, signal, redirected, again, place, source) {
       readAgainLater();
       return;
     }
-    await swapPage(html, signal, again || place !== undefined);
+    await swapPage(html, signal, again || place !== undefined, notice);
+    announce(notice);
   } finally {
     signal.removeEventListener("abort", idle);
     idle();
@@ -1579,9 +1602,20 @@ function named(el, name) {
  * `beforeunload` prompt) drops only the submits waiting then, not every later one.
  */
 let left = 0;
-/** Loads the page again from the server. */
-function reload() {
+/**
+ * Loads the page again from the server, with the notice of the answer it takes the place of: kept
+ * for that page's load, for as long as its cookie would have lasted.
+ * @param {Notice} [notice]
+ */
+function reload(notice = null) {
   left += 1;
+  if (notice) {
+    try {
+      sessionStorage.setItem(NOTICE, JSON.stringify([location.pathname, notice.get("m"), Date.now() + 60000]));
+    } catch {
+      // No session storage (a sandboxed frame): the page loads without it.
+    }
+  }
   location.reload();
 }
 addEventListener("pagehide", () => (left += 1));
@@ -1666,13 +1700,17 @@ async function send(form, submitter, sends) {
     init.headers = { corten: "action", "content-type": plain ? "text/plain" : "application/x-www-form-urlencoded" };
   }
   formCall(form, "setAttribute", "aria-busy", "true");
-  // A write can change any page, so nothing fetched before it is reused.
-  if (method !== "GET") {
+  // A write can change any page, so nothing fetched before it is reused, nor anything prefetched
+  // while it was on its way (which may predate it, or use up a notice it sets).
+  const forget = () => {
+    if (method === "GET") return;
     for (const entry of prefetched.values()) discard(entry);
     prefetched.clear();
-  }
+  };
+  forget();
   try {
     const res = await fetch(url, init);
+    forget();
     // A whole answer below 500 is definitive: the write applied or was refused, and the form gets
     // a new key. A 5xx (a 502 from a proxy can hide a committed write), a network error, an abort
     // or a body cut off on the way keeps the key, so a retry is the same submission.
@@ -1693,12 +1731,17 @@ async function send(form, submitter, sends) {
       }
     } else if (res.headers.has("corten-page") && shellChanged(res)) {
       renew();
-      reload();
+      reload(noticeOf(res));
     } else if (res.headers.has("corten-patch") || res.headers.has("corten-page")) {
       const body = await res.text();
       renew();
       signal.throwIfAborted();
-      await (res.headers.has("corten-patch") ? apply(body, signal, sent, res.ok) : swapPage(body, signal));
+      if (res.headers.has("corten-patch")) await apply(body, signal, sent, res.ok);
+      else {
+        const notice = noticeOf(res);
+        await swapPage(body, signal, false, notice);
+        announce(notice);
+      }
       signal.throwIfAborted();
       if (res.status === 422) focusInvalid(form);
       // Sent after an answer that took the write (2xx) or refused only its input (422). Not after a
@@ -1827,6 +1870,19 @@ readAgainLater();
 
 /** Resolves once the script modules the first page's handlers use are imported. */
 export const ready = Promise.all(loading.values()).then(() => undefined);
+
+// A navigation's notice whose page loaded in full instead (`reload`): announced once the page's
+// modules are in and their `on:connect` handlers ran (a task later), if this is still that page.
+try {
+  const kept = sessionStorage.getItem(NOTICE);
+  if (kept !== null) {
+    sessionStorage.removeItem(NOTICE);
+    const [path, text, until] = JSON.parse(kept);
+    if (path === location.pathname && Date.now() < until) ready.then(() => setTimeout(() => announce(new URLSearchParams({ m: text }))));
+  }
+} catch {
+  // No session storage, or not what reload wrote: nothing to say.
+}
 
 // Under `corten dev` the server sends the time it started; after a restart (a rebuild) the stream
 // reconnects to a server that started later, and the page reloads.

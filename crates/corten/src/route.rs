@@ -1488,6 +1488,33 @@ impl<R: Route + ?Sized> Href for R {
     }
 }
 
+/// A link to a page of this app: a typed route, a place on one (`route.at(id)`), a [`Local`]
+/// return address, or a `#[derive(Href)]` enum whose variants all are. What
+/// [`crate::Req::redirect_with_notice`] takes, since a notice is for a page of the app's own; an
+/// `axum::http::Uri` or an [`Elsewhere`] is not one. Sealed: Corten and the derive implement it.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a page of this app",
+    label = "not a typed route, `route.at(id)`, `Local` or `#[derive(Href)]` enum of those",
+    note = "a notice is shown by the app's own page; for another site use `req.redirect`"
+)]
+pub trait OnSite: Href + on_site::Sealed {}
+
+#[doc(hidden)]
+pub mod on_site {
+    /// Keeps [`super::OnSite`] to the links Corten knows are the app's; `#[derive(Href)]`
+    /// implements it for an enum whose variants all are.
+    pub trait Sealed {}
+}
+
+impl<R: Route + ?Sized> on_site::Sealed for R {}
+impl<R: Route + ?Sized> OnSite for R {}
+
+impl<R: Route + ?Sized, I: crate::view::Id> on_site::Sealed for At<'_, R, I> {}
+impl<R: Route + ?Sized, I: crate::view::Id> OnSite for At<'_, R, I> {}
+
+impl on_site::Sealed for Local {}
+impl OnSite for Local {}
+
 /// For each byte, `SEGMENT` when it is written as it is in a path segment or query value
 /// (unreserved: letters, digits, `-._~`), `REST` when it is in a `{*rest}` value (those and
 /// `/`), and `FRAGMENT` when it is in another site's `#fragment` (those, `/`, `?`, `:`, `@` and

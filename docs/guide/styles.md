@@ -3,7 +3,8 @@
 [Back to the guides](../../README.md#documentation)
 
 Each component's styles are a CSS file next to it, scoped to it at compile time; design tokens
-are one JSON file; both reach the browser as one cached stylesheet. There is no CSS build step.
+are W3C design-token files; both reach the browser as one cached stylesheet. There is no CSS
+build step.
 
 ```css
 /* src/views/offer_list.css */
@@ -31,7 +32,7 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 | `class={(Row, cond.then_some(Selected), extra)}` | joined when the page renders; `None` adds nothing, an empty list leaves the attribute out |
 | a class nothing uses | `warning: constant Hot is never used` (an error under `-D warnings`) |
 | `#[component(css = OfferList)]`, `css = super::offers::OfferList` | a helper component shares the owner's stylesheet from any module of the crate that can see the owner, named by its path (not through a `use`) (a screen's panels in files of their own), and its uses count; classes are in scope only in a component, so a plain `fn` that picks a class is a helper component or a `match` in the markup |
-| `tokens!("tokens.json")` | custom properties (`--space-4`), theme overrides (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed utilities, a function per value (`gap_2()` prints `gap-2`, `mx_auto()` `mx-auto`) and per utility for a value chosen as the page renders or per breakpoint: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
+| `tokens!("tokens/tokens.resolver.json")` ([design tokens](#design-tokens)) | custom properties (`--space-4`), each theme's changes (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed utilities, a function per value (`gap_2()` prints `gap-2`, `mx_auto()` `mx-auto`) and per utility for a value chosen as the page renders or per breakpoint: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
 | `App::components(&[TOKENS, OfferList, ...])` | one `components.css` in the listed order, linked from `<head>` and precached by the PWA; a component rendered but not listed is an error under `corten dev` |
 | `var(--color-accent)` in a component's stylesheet | a startup error unless a stylesheet on the same pages declares it (the token file, a listed component's, a `.css` file in the static directory, or for an area's component one linked from its area), naming the file and the property; `var(--x, fallback)` is not checked |
 | `App::area(\|area\| admin::area(area).components(&[SalesChart, ...]))` | those stylesheets in a file of their own, `sections/admin.css`, linked only from pages at and under `/admin`; a component listed in two places, or tokens in an area, is a startup error, and a page outside the area that renders one is an error under `corten dev` |
@@ -39,22 +40,6 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 Variants are Rust: `match tone { Tone::Danger => Danger, Tone::Neutral => Neutral }` picks the
 class, so adding a variant without a rule does not compile. A component library is a crate that
 exports `pub const COMPONENTS: &[Component]`; the app passes it to `App::components`.
-
-A theme can also follow the system: its `"@media"` gives a media condition and the selector its
-values apply to under it, so they are written once.
-
-```json
-"themes": {
-  "[data-theme=\"dark\"]": {
-    "@media": { "(prefers-color-scheme: dark)": ":root:not([data-theme=\"light\"])" },
-    "color": { "ink": "#ecebf2", "bg": "#15141b" }
-  }
-}
-```
-
-The page is dark when it says `data-theme="dark"`, or when the system is dark and the page did
-not choose `light`. `color-scheme` (which themes form controls and scrollbars) is a property,
-not a token, so it goes in `static/style.css` next to the same selectors.
 
 A misspelled token (`var(--color-primary-contrast)` where the file has
 `--color-primary-foreground`) would make the declaration invalid and the property inherit, which
@@ -78,6 +63,111 @@ element a `display` (styling corten-ui's parts there, say), it adds the rule its
 (a meter's fill, marks on a timeline) are an area that allows style attributes,
 `.policy(|p| p.allow_style_attributes())` ([app guide](app.md#a-policy-for-part-of-the-app)), so
 the rest of the app keeps the protection.
+
+## Design tokens
+
+Token files are the W3C Design Tokens format, 2025.10: the files Figma variables, Tokens
+Studio, Style Dictionary and Terrazzo read and write, so a design tool's export needs no
+converter and the same files can feed iOS and Android builds. A token file holds the values; a
+resolver document (`.resolver.json`) puts token files together and gives the themes.
+`tokens!("tokens/tokens.resolver.json")` reads a resolver (a file with `resolutionOrder`) and
+the files it names, each a path relative to the file that names it (a URL, a scheme, a drive or
+an absolute path does not compile; `#/` is a whole file, and `example.json#sets/MySet`, as the
+resolver module also writes it, is `#/sets/MySet`; a JSON pointer, like a `{group.token}`
+reference, names a token in the tokens put together, as the resolver module resolves aliases
+only after the sources are merged, so a later source's value wins; in a source that is part of a
+file, a pointer into the part is moved to where the part goes, and one outside it is the value it
+names); `tokens!("tokens/base.tokens.json")` reads one token file, for an app with no themes.
+
+```json
+{
+  "color": {
+    "$type": "color",
+    "ink": { "$value": { "colorSpace": "srgb", "components": [0.1137, 0.1059, 0.149], "hex": "#1d1b26" } },
+    "link": { "$value": "{color.ink}" }
+  },
+  "space": {
+    "$type": "dimension",
+    "4": { "$value": { "value": 16, "unit": "px" } }
+  },
+  "$extensions": {
+    "run.corten": {
+      "breakpoints": { "md": { "value": 48, "unit": "rem" } },
+      "utilities": { "gap": { "property": "gap", "group": "space" } }
+    }
+  }
+}
+```
+
+Each top-level group's tokens are a scale: `--color-ink` and `Color::Ink`, `--space-4` and `Space::_4` (the group's own `$root`, below, is not in it). A
+nested group joins its names with `-` (`--color-brand-primary`). Names are written as CSS
+writes them, so a design tool's `Brand Primary` or `brandPrimary` is `--brand-primary` (and
+`BrandPrimary` in Rust); two names that come out the same, `font-size` and `FONT-SIZE`, do not
+compile, a letter outside ASCII is an error, and a top-level group (a Rust enum), breakpoint or
+utility (a CSS class) starts with a letter. A token at the top of the file, or a top-level
+group's `$root` (`--brand`), is a custom property with no enum; a `$root` on the file itself has
+no name to give it, so it is an error. Values are written in CSS: an sRGB color whose
+`hex` agrees with its components is the hex, other color spaces are CSS Color 4 (`oklch(..)`,
+`color(display-p3 ..)`), and dimensions, durations, shadows, borders, transitions, cubic Béziers,
+font families and weights have one CSS value each. A reference stays one: `"{color.ink}"` is
+`var(--color-ink)`, so a theme that changes `ink` changes `link` with it. A JSON pointer into a value (`{"$ref":
+"#/space/4/$value/value"}`) is the number or text it points at, written where it is used,
+following a token that is itself a reference to the one with a value; a pointer is a URI fragment,
+so `#/Brand%20Primary` names `Brand Primary`, and a font list names a token by pointer
+(`[{"$ref": "#/font/brand/$value"}, "serif"]`), as the schema has it. A circle of references
+does not compile, and a chain of more than 256 pointers, or of groups extending one another, is an error (a chain of
+aliases, `{a}` naming `{b}`, can be any length), as are a number too large for an `f64` (CSS writes finite numbers), objects and arrays nested
+more than 128 deep, and following more than 100,000
+JSON pointers, `$extends`, sets and file references in all (a file naming one set twice at each of many levels). A
+gradient (it has no direction) and a typography token (it is several properties) have no one CSS
+value, so they do not compile; give their parts tokens of their own. A stroke style of dashes and
+caps is `dashed`, the closest CSS border style, as the Format module suggests.
+
+The themes are the resolver's modifiers:
+
+```json
+{
+  "version": "2025.10",
+  "sets": { "base": { "sources": [{ "$ref": "base.tokens.json" }] } },
+  "modifiers": {
+    "theme": {
+      "contexts": { "light": [], "dark": [{ "$ref": "dark.tokens.json" }] },
+      "default": "light",
+      "$extensions": { "run.corten": { "media": { "dark": "(prefers-color-scheme: dark)" } } }
+    }
+  },
+  "resolutionOrder": [{ "$ref": "#/sets/base" }, { "$ref": "#/modifiers/theme" }]
+}
+```
+
+A modifier's `default` is the values on `:root`; the format lets a modifier leave it out and
+asks for an input instead, but a page that chooses no context still needs values, so here it is
+required. Each other context's changes apply under
+`[data-theme="dark"]` (the modifier's name and the context's, written as CSS names), on the
+document or any element inside it, so `dark.tokens.json` holds only the values that change.  The
+default context has a rule too, `[data-theme="light"]`, with the default values of what the
+others change, so a light panel inside a dark page, or on a system that is dark, is light. A
+token that reads one a context changes is declared again under each context, so it follows on an
+element too. Breakpoints are wider than 0 and go smallest first, in one unit, or the file does not compile; a
+utility's `group` is a top-level group's name as the file writes it (`"Brand Space"`, whose
+classes and properties are `brand-space`). A context that defines a
+token the defaults lack, or gives one another type, does not compile: the page that chose no
+context would have no value for it. Two modifiers' contexts on one element apply in
+resolutionOrder, the later winning, and each combination (a chosen default included, whose rule
+declares again what its modifier's other contexts change) is checked against what the resolver
+gives: two modifiers that change one token, or one that sets a token by value that reads a token
+another changes, do not compile. Give each modifier tokens of its own and reference them. The
+check resolves each combination, each modifier's attribute absent or one of its contexts, up to
+256 of them (two modifiers of up to 15 contexts each, or four of three), and more is an error. `media` lets a context follow the system: the page is dark
+when it says `data-theme="dark"`, or when the system is dark and the page chose no theme
+(`:where(:root):not([data-theme])` under the condition, with the specificity of one attribute,
+as each context's rule has, so a later modifier still wins), with the values written once. `color-scheme`
+(which themes form controls and scrollbars) is a property, not a token, so it goes in
+`static/style.css` next to the same selectors.
+
+Corten's own settings are under `$extensions`, key `"run.corten"` (corten.run, reversed, as the
+format asks of a tool's key): breakpoints and utilities on a token file's root group, `media` on
+a modifier. Anywhere else it is an error, and other tools' keys are left alone.
 
 ## Printing
 
@@ -108,7 +198,7 @@ elements to hide it in print); without a script, the browser's Print command pri
 ## Utility-first
 
 A page can be styled mostly in its markup, as Tailwind does, from the token file's utilities.
-`examples/watchlist` is: its `tokens.json` defines utilities for layout, spacing, color, borders
+`examples/watchlist` is: its `tokens/base.tokens.json` defines utilities for layout, spacing, color, borders
 and type, and `src/theme.rs` names the few combinations it repeats as functions:
 
 ```rust,ignore

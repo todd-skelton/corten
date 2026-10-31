@@ -11,6 +11,11 @@ const names = process.argv.slice(3).length ? process.argv.slice(3) : Object.keys
 const failures = [];
 let engine = "";
 const seen = stall(5);
+/** A check this browser cannot make, and why. */
+const skip = (/** @type {string} */ name, /** @type {string} */ why) => {
+  seen(`[${engine}] ${name}`);
+  console.log(`skip [${engine}] ${name} (${why})`);
+};
 const check = (name, ok, detail = "") => {
   seen(`[${engine}] ${name}`);
   console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
@@ -422,6 +427,41 @@ async function run(browser) {
   check("focus is on the refused field", await page.evaluate(() => document.activeElement?.id === "draft-name"));
   await page.keyboard.press("Escape");
   check("Escape closes it", !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
+  // A rename that is taken redirects to the draft with a notice (`req.redirect_with_notice`): the
+  // navigation's page does not run the layout, so the runtime hands it to the layout's toaster.
+  // The notice rides in a Secure cookie, which Playwright's WebKit never sends back over http.
+  const noticeChecks = [
+    "a redirect's notice reaches the layout's toaster",
+    "and the toaster offers to dismiss it",
+    "the notice is said once",
+    "a notice whose page loads in full instead reaches the toaster after the load",
+  ];
+  if (engine !== "webkit") {
+    await page.getByRole("button", { name: "Rename draft" }).click();
+    await page.locator("#draft-name").fill("Spring draft");
+    await page.getByRole("button", { name: "Rename", exact: true }).click();
+    const renamed = await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Spring draft.", null, { timeout: 5000 }).then(() => true, () => false);
+    check(noticeChecks[0], renamed && (await page.locator("#ui-toast").isVisible()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)), await page.locator("#ui-toast").textContent());
+    check(noticeChecks[1], await page.getByRole("button", { name: "Dismiss" }).isVisible());
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    check(noticeChecks[2], !(await page.evaluate(async () => (await (await fetch("/")).text()).includes("Renamed to"))));
+    // The navigation's page comes with another layout (here a shell key changed on the way): the
+    // runtime loads it in full, and the notice, whose cookie that answer removed, goes with it.
+    await page.route("**/*", async (route) => {
+      if (route.request().method() !== "GET" || route.request().headers()["corten"] !== "nav") return route.fallback();
+      const res = await route.fetch();
+      await page.context().clearCookies({ name: "__Host-corten-notice" });
+      await route.fulfill({ response: res, headers: { ...res.headers(), "corten-shell": "0000000000000000" } });
+    });
+    await page.evaluate(() => ((/** @type {any} */ (window)).__before = 1));
+    await page.getByRole("button", { name: "Rename draft" }).click();
+    await page.locator("#draft-name").fill("Autumn draft");
+    await page.getByRole("button", { name: "Rename", exact: true }).click();
+    const kept = await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Autumn draft.", null, { timeout: 5000 }).then(() => true, () => false);
+    const loaded = await page.evaluate(() => (/** @type {any} */ (window)).__before === undefined);
+    check(noticeChecks[3], kept && loaded && (await page.locator("#ui-toast").isVisible()), `${loaded} ${await page.locator("#ui-toast").textContent()}`);
+    await page.unroute("**/*");
+  } else for (const name of noticeChecks) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
   // A post without the runtime (no data-patch): the whole page, the dialog drawn open.
   await page.getByRole("button", { name: "Rename draft" }).click();
   await Promise.all([
@@ -703,6 +743,13 @@ async function run(browser) {
   check("no script: the button opens the dialog", await plain.locator("#rename").isVisible());
   await Promise.all([plain.waitForURL("**/rename"), plain.getByRole("button", { name: "Rename", exact: true }).click()]);
   check("no script: refused, the dialog is open with the error", (await plain.locator("#rename").isVisible()) && ((await plain.locator("#rename").textContent()) ?? "").includes("Give the draft a name."));
+  if (engine !== "webkit") {
+    await plain.locator("#draft-name").fill("Winter draft");
+    await Promise.all([plain.waitForURL(`${base}/`), plain.getByRole("button", { name: "Rename", exact: true }).click()]);
+    check("no script: the page a redirect lands on shows its notice in the layout", (await plain.locator("#ui-toast").textContent()) === "Renamed to Winter draft.", await plain.locator("#ui-toast").textContent());
+    await plain.reload();
+    check("no script: a reload does not say it again", (await plain.locator("#ui-toast").textContent()) === "");
+  } else for (const name of ["no script: the page a redirect lands on shows its notice in the layout", "no script: a reload does not say it again"]) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
   await plain.goto(`${base}/?sale=last`);
   const plainSheet = plain.locator('dialog[aria-label="Last sale"]');
   check("no script: the address opens the sheet", await plainSheet.isVisible());

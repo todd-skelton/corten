@@ -139,13 +139,36 @@ impl Item {
 
     /// `impl<..> Trait for Name<..> where ..` followed by `body` in braces.
     pub fn impl_block(&self, trait_path: &str, body: TokenStream) -> TokenStream {
+        self.impl_block_where(trait_path, TokenStream::new(), body)
+    }
+
+    /// [`Item::impl_block`] with `bounds` (`T: Trait,` each) added to the item's where clause.
+    pub fn impl_block_where(&self, trait_path: &str, bounds: TokenStream, body: TokenStream) -> TokenStream {
         let mut out: TokenStream = "#[automatically_derived] impl".parse().expect("parses");
         out.extend(self.impl_generics.clone());
         out.extend(trait_path.parse::<TokenStream>().expect("trait path parses"));
         out.extend("for".parse::<TokenStream>().expect("parses"));
         out.extend([TokenTree::Ident(self.name.clone())]);
         out.extend(self.type_generics.clone());
-        out.extend(self.where_clause.clone());
+        if !bounds.is_empty() {
+            if self.where_clause.is_empty() {
+                out.extend("where".parse::<TokenStream>().expect("parses"));
+            } else {
+                out.extend(self.where_clause.clone());
+                if !self
+                    .where_clause
+                    .clone()
+                    .into_iter()
+                    .last()
+                    .is_some_and(|t| matches!(&t, TokenTree::Punct(p) if p.as_char() == ','))
+                {
+                    out.extend(",".parse::<TokenStream>().expect("parses"));
+                }
+            }
+            out.extend(bounds);
+        } else {
+            out.extend(self.where_clause.clone());
+        }
         out.extend([TokenTree::Group(Group::new(Delimiter::Brace, body))]);
         out
     }

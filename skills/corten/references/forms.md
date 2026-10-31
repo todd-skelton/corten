@@ -45,6 +45,12 @@ After a write that should change the URL, use `req.redirect(&Route)` instead. To
 the element the user acted on, redirect to `route.at(RowId(&id))` (the route with `#row-7`,
 from the element's `#[derive(Id)]`); a link within the page, such as an error summary's link to
 its field, is `href={FieldId.fragment()}`. Never format a `#fragment` by hand.
+To say what the write did on the page it lands on, `req.redirect_with_notice(&to, "Batch 3517
+deleted.")`, read once there by `req.notice()` (the layout's `Toaster { toast: Toast { message:
+req.notice() } }`; after a navigation the runtime dispatches `corten:notice` and the toaster takes
+it). Render it once, in the layout: a full load shows it only where the page renders it. `to` is a
+page of the app (`OnSite`: a route, `route.at(id)`, `Local`, a `#[derive(Href)]` enum of those).
+Never add a route field (`?deleted=3517`, `?done=saved`) only to carry a message.
 
 ## Files
 

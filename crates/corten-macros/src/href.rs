@@ -21,6 +21,9 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     let mut arms = TokenStream::new();
     let mut texts = TokenStream::new();
     let mut prefetches = TokenStream::new();
+    // Each variant's link is on the site: then the enum is (`OnSite`). Bound under a `for<'_>` so a
+    // variant that is not (an `Elsewhere`) leaves the enum without it rather than failing to compile.
+    let mut on_site = TokenStream::new();
     for tokens in split(body.stream(), ',') {
         let mut j = 0;
         while is_punct(tokens.get(j), '#') {
@@ -30,7 +33,11 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         let why = match tokens.get(j + 1) {
             Some(TokenTree::Group(g)) if g.delimiter() == proc_macro::Delimiter::Parenthesis => {
                 match split(g.stream(), ',').iter().filter(|field| !field.is_empty()).count() {
-                    1 if tokens.len() == j + 2 => None,
+                    1 if tokens.len() == j + 2 => {
+                        let link = split(g.stream(), ',').into_iter().find(|field| !field.is_empty()).unwrap_or_default();
+                        on_site.extend(q("for<'__corten_on_site> __A0: ::corten::route::OnSite,", &[link.into_iter().collect()]));
+                        None
+                    }
                     0 => Some("holds nothing, so it has no URL"),
                     1 => Some("has a discriminant or more after its link"),
                     _ => Some("holds more than one value; a link with its own data is a route struct of its own"),
@@ -73,6 +80,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             &[arms, texts, prefetches],
         ),
     );
+    out.extend(item.impl_block_where("::corten::route::on_site::Sealed", on_site.clone(), TokenStream::new()));
+    out.extend(item.impl_block_where("::corten::route::OnSite", on_site, TokenStream::new()));
     out.extend(item.impl_block(
         "::corten::view::AttrValue",
         q(

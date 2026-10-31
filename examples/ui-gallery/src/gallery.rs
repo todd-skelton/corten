@@ -4,7 +4,7 @@ use corten::i18n::{DateStyle, RelativeStyle, TimeStyle};
 use corten::prelude::*;
 use corten_ui::{
     CheckboxGroup, Choice, ChoiceGroup, ChoiceOption, Chosen, ComboBox, Copied, CopyButton, LocalTime, MenuButton, Number,
-    NumberField, Picker, PrintButton, RelativeTime, RequiredWhen, ShownFor, Tab, TabGroup, Toast, Toaster, dialog,
+    NumberField, Picker, PrintButton, RelativeTime, RequiredWhen, ShownFor, Tab, TabGroup, dialog,
 };
 use serde::Deserialize;
 use std::time::SystemTime;
@@ -132,7 +132,6 @@ pub fn Gallery<'a>(
     tab: MarketTab,
     period: Period,
     result: &'a str,
-    toast: Option<&'a str>,
     sale: bool,
     times: Times,
     rename: RenameDialog<'a>,
@@ -286,9 +285,6 @@ pub fn Gallery<'a>(
         if sale {
             <SaleSheet />
         }
-        <div class={Toasts}>
-            <Toaster close="Dismiss" seconds={2} toast={Toast { message: toast }} />
-        </div>
     }
 }
 
