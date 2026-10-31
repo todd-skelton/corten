@@ -1,7 +1,9 @@
 //! A script's comments, removed from what the browser receives (the macro still reads the JSDoc
 //! from the file). Each line keeps its number, so DevTools and a stack trace point at the line
-//! the author wrote. A legal comment (`/*! .. */`, or one with `@license` or `@preserve`) stays,
-//! as minifiers keep it.
+//! the author wrote (a column after a comment inside a line moves: the comment is not padded, to
+//! keep the bytes). A licence (`/*! .. */`, `//! ..`, or a comment with
+//! `@license` or `@preserve`) stays, as minifiers keep it, and so does a comment the browser
+//! reads (`//# sourceMappingURL=..`, `//# sourceURL=..`).
 
 /// Whether the token before a `/` ends an expression (so the `/` divides) or not (so it starts a
 /// regular expression).
@@ -44,8 +46,7 @@ const BEFORE_REGEX: &[&str] = &[
 ];
 
 /// `source` without its comments: a line comment is removed to its line's end, a block comment
-/// becomes the newlines it held, or a space when it held none. Strings, template literals and
-/// regular expressions are copied as they are.
+/// becomes the line breaks it held, or a space when it held none and code follows it. Strings, template literals and regular expressions are copied as they are.
 pub fn without_comments(source: &str) -> String {
     let bytes = source.as_bytes();
     let mut out = String::with_capacity(source.len());
@@ -69,6 +70,10 @@ pub fn without_comments(source: &str) -> String {
             continue;
         }
         let b = bytes[at];
+        if b >= 0x80 && source[at..].chars().next().is_some_and(space) {
+            at += source[at..].chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
         // What this token leaves for the next `(` and word; most tokens clear both.
         let (mut next_condition, mut next_dot) = (false, false);
         match b {
@@ -77,8 +82,8 @@ pub fn without_comments(source: &str) -> String {
                 continue;
             }
             b'/' if bytes.get(at + 1) == Some(&b'/') => {
-                let end = bytes[at..].iter().position(|&c| c == b'\n').map_or(bytes.len(), |n| at + n);
-                if !legal(&source[at..end]) {
+                let end = source[at..].find(['\n', '\r', '\u{2028}', '\u{2029}']).map_or(bytes.len(), |n| at + n);
+                if !kept(&source[at..end]) {
                     out.push_str(&source[copied..at]);
                     trim_end_of_line(&mut out);
                     copied = end;
@@ -89,7 +94,7 @@ pub fn without_comments(source: &str) -> String {
             b'/' if bytes.get(at + 1) == Some(&b'*') => {
                 let end = source[at + 2..].find("*/").map_or(bytes.len(), |n| at + 2 + n + 2);
                 let comment = &source[at..end];
-                if !legal(comment) {
+                if !kept(comment) {
                     out.push_str(&source[copied..at]);
                     let lines = comment.matches('\n').count();
                     let rest_of_line = source[end..].split('\n').next().unwrap_or("");
@@ -108,7 +113,7 @@ pub fn without_comments(source: &str) -> String {
                 at = end;
                 continue;
             }
-            b'/' => match (before, regex(bytes, at)) {
+            b'/' => match (before, regex(source, at)) {
                 (Before::Operator, Some(end)) => {
                     at = end;
                     before = Before::Value;
@@ -164,15 +169,16 @@ pub fn without_comments(source: &str) -> String {
             // `a++ / 2`: `++` and `--` leave what came before them.
             b'+' | b'-' if bytes.get(at + 1) == Some(&b) => at += 2,
             _ if b.is_ascii_digit() || (b == b'.' && bytes.get(at + 1).is_some_and(u8::is_ascii_digit)) => {
-                at = word_end(bytes, at + 1);
+                at = word_end(source, at + 1);
                 before = Before::Value;
             }
             _ if b.is_ascii_alphabetic() || b == b'_' || b == b'$' || b == b'#' || b >= 0x80 => {
-                let end = word_end(bytes, at + 1);
+                let end = word_end(source, at + b.is_ascii() as usize);
                 let word = &source[at..end];
                 // After a `.`, a word is a property, a value even when it is `return`.
                 let keyword = !dot;
-                next_condition = keyword && matches!(word, "if" | "while" | "for" | "with");
+                // `for await (` is a loop as `for (` is.
+                next_condition = keyword && (matches!(word, "if" | "while" | "for" | "with") || (word == "await" && condition));
                 before = if keyword && BEFORE_REGEX.contains(&word) { Before::Operator } else { Before::Value };
                 at = end;
             }
@@ -190,9 +196,17 @@ pub fn without_comments(source: &str) -> String {
     out
 }
 
-/// A comment a minifier keeps: a licence.
-fn legal(comment: &str) -> bool {
-    comment.starts_with("/*!") || comment.contains("@license") || comment.contains("@preserve")
+/// A comment that stays: a licence, which minifiers keep, or one the browser reads.
+fn kept(comment: &str) -> bool {
+    ["/*!", "//!", "//#", "/*#"].iter().any(|start| comment.starts_with(start))
+        || comment.contains("@license")
+        || comment.contains("@preserve")
+}
+
+/// Whitespace in JavaScript outside ASCII: a no-break space, a byte order mark, any other Unicode
+/// space, or a line or paragraph separator.
+fn space(c: char) -> bool {
+    c.is_whitespace() || c == '\u{FEFF}'
 }
 
 /// Removes the spaces and tabs at the end of `out`, before a comment that ran to its line's end.
@@ -201,13 +215,13 @@ fn trim_end_of_line(out: &mut String) {
     out.truncate(kept);
 }
 
-/// The end of a word or number that starts before `at`.
-fn word_end(bytes: &[u8], mut at: usize) -> usize {
-    while at < bytes.len() && (bytes[at].is_ascii_alphanumeric() || matches!(bytes[at], b'_' | b'$' | b'.') || bytes[at] >= 0x80)
-    {
-        at += 1;
-    }
-    at
+/// The end of a word or number that starts before `at` (or at it, when it starts with a character
+/// outside ASCII).
+fn word_end(source: &str, at: usize) -> usize {
+    source[at..]
+        .char_indices()
+        .find(|&(_, c)| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '.') || (!c.is_ascii() && !space(c))))
+        .map_or(source.len(), |(n, _)| at + n)
 }
 
 /// The end of the string that starts at `at` (its closing quote included), or of its line when
@@ -217,6 +231,8 @@ fn string(bytes: &[u8], at: usize) -> usize {
     let mut i = at + 1;
     while i < bytes.len() {
         match bytes[i] {
+            // A backslash before a line break continues the string, also when it is `\r\n`.
+            b'\\' if bytes[i + 1..].starts_with(b"\r\n") => i += 3,
             b'\\' => i += 2,
             b'\n' => return i,
             c if c == quote => return i + 1,
@@ -246,7 +262,8 @@ fn template(bytes: &[u8], at: usize, opens: &mut Vec<Open>) -> (usize, bool) {
 
 /// The end of the regular expression that starts at `at` (its flags included), or `None` when
 /// none closes on its line: then the `/` divides.
-fn regex(bytes: &[u8], at: usize) -> Option<usize> {
+fn regex(source: &str, at: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
     let mut i = at + 1;
     let mut class = false;
     while i < bytes.len() {
@@ -261,7 +278,7 @@ fn regex(bytes: &[u8], at: usize) -> Option<usize> {
                 class = false;
                 i += 1;
             }
-            b'/' if !class => return Some(word_end(bytes, i + 1)),
+            b'/' if !class => return Some(word_end(source, i + 1)),
             _ => i += 1,
         }
     }
@@ -282,7 +299,26 @@ mod tests {
         assert_eq!(strip("a/* x */b"), "a b", "two words stay two");
         assert_eq!(strip("return/**/x"), "return x");
         assert_eq!(strip("a /* x */ b"), "a  b");
-        assert_eq!(strip("/*! (c) Ann */\n// @license MIT\nx"), "/*! (c) Ann */\n// @license MIT\nx", "a licence stays");
+        assert_eq!(strip("/* a\n  bc */ x"), "\n x");
+        for kept in
+            ["/*! (c) Ann */\n// @license MIT\nx", "//! (c) Ann\nx", "x\n//# sourceMappingURL=a.js.map", "x\n//# sourceURL=a.js"]
+        {
+            assert_eq!(strip(kept), kept, "a licence, or a comment the browser reads, stays");
+        }
+    }
+
+    #[test]
+    fn windows_line_endings_and_spaces_outside_ascii_are_read_as_such() {
+        let crlf = "const s = \"a\\\r\nb//c\"; // gone\r\nconst t = 1; // gone\r\n";
+        assert_eq!(strip(crlf), "const s = \"a\\\r\nb//c\";\r\nconst t = 1;\r\n");
+        for kept in [
+            "x =\u{a0}/\"/.test(s); const u = \"//kept\";",
+            "\u{feff}/\"/.test(s); const u = \"//kept\";",
+            "x =\u{2028}/\"/.test(s); const u = \"//kept\";",
+            "const café = 4; x = café / 2 + \"/\" + \"//kept\";",
+        ] {
+            assert_eq!(strip(kept), kept);
+        }
     }
 
     #[test]
@@ -310,6 +346,8 @@ mod tests {
             r#"export default /"/; const s = "a//b";"#,
             r#"let of = 4; x = of / 2 + "/" + "//kept";"#,
             r#"let async = 4; x = async / 2 + "/" + "//kept";"#,
+            r#"for await (const x of y) /"/.test(x); const u = "//kept";"#,
+            r#"x = await (a) / 2 / b; const u = "//kept";"#,
         ] {
             assert_eq!(strip(kept), kept);
         }

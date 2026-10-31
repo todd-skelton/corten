@@ -1941,7 +1941,8 @@ Corten is pre-1.0, so any minor version may change the API.
 97. Component scripts (`#[component(js)]`, `script!`, `corten-ui`'s) are served without their
     comments: the macro removes them when the crate compiles and keeps every line where it was, so
     DevTools and stack traces still show the author's line numbers, and it still reads the JSDoc
-    to check the calls. A licence comment (`/*! .. */`, `@license`, `@preserve`) stays.
+    to check the calls. A licence comment (`/*! .. */`, `//! ..`, `@license`, `@preserve`) stays, as
+    does one the browser reads (`//# sourceMappingURL=`). Windows line endings read as Unix ones.
     Measured on the 24 scripts it strips (corten-ui's, the examples' and the template's), brotli
     11 as Corten stores them: 30,779 to 15,855 bytes (-48.5%); gzip 9 36,371 to 18,651 (-48.7%).
     The item page (`bench/fullstack/bytes.mjs`, card-market images of main and this change): its

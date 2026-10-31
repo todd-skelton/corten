@@ -73,7 +73,8 @@ modules are compiled into the binary, served at versioned URLs, loaded as module
 pages that render them and imported when markup that names them joins later. They are served
 without their comments, each line where it was, so DevTools and a stack trace show the line you
 wrote; JSDoc costs the browser nothing, so document a handler as fully as it needs (a licence
-comment, `/*! .. */` or one with `@license`, stays). List each component once,
+comment, `/*! .. */`, `//! ..` or one with `@license`, stays, and so does `//# sourceMappingURL=`).
+List each component once,
 `App::new(routes).components(&[OfferList])`.
 
 ## Server or browser

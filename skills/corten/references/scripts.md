@@ -46,7 +46,8 @@ export function showAll(rows, rest, button) {
 ```
 
 Write JSDoc and comments freely: the browser gets the script without them (each line stays
-where it was, so stack traces match), and a licence comment (`/*! .. */`) stays.
+where it was, so stack traces match), and a licence comment (`/*! .. */`, `//! ..`) stays, as does
+`//# sourceMappingURL=`.
 
 1. `let (a, b) = refs();` declares refs. A ref's element type comes from the tag it is on; a
    parameter typed `HTMLX[]` gets every element with that ref.

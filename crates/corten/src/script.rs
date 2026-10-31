@@ -754,7 +754,8 @@ pub struct Script {
     /// The file, next to the component: `"cart_line.js"`.
     pub file: &'static str,
     /// Its source as the browser receives it, compiled into the binary: the file without its
-    /// comments, each line where it was (a licence comment, `/*! .. */`, stays).
+    /// comments, each line where it was (a licence comment, `/*! .. */` or `//! ..`, stays, as
+    /// does `//# sourceMappingURL=`).
     pub source: &'static str,
     /// The functions it exports, which the markup may call.
     pub handlers: &'static [&'static str],
