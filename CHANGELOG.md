@@ -1142,8 +1142,11 @@ Corten is pre-1.0, so any minor version may change the API.
     did not draw it. `OnSite` (sealed): the links a notice may go to, a route, `route.at(id)`, a
     `Local` and a `#[derive(Href)]` enum whose variants all are; another site's URL does not compile.
     The watchlist's subscribe and the gallery's rename use it, and the gallery's toaster moved into
-    its layout. The minified runtime grows by 574 bytes (26,791 to 27,365), 186 gzipped (9,707 to
-    9,893), 168 with brotli (8,771 to 8,939). RENDER_TBD
+    its layout. A write forgets what was prefetched while it was on its way, which could predate
+    it or use up its notice. The minified runtime grows by 637 bytes (26,791 to 27,428), 240
+    gzipped (9,707 to 9,947), 216 with brotli (8,771 to 8,987). The item page's render runs
+    0.08% more instructions (median of 3, callgrind, release build: 35,619,673,804 against
+    35,592,439,055 on its base), the look for the notice cookie in each request's `Cookie`.
     ([#385 A post that redirects cannot say what it did on the page it lands on, so each screen carries its message in a query value](https://github.com/todd-skelton/corten/issues/385)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
