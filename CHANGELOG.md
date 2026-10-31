@@ -1176,8 +1176,9 @@ Corten is pre-1.0, so any minor version may change the API.
     style attribute; the runtime sets the values a patch, navigation or live fragment brings through
     the CSSOM. Both are `!important`, so a value from markup wins over the component's rules,
     and an `!important` declaration of a property markup sets does not compile. `examples/seller-desk`'s statement draws each set's share as a bar. The minified
-    runtime grows by 364 bytes (27,428 to 27,792), 112 gzipped, 108 with brotli (a navigation to a
-    page that sets no value searches its text, not the DOM), and `corten/views`
+    runtime grows by 454 bytes (27,428 to 27,882), 144 gzipped, 132 with brotli (a navigation to a
+    page that sets no value searches its text, not the DOM; markup in a `<template>` gets its values
+    too, so they move with it), and `corten/views`
     (loaded only by a page whose handlers use views) by 395 (2,852 to 3,247), 201 gzipped, 166 with
     brotli, for rows copied from a `<template>` (a copy looks for values only when the template's
     row has some, so a row with none costs one boolean test). Measured with callgrind (release

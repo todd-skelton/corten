@@ -337,6 +337,19 @@ try {
     return got;
   });
   check("a patch's values are set by the runtime, over an !important rule", patched === "61.5%", patched);
+  // Markup in a <template> keeps its values when a script moves it into the page.
+  const moved = await page.evaluate(async () => {
+    const { patch } = await import("corten");
+    const name = /** @type {string} */ (document.querySelector("tbody [data-vars]")?.getAttribute("data-vars")).split(":")[0];
+    document.querySelector("main")?.append(Object.assign(document.createElement("div"), { id: "vars-held" }));
+    await patch(`<div id="vars-held"><template><span data-vars="${name}:33.5%"></span></template></div>`);
+    const holder = /** @type {Element} */ (document.getElementById("vars-held"));
+    holder.append(/** @type {HTMLTemplateElement} */ (holder.querySelector("template")).content);
+    const got = getComputedStyle(/** @type {Element} */ (holder.querySelector("span"))).getPropertyValue(name).trim();
+    holder.remove();
+    return got;
+  });
+  check("markup a patch brings in a <template> keeps its values when moved into the page", moved === "33.5%", moved);
   // A row rows() copies from a <template> gets the template row's values through the CSSOM too,
   // after a client navigation (the page's style block is from the first load and has none for it).
   await page.click('header a[href="/"]');

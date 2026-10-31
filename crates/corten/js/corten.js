@@ -692,10 +692,14 @@ function parse(html) {
  * attribute, so they are set through the CSSOM, which the policy does not govern, `!important`
  * as the block's rules are, so markup wins over the component's rules either way. Called once
  * the markup is in the document, before the browser paints it.
- * @param {Element} root
+ * @param {Element | DocumentFragment} root
  */
 function setVars(root) {
-  for (const el of [root, ...Array.from(root.querySelectorAll("[data-vars]"))]) {
+  const found = Array.from(root.querySelectorAll("[data-vars], template"));
+  for (const el of root instanceof Element ? [root, ...found] : found) {
+    // A template's markup gets its values too, so they move with it when a script puts its content
+    // in the page (`rows.append(rest.content)`).
+    if (el instanceof HTMLTemplateElement) setVars(el.content);
     const vars = el.getAttribute("data-vars");
     if (!vars || !(el instanceof HTMLElement || el instanceof SVGElement)) continue;
     for (const one of vars.split(";")) {
