@@ -197,12 +197,14 @@ pub(crate) fn zone_of(headers: &axum::http::HeaderMap) -> Option<&str> {
 }
 
 /// A zone name kept for the request without allocating: at most 64 bytes, as `zone_name` allows.
+#[cfg(feature = "zones")]
 #[derive(Clone, Copy)]
 pub(crate) struct ZoneName {
     len: u8,
     bytes: [u8; 64],
 }
 
+#[cfg(feature = "zones")]
 impl ZoneName {
     /// The zone in the request's cookie, if any.
     pub(crate) fn of(headers: &axum::http::HeaderMap) -> Option<Self> {

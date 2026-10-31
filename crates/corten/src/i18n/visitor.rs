@@ -5,7 +5,14 @@
 use std::time::SystemTime;
 
 #[cfg(feature = "zones")]
-pub use zones::{Visitor, ZoneScope};
+pub use zones::Visitor;
+#[cfg(feature = "zones")]
+pub(crate) use zones::{Scope, ZoneScope};
+
+/// Without the `zones` feature there is no zone to keep: `Option<Scope>` is always `None`, and
+/// takes no space in a stream.
+#[cfg(not(feature = "zones"))]
+pub(crate) enum Scope {}
 
 /// The offset a date with no zone of its own is written at: the request's zone's while Corten
 /// renders its answer, else UTC.
@@ -37,6 +44,7 @@ pub(super) fn unknown() -> bool {
 #[cfg(feature = "zones")]
 mod zones {
     use std::cell::RefCell;
+    use std::marker::PhantomData;
     use std::time::SystemTime;
 
     use super::super::Zone;
@@ -78,10 +86,31 @@ mod zones {
         }
     }
 
-    /// The zone of the answer being rendered on this thread.
-    enum Scope {
+    /// The zone an answer is written in: the name the browser reported, looked up in the tz
+    /// database at the first date written (a render with no date looks nothing up), and kept.
+    pub(crate) enum Scope {
+        Named(crate::client::ZoneName, crate::Signal),
         Known(Visitor, crate::Signal),
         Unknown,
+    }
+
+    impl Scope {
+        /// `name`: the zone the browser reported, if any. Writing a date in a known zone makes the
+        /// answer private (`signal`), as reading [`crate::ClientZone`] does.
+        pub(crate) fn of(name: Option<crate::client::ZoneName>, signal: &crate::Signal) -> Self {
+            match name {
+                Some(name) => Scope::Named(name, signal.clone()),
+                None => Scope::Unknown,
+            }
+        }
+
+        fn resolved(&mut self) -> &Self {
+            if let Scope::Named(name, signal) = self {
+                let zone = Visitor::named(name.as_str());
+                *self = if zone.is_known() { Scope::Known(zone, signal.clone()) } else { Scope::Unknown };
+            }
+            self
+        }
     }
 
     std::thread_local! {
@@ -89,19 +118,22 @@ mod zones {
     }
 
     /// While it lives, dates with no zone of their own are written in the request's zone; the one
-    /// before is put back when it drops (a render inside a render).
-    pub struct ZoneScope(Option<Scope>);
+    /// before is put back when it drops (a render inside a render). Not `Send`: it is entered
+    /// and left on one thread, never held across an `.await`.
+    pub(crate) struct ZoneScope(Option<Scope>, PhantomData<*const ()>);
 
     impl ZoneScope {
-        /// `name`: the zone the browser reported, if any. Writing a date in a known zone makes the
-        /// answer private (`signal`), as reading [`crate::ClientZone`] does.
-        pub(crate) fn enter(name: Option<&str>, signal: &crate::Signal) -> Self {
-            let zone = name.map(Visitor::named).filter(Visitor::is_known);
-            let scope = match zone {
-                Some(zone) => Scope::Known(zone, signal.clone()),
-                None => Scope::Unknown,
-            };
-            ZoneScope(SCOPE.with(|s| s.replace(Some(scope))))
+        pub(crate) fn enter(scope: Scope) -> Self {
+            ZoneScope(SCOPE.with(|s| s.replace(Some(scope))), PhantomData)
+        }
+
+        /// Leaves it, giving back its scope as it is now (the zone looked up, if a date was
+        /// written), for the next time (a stream's next poll).
+        pub(crate) fn leave(mut self) -> Scope {
+            let before = self.0.take();
+            let now = SCOPE.with(|s| s.replace(before));
+            std::mem::forget(self);
+            now.unwrap_or(Scope::Unknown)
         }
     }
 
@@ -113,7 +145,7 @@ mod zones {
     }
 
     pub(super) fn offset(at: SystemTime) -> i32 {
-        SCOPE.with(|s| match &*s.borrow() {
+        SCOPE.with(|s| match s.borrow_mut().as_mut().map(Scope::resolved) {
             Some(Scope::Known(zone, signal)) => {
                 signal.mark_personal();
                 zone.offset(at)
@@ -123,6 +155,6 @@ mod zones {
     }
 
     pub(super) fn unknown() -> bool {
-        SCOPE.with(|s| matches!(&*s.borrow(), Some(Scope::Unknown)))
+        SCOPE.with(|s| matches!(s.borrow_mut().as_mut().map(Scope::resolved), Some(Scope::Unknown)))
     }
 }

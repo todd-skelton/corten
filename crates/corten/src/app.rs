@@ -1481,10 +1481,16 @@ impl<S: Steps> Layer<S> {
         // A stream's fragments (a live part) are written in the visitor's zone, as its page was.
         #[cfg(feature = "zones")]
         let zone = self.shared.client_zone.then(|| crate::client::ZoneName::of(req.headers()));
-        #[cfg(not(feature = "zones"))]
-        let zone = None;
         let next = Next { steps: &self.steps, scope, route };
         let res = page::render_errors(&self.shared, req, next, deadline, &watch.0, api, mode).await;
+        // A `Public` answer's are written as for a visitor whose zone is not known, as it was.
+        #[cfg(feature = "zones")]
+        let zone = {
+            let shared = res.extensions().get::<crate::answer::SharedAnswer>().is_some();
+            zone.map(|name| crate::i18n::Scope::of(name.filter(|_| !shared), &watch.0))
+        };
+        #[cfg(not(feature = "zones"))]
+        let zone = None;
         let personal = watch.0.is_personal();
         (signal::follow(res, watch, zone), personal, mode)
     }

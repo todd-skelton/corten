@@ -313,7 +313,7 @@ impl Drop for Watch {
 ///
 /// `zone`: the visitor's (`zones` feature, [`crate::App::client_zone`]), which a stream's
 /// fragments (a live part, rendered as the stream is read) are written in, as the page was.
-pub(crate) fn follow(res: Response, watch: Watch, zone: Option<Option<crate::client::ZoneName>>) -> Response {
+pub(crate) fn follow(res: Response, watch: Watch, zone: Option<crate::i18n::Scope>) -> Response {
     if res.body().size_hint().exact().is_some() {
         watch.0.abort(Abort::Responded);
         return res;
@@ -325,9 +325,10 @@ pub(crate) fn follow(res: Response, watch: Watch, zone: Option<Option<crate::cli
 struct Followed {
     body: Body,
     watch: Watch,
-    /// With [`crate::App::client_zone`]: the zone the browser reported, if it has.
+    /// With [`crate::App::client_zone`]: the zone the stream's fragments are written in, kept
+    /// between polls once it has been looked up.
     #[cfg_attr(not(feature = "zones"), allow(dead_code))]
-    zone: Option<Option<crate::client::ZoneName>>,
+    zone: Option<crate::i18n::Scope>,
 }
 
 impl HttpBody for Followed {
@@ -337,10 +338,12 @@ impl HttpBody for Followed {
     fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, axum::Error>>> {
         // Inside this poll only: the fragments the stream renders as it is read.
         #[cfg(feature = "zones")]
-        let _zone = self
-            .zone
-            .map(|name| crate::i18n::ZoneScope::enter(name.as_ref().map(crate::client::ZoneName::as_str), &self.watch.0));
+        let entered = self.zone.take().map(crate::i18n::ZoneScope::enter);
         let polled = Pin::new(&mut self.body).poll_frame(cx);
+        #[cfg(feature = "zones")]
+        if let Some(entered) = entered {
+            self.zone = Some(entered.leave());
+        }
         if let Poll::Ready(None) = polled {
             self.watch.0.abort(Abort::Responded);
         }

@@ -96,6 +96,9 @@ pub trait Answer: IntoResponse {
     /// The route a feed is at names them, `#[route("/feed/levels", get = levels, rows = Level)]`, so
     /// a script handed its URL knows what rows it sends.
     type Rows;
+    /// The same for everyone ([`Public`]): its dates are written in UTC, not the visitor's zone.
+    #[doc(hidden)]
+    const SHARED: bool = false;
 }
 
 /// The rows ([`Answer::Rows`]) of an answer that is not a feed.
@@ -551,6 +554,7 @@ impl IntoResponse for JsonError {
 #[cfg(feature = "json")]
 impl<A: Answer> Answer for std::result::Result<A, JsonError> {
     const FORMAT: Format = A::FORMAT;
+    const SHARED: bool = A::SHARED;
     type Inputs = A::Inputs;
     type Rows = A::Rows;
 }
@@ -567,6 +571,7 @@ where
 
 impl<A: Answer> Answer for Result<A, Error> {
     const FORMAT: Format = A::FORMAT;
+    const SHARED: bool = A::SHARED;
     type Inputs = A::Inputs;
     type Rows = A::Rows;
 }
@@ -1282,6 +1287,7 @@ impl<A: Shareable> IntoResponse for Public<A> {
 
 impl<A: Answer + Shareable> Answer for Public<A> {
     const FORMAT: Format = A::FORMAT;
+    const SHARED: bool = true;
     type Inputs = AnonymousInputs;
     type Rows = A::Rows;
 }
@@ -1308,6 +1314,7 @@ impl<A: IntoResponse> IntoResponse for NoStore<A> {
 
 impl<A: Answer> Answer for NoStore<A> {
     const FORMAT: Format = A::FORMAT;
+    const SHARED: bool = A::SHARED;
     type Inputs = A::Inputs;
     type Rows = A::Rows;
 }
@@ -1751,6 +1758,11 @@ impl<T, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15> Holds<
 #[derive(Clone, Copy)]
 pub(crate) struct Answered;
 
+/// On the request and the response of a route whose answer is [`Public`] ([`Answer::SHARED`]):
+/// the same for everyone, so its dates are not written in the visitor's zone.
+#[derive(Clone, Copy)]
+pub(crate) struct SharedAnswer;
+
 /// A handler with its answer in its type: what `get = handler` builds.
 #[doc(hidden)]
 pub struct Endpoint<H, O> {
@@ -1781,6 +1793,10 @@ impl<F: Future<Output = Response> + Unpin, O: Answer> Future for Marked<F, O> {
             if matches!(O::FORMAT, Format::Json) && (res.status().is_client_error() || res.status().is_server_error()) {
                 res.extensions_mut().insert(Answered);
             }
+            // A constant too: only a `Public` route's.
+            if O::SHARED {
+                res.extensions_mut().insert(SharedAnswer);
+            }
             res
         })
     }
@@ -1797,7 +1813,10 @@ where
     type Future = Marked<H::Future, O>;
 
     #[inline]
-    fn call(self, req: Request, state: S) -> Self::Future {
+    fn call(self, mut req: Request, state: S) -> Self::Future {
+        if O::SHARED {
+            req.extensions_mut().insert(SharedAnswer);
+        }
         Marked { inner: self.handler.call(req, state), answer: PhantomData }
     }
 }

@@ -1134,8 +1134,9 @@ Corten is pre-1.0, so any minor version may change the API.
     `t.time` and `t.date_time` write in the zone the browser reported, with its daylight saving
     rules (jiff and its bundled tz database, so an image without `/usr/share/zoneinfo` has them),
     and the answer is private; a live part's fragments too. A value that names a day (a due date
-    kept as UTC midnight, a chart's axis) takes `.zone(Utc)`, or it reads a day early west of UTC;
-    a debug build warns when a page marked for shared caches writes a date in the visitor's zone.
+    kept as UTC midnight, a chart's axis) takes `.zone(Utc)`, or it reads a day early west of UTC.
+    A `Public` answer, the same for everyone, is written as for an unknown zone (UTC, `LocalTime`
+    written again in the browser) and stays shared; the route knows it when the crate compiles.
     No handler takes the zone and no component is given it, where an app added a tz crate, a `Zone` newtype, `Option<ClientZone>` on each handler that draws a date and
     a prop down to it. `.zone(..)` still chooses another; outside a request's render a date is in
     UTC. `req.zone()` is the zone (`corten::i18n::Visitor`, a `Zone`), for a picked date, UTC

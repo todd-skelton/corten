@@ -328,8 +328,9 @@ loads, so the form posts and pages after it carry it, and while Corten renders a
 answer, `t.date`, `t.time` and `t.date_time` write in that zone, with its daylight saving
 rules: no handler takes the zone and no component is given it. `.zone(..)` still chooses
 another (a store's own zone). A page that writes a date in the visitor's zone answers privately
-(`Cache-Control: private`); the layout around `<main>` is the same in every zone, so it does
-not make the runtime load the next page in full. `req.zone()` is the zone itself (a
+(`Cache-Control: private`), and the zone is not part of the page's key, so it does not make the
+runtime load the next page in full; a date the layout writes is drawn in `LocalTime` for that
+reason (a navigation keeps the layout's text from the first page). `req.zone()` is the zone itself (a
 `corten::i18n::Visitor`, a `Zone`), for turning a picked date into the instant it means there;
 `Option<ClientZone>` is its name. Both are UTC (`None`) on a browser's first page, before it
 has reported its zone, and without JavaScript; draw a date the first page shows in
@@ -340,9 +341,10 @@ fragments, rendered as the stream is read, are in the zone too. A value that nam
 than an instant (a release month, a chart's axis, a due date kept as UTC midnight) takes
 `.zone(Utc)`, or it reads a day early west of UTC. A script's `t.js().date(..)` writes UTC unless
 it is given an offset (`format(at, { offset })`, the browser's at that instant), and `to_string()`
-or `format!` in a handler is UTC: only Corten's render knows the zone. A page marked for shared
-caches (`Public`) that writes a date in the visitor's zone is sent private, and a debug build
-says so: write a shared page's dates `.zone(Utc)`. The zone rules are the bundled database's
+or `format!` in a handler is UTC: only Corten's render knows the zone, and a `req.screen`'s data
+takes `.zone(req.zone())` where it formats a date itself. A `Public` answer is the same for
+everyone, so it is written as for a visitor whose zone is not known (UTC, `req.zone()` too) and
+stays shared; its `LocalTime`s are written again in the browser. The zone rules are the bundled database's
 (`jiff-tzdb`), updated with `cargo update -p jiff-tzdb`.
 
 A time relative to now ("resets in 10 hours", "updated 3 min. ago") is `t.relative(at, now,

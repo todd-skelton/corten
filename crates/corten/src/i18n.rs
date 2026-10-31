@@ -334,6 +334,7 @@ mod display_digits;
 mod format;
 mod visitor;
 
+pub(crate) use visitor::Scope;
 #[cfg(feature = "zones")]
 pub use visitor::Visitor;
 #[cfg(feature = "zones")]

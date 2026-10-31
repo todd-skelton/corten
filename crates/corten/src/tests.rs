@@ -2875,6 +2875,25 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
                     }),
                 )
                 .route("/offset", get(move |req: Req| async move { req.zone().offset(at).to_string() }))
+                // Through Corten's handler check, which knows the answer is `Public`.
+                .route(
+                    "/public",
+                    crate::route::get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let when = t.date_time(at, DateStyle::Medium, TimeStyle::Short);
+                        let offset = req.zone().offset(at);
+                        let page = req.test_page_for(
+                            "Shared",
+                            html! {
+                                <p>{when}</p>
+                                <p>{if when.zone_unknown() { "unknown" } else { "known" }}</p>
+                                <p>{offset}</p>
+                            },
+                        );
+                        Public::new(std::time::Duration::from_secs(60), page)
+                    })
+                    .0,
+                )
                 .route(
                     "/live",
                     get(move |req: Req| async move {
@@ -2908,6 +2927,11 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
     }
     assert_eq!(get_with(zoned.clone(), "/offset", Some("corten-zone=America/Chicago")).await.1, "-18000");
     assert_eq!(get_with(zoned.clone(), "/offset", None).await.1, "0");
+    // A `Public` answer is the same for everyone: written as for a visitor whose zone is not
+    // known (UTC, its LocalTimes written again in the browser), and it stays shared.
+    let (cache, page) = get_with(zoned.clone(), "/public", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains(&format!("{utc}<p>unknown</p><p>0</p>")), "{page}");
+    assert!(cache.starts_with("public"), "{cache}");
     // A live part's fragments are written in the zone, as its page was.
     let (_, live) = get_with(zoned, "/live", Some("corten-zone=America/Chicago")).await;
     assert!(live.contains("10:04 AM GMT-5"), "{live}");

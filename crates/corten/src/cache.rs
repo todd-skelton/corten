@@ -224,14 +224,6 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     let named = res.extensions().get::<Named>().is_some();
     let headers = res.headers_mut();
     if seen.caller || (typed && seen.credentials && !named) {
-        // Marked shared, but made for this visitor: a caller read, or (`App::client_zone` with the
-        // `zones` feature) a date written in their zone, which a `Public` page does without
-        // asking for anything.
-        if typed && seen.caller && seen.dev {
-            tracing::warn!(
-                "corten: {path} is marked for shared caches, but it read who is asking or wrote a date in the visitor's time zone, so it was sent private, no-cache; write a shared page's dates .zone(Utc)"
-            );
-        }
         headers.insert(header::CACHE_CONTROL, PRIVATE);
         return;
     }

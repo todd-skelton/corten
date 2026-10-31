@@ -360,6 +360,8 @@ pub enum DateStyle {
 /// The month and year without the day, for [`t.date`](super) (`en`): a "Member since" line, a
 /// set's release month, a statement's period. Written as Intl writes `{ year, month }`, in the
 /// locale's order and with its month names (which some languages inflect differently here).
+/// A month kept as an instant at UTC midnight is written `.zone(Utc)`, or with
+/// [`crate::App::client_zone`] it reads a month early west of UTC on its first day.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MonthStyle {
     /// `Mar 2026`
@@ -370,7 +372,9 @@ pub enum MonthStyle {
 
 /// The month and day without the year, for [`t.date`](super) (`en`): a chart's axis, a week's row
 /// ("Week of Mar 2"), a timeline whose year the page says once. Written as Intl writes
-/// `{ month, day }`, in the locale's order and with its month names (`2 mars` in `fr`).
+/// `{ month, day }`, in the locale's order and with its month names (`2 mars` in `fr`). A day
+/// kept as an instant at UTC midnight is written `.zone(Utc)`, or with
+/// [`crate::App::client_zone`] it reads a day early west of UTC.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DayStyle {
     /// `Mar 2`

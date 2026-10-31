@@ -701,6 +701,9 @@ pub struct Req {
     /// The zone the browser reported, with [`crate::App::client_zone`].
     #[cfg(feature = "zones")]
     zone: Option<crate::client::ZoneName>,
+    /// A [`crate::Public`] answer's request: no zone, whatever the browser reported.
+    #[cfg(feature = "zones")]
+    for_everyone: bool,
     shared: Arc<Shared>,
     signal: crate::Signal,
 }
@@ -716,13 +719,19 @@ impl<St: Send + Sync> FromRequestParts<St> for Req {
 
 impl Req {
     pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, uri: &Uri, shared: Arc<Shared>) -> Self {
+        #[cfg(feature = "zones")]
+        let for_everyone = extensions.get::<crate::answer::SharedAnswer>().is_some();
         Req {
             mode: mode_of(headers),
             nonce: extensions.get::<NonceSlot>().cloned(),
             uri: uri.clone(),
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
+            // A `Public` answer is the same for everyone: written as for a visitor whose zone is
+            // not known yet.
             #[cfg(feature = "zones")]
-            zone: if shared.client_zone { crate::client::ZoneName::of(headers) } else { None },
+            zone: if shared.client_zone && !for_everyone { crate::client::ZoneName::of(headers) } else { None },
+            #[cfg(feature = "zones")]
+            for_everyone,
             shared,
             signal: extensions.get::<crate::Signal>().cloned().unwrap_or_default(),
         }
@@ -760,7 +769,9 @@ impl Req {
     /// UTC until the browser has reported it (its first page) and for a name the tz database
     /// lacks. A page needs it for nothing else: while Corten renders the answer, `t.date`,
     /// `t.time` and `t.date_time` write in it unless `.zone(..)` chooses another. A known zone
-    /// makes the answer private.
+    /// makes the answer private. For a [`crate::Public`] answer, which is the same for everyone,
+    /// it is UTC and dates are written in UTC (corten-ui's `LocalTime` writes one again in the
+    /// browser's zone).
     #[cfg(feature = "zones")]
     pub fn zone(&self) -> crate::i18n::Visitor {
         let Some(name) = self.zone.as_ref().map(crate::client::ZoneName::as_str) else {
@@ -769,6 +780,8 @@ impl Req {
                 tracing::warn!(
                     "corten: req.zone() is UTC: the app does not learn its visitors' time zones; add App::client_zone()"
                 );
+            } else if self.for_everyone {
+                tracing::warn!("corten: req.zone() is UTC in a Public answer, which is the same for everyone");
             }
             return crate::i18n::Visitor::default();
         };
@@ -782,9 +795,7 @@ impl Req {
     /// While Corten renders this request's answer: dates in the visitor's zone.
     #[cfg(feature = "zones")]
     fn zone_scope(&self) -> Option<crate::i18n::ZoneScope> {
-        self.shared
-            .client_zone
-            .then(|| crate::i18n::ZoneScope::enter(self.zone.as_ref().map(crate::client::ZoneName::as_str), &self.signal))
+        self.shared.client_zone.then(|| crate::i18n::ZoneScope::enter(crate::i18n::Scope::of(self.zone, &self.signal)))
     }
 
     fn accept_language(&self) -> Option<&str> {
