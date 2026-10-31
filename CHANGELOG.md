@@ -1132,7 +1132,7 @@ Corten is pre-1.0, so any minor version may change the API.
 150. `Signal::task()`: a task's signal and its `Shutdown` handle, whose `begin()` aborts the signal
     with `Abort::Shutdown` as `serve` does, so a test of an app's task covers its shutdown path (a
     job released, a loop that returns at once) on a paused clock; a request's signal still cannot
-    be aborted by the app. Nothing a request does changes
+    be aborted by the app (a `compile_fail` doctest). Nothing a request does changes
     ([#489 A task's shutdown path cannot be tested: Signal::default never aborts and abort is crate-private, so the app wraps Signal in a trait of its own](https://github.com/todd-skelton/corten/issues/489)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -2515,8 +2515,13 @@ Corten is pre-1.0, so any minor version may change the API.
     with a 10 s timeout) stops its slow awaits at the signal, and Corten does not race the whole
     step, which would leave half a write. A new section, "A queue a request fills", has a worker's
     loop: the claim and lease are the app's SQL; the job's work, made once and pinned, races its
-    renewal (`Delay`) and the signal; a lost lease writes nothing; shutdown releases the claim; the
-    idle wait is a `sleep` and a `Notify`, not an interval. Corten has no job queue or worker type
+    renewal (bounded by a timeout, the next a period after it ended) and the signal, which is safe
+    because each of its writes is whole and a job can be done again; the work is dropped before the
+    claim is released; `finished` and the work's writes are fenced by the claim, so a lost lease
+    writes nothing; a retry's delay is the queue's (`run_after`), so a job that fails at once is not
+    claimed again at once; a claim error is logged and waited out; the idle wait is a `sleep` and
+    a `Notify`, not an interval. `App::task`'s example gives its refresh the signal and tests its
+    shutdown with `Signal::task`. Corten has no job queue or worker type
     and no `every` helper: the queue is the app's storage, and a helper that raced the step would
     drop work mid-write
     ([#488 A worker for jobs that requests queue builds its own leased claim, heartbeat, requeue, progress and retry on App::task, once per worker](https://github.com/todd-skelton/corten/issues/488)).

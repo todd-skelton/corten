@@ -45,7 +45,22 @@ use http_body::{Frame, SizeHint};
 use tokio::sync::Notify;
 
 /// Begins the shutdown of the task whose signal [`Signal::task`] made with it: what `serve` does
-/// on Ctrl-C or `SIGTERM`, for a test.
+/// to a task's signal on Ctrl-C or `SIGTERM`, for a test. It aborts that one signal; the app's
+/// own shutdown is [`crate::shutdown`].
+///
+/// Only a signal made with it can be aborted: a request's signal, or one a test has, cannot.
+///
+/// ```compile_fail,E0423
+/// fn stop(signal: corten::Signal) {
+///     corten::Shutdown(signal).begin();
+/// }
+/// ```
+///
+/// ```compile_fail,E0624
+/// fn stop(signal: corten::Signal) {
+///     signal.abort(corten::Abort::Shutdown);
+/// }
+/// ```
 pub struct Shutdown(Signal);
 
 impl Shutdown {
