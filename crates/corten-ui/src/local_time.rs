@@ -8,7 +8,8 @@ use corten::{i18n::When, prelude::*};
 /// there the server writes UTC, and its script (`local_time.js`) writes the same text again in the
 /// browser's zone, with the server's own format for the locale and style (so a later page, written
 /// by the server, reads the same). Only that first page loads the script. Without JavaScript the
-/// first page stays in UTC.
+/// first page stays in UTC. Without `App::client_zone` and the `zones` feature it is the date as
+/// written, on every page: Corten writes no zone, and the script never runs.
 ///
 /// Parts: the `time` element alone.
 ///

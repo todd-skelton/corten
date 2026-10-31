@@ -669,8 +669,8 @@ async function run(browser) {
   // script writes it again in the browser's; on the next page the server writes it in that zone.
   const kiwi = await (await browser.newContext({ timezoneId: "Pacific/Auckland" })).newPage();
   await kiwi.goto(`${base}/`);
-  const drafted = kiwi.locator("time").nth(2);
-  await kiwi.waitForFunction(() => document.querySelectorAll("time")[2]?.textContent?.includes("GMT+13"), null, { timeout: 5000 }).catch(() => {});
+  const drafted = kiwi.locator("p", { hasText: "Drafted" }).locator("time");
+  await kiwi.waitForFunction(() => document.cookie.includes("corten-zone=") && document.body.textContent?.includes("GMT+13"), null, { timeout: 5000 }).catch(() => {});
   const firstDrafted = await drafted.textContent();
   check("a first page's date is written again in the browser's zone", firstDrafted === "Mar 23, 2026, 4:04 AM GMT+13", firstDrafted);
   await kiwi.reload();
@@ -682,7 +682,8 @@ async function run(browser) {
   const plain = await (await browser.newContext({ javaScriptEnabled: false })).newPage();
   await plain.goto(`${base}/`);
   check("no script: the server's relative time is the text", (await plain.locator("time").first().textContent()) === "3 hr. ago");
-  check("no script: a first page's date is in UTC", (await plain.locator("time").nth(2).textContent()) === "Mar 22, 2026, 3:04 PM UTC", await plain.locator("time").nth(2).textContent());
+  const plainDrafted = plain.locator("p", { hasText: "Drafted" }).locator("time");
+  check("no script: a first page's date is in UTC", (await plainDrafted.textContent()) === "Mar 22, 2026, 3:04 PM UTC", await plainDrafted.textContent());
   check("no script: the select is the control", (await plain.locator("[data-scope=ui-combo-box] select").isVisible()) && (await plain.locator("[data-scope=ui-combo-box] input").isHidden()));
   await plain.locator("[data-scope=ui-combo-box] select").selectOption("lp");
   // The post loads a new page; waitForLoadState alone can return for the page it left.

@@ -1478,10 +1478,15 @@ impl<S: Steps> Layer<S> {
         let watch = Watch(Signal::for_app(self.shared.clone()));
         req.extensions_mut().insert(watch.0.clone());
         let mode = page::mode_of(req.headers());
+        // A stream's fragments (a live part) are written in the visitor's zone, as its page was.
+        #[cfg(feature = "zones")]
+        let zone = self.shared.client_zone.then(|| crate::client::ZoneName::of(req.headers()));
+        #[cfg(not(feature = "zones"))]
+        let zone = None;
         let next = Next { steps: &self.steps, scope, route };
         let res = page::render_errors(&self.shared, req, next, deadline, &watch.0, api, mode).await;
         let personal = watch.0.is_personal();
-        (signal::follow(res, watch), personal, mode)
+        (signal::follow(res, watch, zone), personal, mode)
     }
 }
 

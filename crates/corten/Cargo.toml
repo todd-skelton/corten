@@ -40,7 +40,9 @@ brotli = { version = "9", optional = true }
 flate2 = { version = "1", optional = true }
 zstd = { version = "0.14", default-features = false, optional = true }
 # The tz database, bundled so an image without /usr/share/zoneinfo has it too.
-jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bundle-always"], optional = true }
+# `tz-fat`: each zone's transitions written out for years ahead, so a lookup does not work them out
+# from its rule.
+jiff = { version = "0.2", default-features = false, features = ["std", "tz-fat", "tzdb-bundle-always"], optional = true }
 
 # corten-macros has no dependencies. Everything else is opt-in except `log`.
 [features]

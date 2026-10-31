@@ -1033,11 +1033,11 @@ impl When {
         Datetime(self.at)
     }
 
-    /// Its format for a script (`t.js().date(..)`'s), in the zone it is written in when that has
-    /// one offset: a script writes another instant, or this one in the browser's zone
-    /// (`format(at, offset)`), as the server writes it.
+    /// Its locale and style as a script's format (`t.js().date(..)`'s), in UTC: a script writes
+    /// an instant at the offset it gives (`format(at, { offset })`, the browser's at that instant),
+    /// as the server writes it. Not this date's zone, whose offset may differ at another instant.
     pub fn format(&self) -> DateFormat {
-        DateFormat { data: self.data, style: self.style, offset: if self.zoned { self.offset } else { 0 } }
+        DateFormat { data: self.data, style: self.style, offset: 0 }
     }
 
     /// Written in UTC only because the visitor's zone is not known yet: the app learns it

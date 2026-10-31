@@ -27,11 +27,11 @@
 /**
  * The function a format argument is.
  * @param {Spec} spec
- * @returns {(value: any, offset?: number) => string}
+ * @returns {(value: any, options?: { offset?: number }) => string}
  */
 export function formatter(spec) {
   if (spec.m) return plural(spec, /** @type {string} */ (spec.c), spec.m);
-  if (spec.f) return (at, offset) => date(spec, at, offset);
+  if (spec.f) return (at, options) => date(spec, at, options?.offset);
   if (spec.d !== undefined) {
     const d = spec.d;
     return (minor) => {

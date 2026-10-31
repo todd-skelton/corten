@@ -700,7 +700,7 @@ pub struct Req {
     accept_language: Option<HeaderValue>,
     /// The zone the browser reported, with [`crate::App::client_zone`].
     #[cfg(feature = "zones")]
-    zone: Option<Box<str>>,
+    zone: Option<crate::client::ZoneName>,
     shared: Arc<Shared>,
     signal: crate::Signal,
 }
@@ -722,7 +722,7 @@ impl Req {
             uri: uri.clone(),
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
             #[cfg(feature = "zones")]
-            zone: if shared.client_zone { crate::client::zone_of(headers).map(Box::from) } else { None },
+            zone: if shared.client_zone { crate::client::ZoneName::of(headers) } else { None },
             shared,
             signal: extensions.get::<crate::Signal>().cloned().unwrap_or_default(),
         }
@@ -763,7 +763,7 @@ impl Req {
     /// makes the answer private.
     #[cfg(feature = "zones")]
     pub fn zone(&self) -> crate::i18n::Visitor {
-        let Some(name) = &self.zone else {
+        let Some(name) = self.zone.as_ref().map(crate::client::ZoneName::as_str) else {
             #[cfg(debug_assertions)]
             if !self.shared.client_zone {
                 tracing::warn!(
@@ -782,7 +782,9 @@ impl Req {
     /// While Corten renders this request's answer: dates in the visitor's zone.
     #[cfg(feature = "zones")]
     fn zone_scope(&self) -> Option<crate::i18n::ZoneScope> {
-        self.shared.client_zone.then(|| crate::i18n::ZoneScope::enter(self.zone.as_deref(), &self.signal))
+        self.shared
+            .client_zone
+            .then(|| crate::i18n::ZoneScope::enter(self.zone.as_ref().map(crate::client::ZoneName::as_str), &self.signal))
     }
 
     fn accept_language(&self) -> Option<&str> {

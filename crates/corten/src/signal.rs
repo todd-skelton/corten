@@ -310,18 +310,24 @@ impl Drop for Watch {
 /// which are in memory) counts as sent, so the signal aborts with [`Abort::Responded`] now, without a
 /// wrapper. A stream takes `watch` along: [`Abort::Responded`] after its last frame, or
 /// [`Abort::Disconnected`] if it is dropped before (the client left).
-pub(crate) fn follow(res: Response, watch: Watch) -> Response {
+///
+/// `zone`: the visitor's (`zones` feature, [`crate::App::client_zone`]), which a stream's
+/// fragments (a live part, rendered as the stream is read) are written in, as the page was.
+pub(crate) fn follow(res: Response, watch: Watch, zone: Option<Option<crate::client::ZoneName>>) -> Response {
     if res.body().size_hint().exact().is_some() {
         watch.0.abort(Abort::Responded);
         return res;
     }
     let (parts, body) = res.into_parts();
-    Response::from_parts(parts, Body::new(Followed { body, watch }))
+    Response::from_parts(parts, Body::new(Followed { body, watch, zone }))
 }
 
 struct Followed {
     body: Body,
     watch: Watch,
+    /// With [`crate::App::client_zone`]: the zone the browser reported, if it has.
+    #[cfg_attr(not(feature = "zones"), allow(dead_code))]
+    zone: Option<Option<crate::client::ZoneName>>,
 }
 
 impl HttpBody for Followed {
@@ -329,6 +335,11 @@ impl HttpBody for Followed {
     type Error = axum::Error;
 
     fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, axum::Error>>> {
+        // Inside this poll only: the fragments the stream renders as it is read.
+        #[cfg(feature = "zones")]
+        let _zone = self
+            .zone
+            .map(|name| crate::i18n::ZoneScope::enter(name.as_ref().map(crate::client::ZoneName::as_str), &self.watch.0));
         let polled = Pin::new(&mut self.body).poll_frame(cx);
         if let Poll::Ready(None) = polled {
             self.watch.0.abort(Abort::Responded);
@@ -374,19 +385,19 @@ mod tests {
     async fn a_body_read_to_its_end_was_sent_and_one_dropped_early_was_not() {
         use http_body_util::BodyExt;
         let page = Signal::default();
-        drop(follow(Response::new(Body::from("hello")), Watch(page.clone())));
+        drop(follow(Response::new(Body::from("hello")), Watch(page.clone()), None));
         assert_eq!(page.reason(), Some(Abort::Responded), "a body in memory is the whole response");
 
         let sent = Signal::default();
         let stream = futures_util::stream::iter([Ok::<_, std::io::Error>(Bytes::from("a")), Ok(Bytes::from("b"))]);
-        let res = follow(Response::new(Body::from_stream(stream)), Watch(sent.clone()));
+        let res = follow(Response::new(Body::from_stream(stream)), Watch(sent.clone()), None);
         assert_eq!(sent.reason(), None, "a stream is running until its last frame");
         assert_eq!(res.into_body().collect().await.unwrap().to_bytes(), "ab");
         assert_eq!(sent.reason(), Some(Abort::Responded));
 
         let left = Signal::default();
         let stream = futures_util::stream::pending::<Result<Bytes, std::io::Error>>();
-        drop(follow(Response::new(Body::from_stream(stream)), Watch(left.clone())));
+        drop(follow(Response::new(Body::from_stream(stream)), Watch(left.clone()), None));
         assert_eq!(left.reason(), Some(Abort::Disconnected));
     }
 }

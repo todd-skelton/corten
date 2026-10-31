@@ -2874,7 +2874,18 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
                         )
                     }),
                 )
-                .route("/offset", get(move |req: Req| async move { req.zone().offset(at).to_string() })),
+                .route("/offset", get(move |req: Req| async move { req.zone().offset(at).to_string() }))
+                .route(
+                    "/live",
+                    get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        // Rendered as the stream is read, after the handler returned.
+                        crate::live(futures_util::StreamExt::map(futures_util::stream::iter([()]), move |()| {
+                            let when = t.date_time(at, DateStyle::Medium, TimeStyle::Short);
+                            crate::Fragment::new(format!(r#"<p id="n">{when}</p>"#))
+                        }))
+                    }),
+                ),
         )
     };
     let get_with = |router: Router, uri: &'static str, cookie: Option<&'static str>| async move {
@@ -2896,7 +2907,10 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
         assert!(page.contains(&format!("{utc}<p>unknown</p>{utc}")), "{cookie:?}: {page}");
     }
     assert_eq!(get_with(zoned.clone(), "/offset", Some("corten-zone=America/Chicago")).await.1, "-18000");
-    assert_eq!(get_with(zoned, "/offset", None).await.1, "0");
+    assert_eq!(get_with(zoned.clone(), "/offset", None).await.1, "0");
+    // A live part's fragments are written in the zone, as its page was.
+    let (_, live) = get_with(zoned, "/live", Some("corten-zone=America/Chicago")).await;
+    assert!(live.contains("10:04 AM GMT-5"), "{live}");
     // An app that does not learn zones writes UTC and knows it is meant to.
     let (_, page) = get_with(App::new(routes()).router(), "/", Some("corten-zone=America/Chicago")).await;
     assert!(page.contains(&format!("{utc}<p>known</p>{utc}")), "{page}");

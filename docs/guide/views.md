@@ -335,7 +335,15 @@ not make the runtime load the next page in full. `req.zone()` is the zone itself
 has reported its zone, and without JavaScript; draw a date the first page shows in
 `corten_ui::LocalTime`, whose script writes it again in the browser's zone there, in the
 server's own format, so it is right on the first page too. A date in an attribute
-(`title={..}`) has no element to write again and stays in UTC on that page.
+(`title={..}`) has no element to write again and stays in UTC on that page. A live part's
+fragments, rendered as the stream is read, are in the zone too. A value that names a day rather
+than an instant (a release month, a chart's axis, a due date kept as UTC midnight) takes
+`.zone(Utc)`, or it reads a day early west of UTC. A script's `t.js().date(..)` writes UTC unless
+it is given an offset (`format(at, { offset })`, the browser's at that instant), and `to_string()`
+or `format!` in a handler is UTC: only Corten's render knows the zone. A page marked for shared
+caches (`Public`) that writes a date in the visitor's zone is sent private, and a debug build
+says so: write a shared page's dates `.zone(Utc)`. The zone rules are the bundled database's
+(`jiff-tzdb`), updated with `cargo update -p jiff-tzdb`.
 
 A time relative to now ("resets in 10 hours", "updated 3 min. ago") is `t.relative(at, now,
 RelativeStyle::Long)` (or `Short`, `Narrow`): in the largest unit it has a whole one of, rounded

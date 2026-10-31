@@ -86,9 +86,11 @@ export function formatted(out, count, price, when, rate) {
   // @ts-expect-error A date's format takes a date, not an object.
   when({ at: 0 });
   // At another offset, in seconds east: the browser's at that instant.
-  out.title = when(Date.now(), -new Date().getTimezoneOffset() * 60);
+  out.title = when(Date.now(), { offset: -new Date().getTimezoneOffset() * 60 });
   // @ts-expect-error An offset is seconds east, not a zone's name.
-  when(Date.now(), "America/Chicago");
+  when(Date.now(), { offset: "America/Chicago" });
+  // @ts-expect-error Mapped directly, each date's index would be taken as its offset.
+  [Date.now()].map(when);
 }
 
 /** A view without key={..}, as #[component(view)] declares one: `fill` and its holes, no `key`. */

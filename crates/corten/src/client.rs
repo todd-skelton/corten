@@ -196,6 +196,28 @@ pub(crate) fn zone_of(headers: &axum::http::HeaderMap) -> Option<&str> {
     crate::security::cookie::get(headers, ZONE_COOKIE).filter(|name| zone_name(name))
 }
 
+/// A zone name kept for the request without allocating: at most 64 bytes, as `zone_name` allows.
+#[derive(Clone, Copy)]
+pub(crate) struct ZoneName {
+    len: u8,
+    bytes: [u8; 64],
+}
+
+impl ZoneName {
+    /// The zone in the request's cookie, if any.
+    pub(crate) fn of(headers: &axum::http::HeaderMap) -> Option<Self> {
+        let name = zone_of(headers)?;
+        let mut bytes = [0; 64];
+        bytes[..name.len()].copy_from_slice(name.as_bytes());
+        Some(ZoneName { len: name.len() as u8, bytes })
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        // Checked by `zone_name`: ASCII.
+        std::str::from_utf8(&self.bytes[..usize::from(self.len)]).unwrap_or("")
+    }
+}
+
 impl<S: Send + Sync> OptionalFromRequestParts<S> for ClientZone {
     type Rejection = Response;
 

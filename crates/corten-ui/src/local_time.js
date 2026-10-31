@@ -11,5 +11,5 @@
 export function connect(time, format) {
   const at = Date.parse(time.dateTime);
   if (Number.isNaN(at)) return;
-  time.textContent = format(at, -new Date(at).getTimezoneOffset() * 60);
+  time.textContent = format(at, { offset: -new Date(at).getTimezoneOffset() * 60 });
 }
