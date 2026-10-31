@@ -1969,7 +1969,10 @@ Corten is pre-1.0, so any minor version may change the API.
     comments: the macro removes them when the crate compiles and keeps every line where it was, so
     DevTools and stack traces still show the author's line numbers, and it still reads the JSDoc
     to check the calls. A licence comment (`/*! .. */`, `//! ..`, `@license`, `@preserve`) stays, as
-    does one the browser reads (`//# sourceMappingURL=`). Windows line endings read as Unix ones.
+    does one the browser reads (`//# sourceMappingURL=`). Every line ending stays as it was written
+    (`\r\n`, `\r`, `\n`, U+2028, U+2029), a comment's own included. Checked against esbuild: the
+    repo's 62 JS files, each with LF and with CRLF endings, minify to the same code with and
+    without their comments, and keep their line count.
     Measured on the 24 scripts it strips (corten-ui's, the examples' and the template's), brotli
     11 as Corten stores them: 30,779 to 15,855 bytes (-48.5%); gzip 9 36,371 to 18,651 (-48.7%).
     The item page (`bench/fullstack/bytes.mjs`, card-market images of main and this change): its

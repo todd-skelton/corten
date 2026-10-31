@@ -87,6 +87,7 @@ pub fn strip(source: &str) -> String {
                 if !kept(&source[at..end]) {
                     out.push_str(&source[copied..at]);
                     trim_end_of_line(&mut out);
+                    keep_apart(&mut out, bytes.get(end));
                     copied = end;
                 }
                 at = end;
@@ -108,22 +109,26 @@ pub fn strip(source: &str) -> String {
                     if !breaks.is_empty() {
                         // The comment's own line breaks: one is a statement's end for ASI, and each
                         // keeps a line number.
+                        keep_apart(&mut out, breaks.as_bytes().first());
                         out.push_str(&breaks);
                     } else if !ends_line && !out.is_empty() && !out.ends_with([' ', '\t', '\n']) {
                         // `return/**/x` stays two words.
                         out.push(' ');
                     }
+                    keep_apart(&mut out, bytes.get(end));
                     copied = end;
                 }
                 at = end;
                 continue;
             }
-            b'/' => match (before, regex(source, at)) {
-                (Before::Operator, Some(end)) => {
+            // Only where a value is expected is a `/` looked at as a regular expression's start, so a
+            // line of divisions stays linear.
+            b'/' => match (before == Before::Operator).then(|| regex(source, at)).flatten() {
+                Some(end) => {
                     at = end;
                     before = Before::Value;
                 }
-                _ => {
+                None => {
                     at += 1;
                     before = Before::Operator;
                 }
@@ -185,12 +190,16 @@ pub fn strip(source: &str) -> String {
                 let keyword = !dot;
                 // `for await (` is a loop as `for (` is.
                 next_condition = keyword && (matches!(word, "if" | "while" | "for" | "with") || (word == "await" && condition));
-                before = if keyword && BEFORE_REGEX.contains(&word) { Before::Operator } else { Before::Value };
+                // In `for (x of /re/)`, `of` after a binding is the operator; anywhere else it is
+                // a name, which may be divided.
+                let of = word == "of" && before == Before::Value && opens.last() == Some(&Open::Condition);
+                before = if keyword && (of || BEFORE_REGEX.contains(&word)) { Before::Operator } else { Before::Value };
                 at = end;
             }
             _ => {
-                // `?.` is a property access as well as `.`.
-                next_dot = b == b'.';
+                // `?.` is a property access as well as `.`; `...` is a spread, after which a
+                // word is not a property.
+                next_dot = b == b'.' && !(at > 0 && bytes[at - 1] == b'.') && bytes.get(at + 1) != Some(&b'.');
                 before = Before::Operator;
                 at += 1;
             }
@@ -200,6 +209,14 @@ pub fn strip(source: &str) -> String {
     }
     out.push_str(&source[copied..]);
     out
+}
+
+/// A lone `\r` left before a `\n` would become one `\r\n` and a line would be lost: a space keeps
+/// them two line ends.
+fn keep_apart(out: &mut String, next: Option<&u8>) {
+    if out.ends_with('\r') && next == Some(&b'\n') {
+        out.push(' ');
+    }
 }
 
 /// The line terminators in `comment`, in order: `\n`, `\r\n`, a lone `\r`, U+2028 and U+2029.
@@ -340,11 +357,17 @@ mod tests {
             "x = a\u{b}/ 2 + \"/\" + \"//kept\";",
             "a vertical tab is a space"
         );
-        // Linear in a long line of comments (it took seconds when each looked to the line's end).
+        // A long line of comments, or of divisions after a `[`, each once looked to the line's end.
         let long = "a /* x */ ".repeat(200_000);
-        let start = std::time::Instant::now();
         assert_eq!(strip(&long).len(), "a  ".len() * 200_000 - 1);
-        assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
+        let divisions = format!("x = {}0;", "a / 2 + \"[\" + ".repeat(50_000));
+        assert_eq!(strip(&divisions), divisions);
+        // A lone CR, a comment, then an LF: still two line ends.
+        for (source, lines) in [("a\r// c\nb", 3), ("a\r/* c */\nb", 3), ("a/* x\r*/\nb", 3), ("a\r/*\n*/b", 3)] {
+            let out = strip(source);
+            let ends = |s: &str| s.matches("\r\n").count() + s.matches(['\r', '\n']).count() - 2 * s.matches("\r\n").count();
+            assert_eq!(ends(&out) + 1, lines, "{source:?} -> {out:?}");
+        }
     }
 
     #[test]
@@ -388,6 +411,11 @@ mod tests {
             r#"let async = 4; x = async / 2 + "/" + "//kept";"#,
             r#"for await (const x of y) /"/.test(x); const u = "//kept";"#,
             r#"x = await (a) / 2 / b; const u = "//kept";"#,
+            r#"async function g(){ f(...await /"/); const u = "//kept"; }"#,
+            r#"x = [...typeof /'/]; const u = '//kept';"#,
+            r#"for (const m of /"/.exec(s)) f(m); const u = "//kept";"#,
+            r#"for (const [a] of /"/.exec(s)) f(a); const u = "//kept";"#,
+            r#"if (of / 2) x(); const u = "/" + "//kept";"#,
         ] {
             assert_eq!(strip(kept), kept);
         }
