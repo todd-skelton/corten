@@ -69,7 +69,10 @@ export function showAll(rows, rest, button) {
    module variables.
 8. A control that does nothing without the script renders `hidden`; an `on:connect` handler
    shows it.
-9. List the component in `App::components`.
+9. List the component in `App::components`. A part of it in a function of its own (a sheet, a
+   row, a field) takes its handlers with `#[component(js = Owner)]` (`js = path::to::Owner` from
+   another module): one script, the owner's; never a script of the part's own for a handler or
+   markup the owner draws and passes down only to reach `js`.
 10. A value the script computes that the server also draws is a second copy: draw it on the server
     only when a round trip is fast enough; otherwise keep the arithmetic in a `script!` module
     that imports nothing and test both sides against one table of cases (scripts guide, A value
@@ -85,7 +88,7 @@ export function showAll(rows, rest, button) {
 3. Rows a feed updates by id: `key={item.id}` on the cells, a `Map<string, HTMLTableCellElement>`
    parameter, `cells.get(row.id)`. Do not read `data-*` attributes for this.
 4. A value borrowed from one the view owns: compute it inside `html!` with `let`. A view lent
-   to a prop (`action={&html! { .. }}`) borrows what it uses, so read the same local in it and
+   to a prop or a call (`action={&html! { .. }}`, `{keep_query(&at, &html! { .. })}`) borrows what it uses, so read the same local in it and
    in the rest of the markup; do not rebind it with `as_ref()` first.
 5. Rows a write removes: `req.patch(html! { for id in &done { {Remove(RowId(id))} } })`
    (`corten::view::Remove`), with `#[derive(Id)] struct RowId<'a>(&'a str);` and
