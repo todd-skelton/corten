@@ -32,8 +32,10 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
    panels are in several files). Classes are in scope only in components; never write a plain
    `fn` that returns one of them (`Ok` would be `Result::Ok` there), and never `use` the
    hidden `__corten_css_*` module.
-5. Design tokens: `corten::style::tokens!("tokens.json")` gives custom properties, themes
-   (`[data-theme="dark"]`) and typed scales. Put `TOKENS` first in `App::components`.
+5. Design tokens: W3C Design Tokens files (DTCG 2025.10). `corten::style::tokens!("tokens/tokens.resolver.json")`
+   gives custom properties, each theme context's changes (`[data-theme="dark"]`) and typed
+   scales; breakpoints and utilities go under `$extensions."run.corten"`. Put `TOKENS` first in
+   `App::components`.
    A `var(--x)` without a fallback that no stylesheet on the same pages declares fails at
    startup, naming the file; a property a script sets takes a fallback, `var(--x, 0)`.
 6. `static/style.css` holds only element defaults, fonts and the layout. It is linked

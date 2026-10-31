@@ -215,22 +215,155 @@
 
 use std::cell::RefCell;
 
-/// A design-token file as CSS and Rust. See [the module](self) and `examples/card-market/tokens.json`.
+/// Design tokens as CSS and Rust, from W3C Design Tokens files (DTCG 2025.10). See [the module](self)
+/// and `examples/card-market/tokens/`.
 ///
-/// `tokens!("tokens.json")` (the path from the crate's root) reads:
+/// `tokens!("tokens/tokens.resolver.json")` (the path from the crate's root) reads a resolver
+/// document and the token files it names; `tokens!("tokens/base.tokens.json")` reads one token file,
+/// for tokens with no themes.
 ///
-/// - `scales`: named values, `{"space": {"1": "4px", "2": "8px"}, "color": {"ink": "#1d1b26"}}`.
-///   Each becomes custom properties (`--space-1`) and an enum (`Space::_1`, `Color::Ink`) with
-///   `var()` (`"var(--space-1)"`) and `value()`.
-/// - `themes` (optional): a selector and the values it overrides,
-///   `{"[data-theme=dark]": {"color": {"ink": "#eee"}}}`. A token that is not in its scale is a
-///   compile error. A theme's `"@media"` applies the same values to another selector under a
-///   media condition, so the system's dark mode needs no second copy of them:
-///   `"@media": {"(prefers-color-scheme: dark)": ":root:not([data-theme=light])"}` (dark when the
-///   system is dark and the page did not choose light).
-/// - `breakpoints` (optional): `{"sm": "40rem", "md": "48rem"}`, smallest first.
-/// - `utilities` (optional): classes for one property, from a scale
-///   (`{"gap": {"property": "gap", "scale": "space"}}`) or from their own values
+/// - Each top-level group's tokens are a scale (its `$root` is a custom property alone): `{"space": {"$type": "dimension", "1": {"$value": {"value":
+///   4, "unit": "px"}}}}` is the custom property `--space-1: 4px` and the enum `Space`
+///   (`Space::_1`), with `var()` (`"var(--space-1)"`) and `value()`. A nested group joins its
+///   names with `-` (`--color-brand-primary`, `Color::BrandPrimary`), and a name is written as
+///   CSS writes one (`Brand Primary` is `brand-primary`). A token at the top of the file is a
+///   custom property with no enum.
+/// - Values are written in CSS: colors in CSS Color 4 (an sRGB color whose `hex` agrees with its
+///   components is the hex), dimensions and durations with their unit, shadows, borders,
+///   transitions, cubic Béziers, font families and weights. A reference, `"{color.accent}"`, is
+///   `var(--color-accent)`; a JSON pointer into a value is the value it points at, following a
+///   token that is itself a reference to the one with a value (a chain of more than 256 is an
+///   error, so a file cannot make the compiler work without end). A gradient
+///   (no direction) and a typography token (several properties) have no one CSS value and are
+///   errors; a stroke style of dashes and caps is `dashed`, the Format module's fallback, as CSS
+///   sets no dash pattern.
+/// - A resolver's modifiers are the themes. A modifier's `default` context (required here) is the
+///   values on `:root`; each context's values apply under `[data-{modifier}="{context}"]` (the
+///   default's for the tokens the others change, so it applies inside one of them). A context
+///   that defines a token the defaults lack, or changes a token's type, does not compile:
+///
+/// ```compile_fail
+/// // `dark` adds `color.link`, which would have no value when the page chooses no theme.
+/// corten::style::tokens!("src/style/tokens/adds-a-token.resolver.json");
+/// ```
+///
+/// Contexts of two modifiers on one element follow in resolutionOrder, the later winning; a file
+/// whose rules would give, with two or more of them, other values than the resolver does not
+/// compile:
+///
+/// ```compile_fail
+/// // `roomy` sets `space.gap`, and `compact`'s and `normal`'s rules declare it `var(--space-1)`
+/// // again (it reads `space.1`, which `compact` changes), so with `roomy` and either one chosen
+/// // the gap would not be the 12px the resolver gives.
+/// corten::style::tokens!("src/style/tokens/two-modifiers.resolver.json");
+/// ```
+///
+/// ```compile_fail
+/// // `dark` makes `color.ink` a dimension, which `Color::Ink` and every `var(--color-ink)` are not.
+/// corten::style::tokens!("src/style/tokens/retypes-a-token.resolver.json");
+/// ```
+///
+/// So do a reference to a group (its root token is `{brand.ratio.$root}`), references that go
+/// round in a circle, two names that are one CSS name, breakpoints out
+/// of order, a modifier with no default, a token with no one CSS value and a media condition for
+/// the default context:
+///
+/// ```compile_fail
+/// // `{brand.ratio}` is a group; a reference names a token.
+/// corten::style::tokens!("src/style/tokens/reference-to-a-group.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // `space.a` is `space.b`'s value, which is `space.a`'s: neither has a value.
+/// corten::style::tokens!("src/style/tokens/circular-reference.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // `font-size` and `FONT-SIZE` are both `--color-font-size`.
+/// corten::style::tokens!("src/style/tokens/one-css-name.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // `md` after `lg`: its rules would come later and win at every width `lg` covers.
+/// corten::style::tokens!("src/style/tokens/breakpoints-out-of-order.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // `theme` has no default, so a page that chooses no theme would have no values.
+/// corten::style::tokens!("src/style/tokens/no-default.resolver.json");
+/// ```
+///
+/// ```compile_fail
+/// // A gradient token has no direction, which CSS needs.
+/// corten::style::tokens!("src/style/tokens/gradient.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // 300 pointers, each into the value before: past the 256 `tokens!` follows in a chain.
+/// corten::style::tokens!("src/style/tokens/long-pointer-chain.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // Each set names the next twice: 2^20 copies, past the 100,000 references, `$extends` and sets
+/// // `tokens!` follows in all.
+/// corten::style::tokens!("src/style/tokens/repeated-sets.resolver.json");
+/// ```
+///
+/// ```compile_fail
+/// // Two modifiers of 16 contexts: 17 x 17 combinations (each attribute absent or chosen), past
+/// // the 256 `tokens!` resolves to check their CSS.
+/// corten::style::tokens!("src/style/tokens/many-contexts.resolver.json");
+/// ```
+///
+/// ```compile_fail
+/// // Groups nested 131 deep: past the 128 levels of objects and arrays `tokens!` reads, so a
+/// // file cannot overflow the compiler's stack.
+/// corten::style::tokens!("src/style/tokens/too-deep.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // 1e400 is past any number CSS holds; a browser would clamp it to a value of its own.
+/// corten::style::tokens!("src/style/tokens/too-large.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // A resolver with nothing in its resolutionOrder has no tokens to give.
+/// corten::style::tokens!("src/style/tokens/empty-order.resolver.json");
+/// ```
+///
+/// ```compile_fail
+/// // A `$root` on the file itself has no group name to be its custom property's.
+/// corten::style::tokens!("src/style/tokens/top-level-root.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // A file is a path relative to the one naming it, not a URL or an absolute path.
+/// corten::style::tokens!("src/style/tokens/absolute-path.resolver.json");
+/// ```
+///
+/// ```compile_fail
+/// // `.2xl\:gap-1` is no CSS class without escapes: a breakpoint or utility starts with a letter.
+/// corten::style::tokens!("src/style/tokens/digit-breakpoint.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // A typography token is five CSS properties, and a custom property holds one value.
+/// corten::style::tokens!("src/style/tokens/typography.tokens.json");
+/// ```
+///
+/// ```compile_fail
+/// // `light` is the default, the values a page has when it chose no theme: no condition applies it.
+/// corten::style::tokens!("src/style/tokens/media-for-the-default.resolver.json");
+/// ```
+///
+/// Each fails for the reason given (a unit test reads the same files and checks the message).
+///
+/// Corten's own settings are under `$extensions`, key `"run.corten"`:
+///
+/// - On a token file's root group, `breakpoints` (`{"md": {"value": 48, "unit": "rem"}}`,
+///   wider than 0, smallest first) and `utilities`: classes for one property, from a top-level
+///   group of tokens named as the file writes it (`{"gap": {"property": "gap", "group": "space"}}`)
+///   or from their own values
 ///   (`{"direction": {"property": "flex-direction", "values": {"row": "row", "column": "column"}}}`).
 ///   Each value is a function of its own, `gap_2()` and `direction_row()` (`gap-2`,
 ///   `direction-row`), for `class={..}`. The utility's function takes a value chosen as the page
@@ -238,6 +371,9 @@ use std::cell::RefCell;
 ///   (`gap-2 md:gap-4`). Two that would have one name (a utility `border-b` and `border`'s value
 ///   `b`) are a compile error that names both. Inline `style=` attributes are blocked by the
 ///   content security policy; these are the typed way to set one value per use.
+/// - On a modifier, `media`: a context the page follows under a media condition when it chose
+///   none, `{"dark": "(prefers-color-scheme: dark)"}` (`:where(:root):not([data-theme])` in that
+///   condition), so the system's dark mode needs no second copy of the values.
 ///
 /// It defines `TOKENS: corten::Component` with the generated stylesheet; list it first in
 /// `App::components` so the components' rules come after it.
@@ -535,7 +671,7 @@ mod tests {
     use crate::prelude::*;
 
     mod theme {
-        crate::style::tokens!("src/style/tokens.json");
+        crate::style::tokens!("src/style/tokens/tokens.resolver.json");
     }
     use theme::{direction, direction_column, gap, gap_2, Direction, Responsive, Space};
 

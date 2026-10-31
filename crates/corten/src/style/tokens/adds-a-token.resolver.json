@@ -1,0 +1,12 @@
+{
+  "version": "2025.10",
+  "resolutionOrder": [
+    { "type": "set", "name": "base", "sources": [{ "$ref": "base.tokens.json" }] },
+    {
+      "type": "modifier",
+      "name": "theme",
+      "default": "light",
+      "contexts": { "light": [], "dark": [{ "color": { "link": { "$value": "{color.accent}" } } }] }
+    }
+  ]
+}

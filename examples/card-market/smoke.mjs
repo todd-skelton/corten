@@ -52,10 +52,25 @@ try {
     root.dataset.theme = "dark";
     const dark = ink();
     delete root.dataset.theme;
+    // A context on an element inside the page applies there, and a compact density's spacing too.
+    const panel = document.createElement("section");
+    panel.dataset.theme = "dark";
+    panel.dataset.density = "compact";
+    document.body.append(panel);
+    const inner = getComputedStyle(panel);
+    const scoped = [inner.getPropertyValue("--color-ink").trim(), inner.getPropertyValue("--space-4").trim()];
+    // A light part inside the dark panel is light again, controls included.
+    const nested = document.createElement("div");
+    nested.dataset.theme = "light";
+    panel.append(nested);
+    const deeper = getComputedStyle(nested);
+    scoped.push(deeper.getPropertyValue("--color-ink").trim(), deeper.colorScheme);
+    panel.remove();
     return {
       accent: getComputedStyle(root).getPropertyValue("--color-accent").trim(),
       price: css("[data-scope=listing-sort] tbody td:last-child").fontVariantNumeric,
       themes: [light, dark],
+      scoped,
     };
   });
   check("design tokens are custom properties", styles.accent === "#6b3fd4", styles.accent);
@@ -90,6 +105,35 @@ try {
     JSON.stringify({ wide: [wide.gap, wide.space], phone: [phone.gap, phone.space] }),
   );
   check("a theme overrides tokens", styles.themes[0] === "#1d1b26" && styles.themes[1] === "#ecebf2", styles.themes.join(" "));
+  check(
+    "a theme and a density set on an element apply inside it, and a light part inside a dark one is light",
+    styles.scoped.join(" ") === "#ecebf2 12px #1d1b26 light",
+    styles.scoped.join(" "),
+  );
+  // The system's dark mode applies when the page chose no theme, and a page's own choice wins.
+  await page.emulateMedia({ colorScheme: "dark" });
+  const system = await page.evaluate(() => {
+    const root = document.documentElement;
+    const ink = () => getComputedStyle(root).getPropertyValue("--color-ink").trim();
+    const scheme = () => getComputedStyle(root).colorScheme;
+    const chose = [ink(), scheme()];
+    // A light panel on the dark page: the default context declares its values, so it is light.
+    const panel = document.createElement("section");
+    panel.dataset.theme = "light";
+    document.body.append(panel);
+    const inner = [getComputedStyle(panel).getPropertyValue("--color-ink").trim(), getComputedStyle(panel).colorScheme];
+    panel.remove();
+    root.dataset.theme = "light";
+    const light = [ink(), scheme()];
+    delete root.dataset.theme;
+    return { chose, light, inner };
+  });
+  await page.emulateMedia({ colorScheme: null });
+  check(
+    "a dark system makes a page that chose no theme dark, and data-theme=light keeps the page or a panel in it light",
+    system.chose.join(" ") === "#ecebf2 light dark" && system.light.join(" ") === "#1d1b26 light" && system.inner.join(" ") === "#1d1b26 light",
+    JSON.stringify(system),
+  );
 
   const firstPrice = () => page.textContent("[data-scope=listing-sort] tbody tr:first-child td:last-child");
   const rowOrder = () => page.$$eval("[data-scope=listing-sort] tbody tr", (rows) => rows.map((r) => r.textContent).join("|"));

@@ -1,0 +1,34 @@
+{
+  "color": {
+    "ink": {
+      "$value": { "colorSpace": "srgb", "components": [0.9137, 0.9216, 0.9529], "hex": "#e9ebf3" }
+    },
+    "muted": {
+      "$value": { "colorSpace": "srgb", "components": [0.6039, 0.6275, 0.7059], "hex": "#9aa0b4" }
+    },
+    "line": {
+      "$value": { "colorSpace": "srgb", "components": [0.1647, 0.1804, 0.2314], "hex": "#2a2e3b" }
+    },
+    "bg": {
+      "$value": { "colorSpace": "srgb", "components": [0.0588, 0.0667, 0.0902], "hex": "#0f1117" }
+    },
+    "surface": {
+      "$value": { "colorSpace": "srgb", "components": [0.0902, 0.102, 0.1373], "hex": "#171a23" }
+    },
+    "accent": {
+      "$value": { "colorSpace": "srgb", "components": [0.4784, 0.6078, 1], "hex": "#7a9bff" }
+    },
+    "accent-ink": {
+      "$value": { "colorSpace": "srgb", "components": [0.0588, 0.0667, 0.0902], "hex": "#0f1117" }
+    },
+    "up": {
+      "$value": { "colorSpace": "srgb", "components": [0.2353, 0.8118, 0.5686], "hex": "#3ccf91" }
+    },
+    "down": {
+      "$value": { "colorSpace": "srgb", "components": [1, 0.5412, 0.3608], "hex": "#ff8a5c" }
+    },
+    "tint": {
+      "$value": { "colorSpace": "srgb", "components": [0.1137, 0.1373, 0.2], "hex": "#1d2333" }
+    }
+  }
+}

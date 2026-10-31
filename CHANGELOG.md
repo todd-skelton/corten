@@ -1636,6 +1636,35 @@ Corten is pre-1.0, so any minor version may change the API.
     `Route`, and `ReadAgainFrom<'a, R>` is now `ReadAgainFrom<R>`), so a component that is both part
     of the page and the patch builds the read in its body instead of failing with E0515 or E0597
     ([#440 ReadAgain::from borrows its route, so a component that is both part of the page and the patch cannot build the read in its body (E0515, E0597)](https://github.com/todd-skelton/corten/issues/440)).
+88. `tokens!` reads the W3C Design Tokens format, 2025.10, instead of a format of Corten's own:
+    token files with `$value`, `$type`, groups, `$root`, `$extends`, `{group.token}` references (a
+    reference is `var(--group-token)`) and JSON pointers (URI fragments, as RFC 6901 writes them;
+    one into a value is the value, an alias it reaches followed to the value), the Color
+    module's color spaces as CSS Color 4, and themes as a resolver document's modifiers
+    (`tokens!("tokens/tokens.resolver.json")`; a file with `resolutionOrder` is a resolver, whatever
+    its name, and each file it names is found from the file that names it), each context applying under `[data-{modifier}="{context}"]`
+    (the default with the default values of what the others change) and declaring again the
+    tokens that read one it changes, so a theme works on an element inside the page, a light panel
+    on a dark page included. Names are written as CSS writes them (`Brand Primary`
+    is `--brand-primary`, `BrandPrimary`), and a top-level token is a custom property with no enum.
+    Breakpoints, utilities (`"group"` where they said `"scale"`) and the media condition a
+    context follows go under `$extensions."run.corten"`. A context that defines a token the defaults
+    lack, or retypes one, does not compile (two `compile_fail` doctests); so do a circle of references, contexts of two modifiers whose CSS together differs from the resolver's answer, two names that are one
+    CSS name, breakpoints out of order or a breakpoint or utility whose name starts with a digit, a modifier with no default, and a gradient or typography token,
+    which have no one CSS value (a stroke style of dashes and caps is `dashed`, the Format module's
+    fallback). The JSON reader stays on `proc_macro` alone
+    and now reads arrays and numbers. Migration: move `scales` to typed groups (`"#1d1b26"` becomes
+    `{"colorSpace": "srgb", "components": [...], "hex": "#1d1b26"}`, `"4px"` becomes
+    `{"value": 4, "unit": "px"}`), each `themes` selector to a modifier context in a resolver, and
+    `"@media": {cond: selector}` to the modifier's `"media": {context: cond}`; the system-dark
+    selector is now `:where(:root):not([data-theme])` (the page chose no theme, with one attribute's
+    specificity so a later modifier's rule wins) rather than
+    `:root:not([data-theme="light"])`. The examples' generated CSS adds the default context's rule
+    (`[data-theme="light"]`, `[data-density="comfortable"]`) and otherwise differs only in that
+    selector, a 6-digit hex where one was written with 3, `0px` for a zero length token and no
+    space between layered shadows: card-market's tokens 1,946 to 2,163 bytes (473 to 487
+    brotli), the watchlist's 14,713 to 14,944 (1,752 to 1,760 brotli)
+    ([#394 tokens! reads a token format of our own instead of the W3C Design Tokens format (DTCG 2025.10)](https://github.com/todd-skelton/corten/issues/394)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

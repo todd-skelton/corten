@@ -1,11 +1,11 @@
-//! The design tokens (`tokens.json`) and the utility classes made from them. Pages are styled
+//! The design tokens (`tokens/`, W3C Design Tokens files) and the utility classes made from them. Pages are styled
 //! utility-first: `class={(display_flex(), gap_3())}` prints `display-flex gap-3`,
 //! and a class the file lacks, or a value outside its scale, does not compile. What utilities
 //! cannot say (element defaults, hover and focus) is in `static/style.css`. The `flex` utility is
 //! `flex-wrap` (`flex_wrap()`, `flex_nowrap()`, as Tailwind names them), so the `flex` property
 //! itself would need another name here.
 
-corten::style::tokens!("tokens.json");
+corten::style::tokens!("tokens/tokens.resolver.json");
 
 use corten::style::ClassList;
 
