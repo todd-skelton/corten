@@ -90,6 +90,8 @@ macro_rules! units {
         impl Var<$kind> {
             $(
                 #[doc = concat!("The value in `", stringify!($unit), "`.")]
+                // `rem` is the CSS unit, named as CSS writes it, not a remainder.
+                #[allow(clippy::should_implement_trait)]
                 pub fn $unit(self, value: f64) -> Declaration {
                     self.float(value, stringify!($unit))
                 }
