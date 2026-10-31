@@ -174,6 +174,16 @@ try {
   check("service worker is registered and active", registration === `${base}/service-worker.js`);
   const manifest = await page.evaluate(async () => (await fetch("/manifest.webmanifest")).json());
   check("manifest is installable (name, 192 and 512 icons)", manifest.name === "Card Market" && manifest.icons.some((i) => i.sizes === "512x512"));
+  // The browser reads every member the app sets (orientation, categories, a screenshot, a
+  // shortcut) without an error, and the images they name are served.
+  const manifestCdp = await context.newCDPSession(page);
+  const read = await manifestCdp.send("Page.getAppManifest");
+  check("the browser reads the manifest without errors", read.errors.length === 0, JSON.stringify(read.errors));
+  const images = [...manifest.screenshots.map((s) => s.src), ...manifest.shortcuts.flatMap((s) => s.icons.map((i) => i.src))];
+  const served = await page.evaluate(async (urls) => Promise.all(urls.map(async (u) => (await fetch(u)).status)), images);
+  check("the manifest's screenshot and shortcut icon are served", images.length === 2 && served.every((s) => s === 200), JSON.stringify(served));
+  check("a shortcut opens a page of the app", manifest.shortcuts[0]?.url === "/categories/cards", manifest.shortcuts[0]?.url);
+  await manifestCdp.detach();
 
   // Push: the app's worker script (Pwa::import_script) handles a push sent through DevTools.
   await context.grantPermissions(["notifications"], { origin: base });

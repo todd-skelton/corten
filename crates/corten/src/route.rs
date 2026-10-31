@@ -1489,13 +1489,16 @@ impl<R: Route + ?Sized> Href for R {
 }
 
 /// A link to a page of this app: a typed route, a place on one (`route.at(id)`), a [`Local`]
-/// return address, or a `#[derive(Href)]` enum whose variants all are. What
-/// [`crate::Req::redirect_with_notice`] takes, since a notice is for a page of the app's own; an
-/// `axum::http::Uri` or an [`Elsewhere`] is not one. Sealed: Corten and the derive implement it.
+/// return address, or a `#[derive(Href)]` enum whose variants all are. Taken where only a page of
+/// the app's own works: [`crate::Req::redirect_with_notice`] (a notice is shown by the app's page),
+/// and a web app manifest's `id` and shortcuts ([`crate::pwa::Manifest::id`],
+/// [`crate::pwa::Shortcut::new`]), which a browser drops when they are on another origin. An
+/// `axum::http::Uri`, a string or an [`Elsewhere`] is not one. Sealed: Corten and the derive
+/// implement it.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a page of this app",
     label = "not a typed route, `route.at(id)`, `Local` or `#[derive(Href)]` enum of those",
-    note = "a notice is shown by the app's own page; for another site use `req.redirect`"
+    note = "only a page of this app fits here: name it by its route (another site's URL is not one)"
 )]
 pub trait OnSite: Href + on_site::Sealed {}
 

@@ -11,7 +11,7 @@
 //! registers the worker (not under `corten dev`), caches the static files, and answers
 //! `/offline` with a plain offline page unless the app routes it. Icons, screenshots and the app's
 //! worker script are files of the static directory, named by the constants
-//! [`crate::assets::embed!`] makes, so a misspelled or removed file does not compile; an icon
+//! [`crate::assets::embed!`] makes, so a misspelled or removed file does not compile; an image
 //! served from another site is a `Uri`, as every URL outside the app is.
 //!
 //! What the worker does, and why:
