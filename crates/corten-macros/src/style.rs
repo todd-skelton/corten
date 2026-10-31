@@ -1,7 +1,4 @@
-//! Component stylesheets. `#[
-        assert!(error("@property --a { syntax: <number>; inherits: false; initial-value: 0 }").contains("syntax is a string"));
-        assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: 1. }").contains("is not a <number>"));
-        assert!(error("@property --a { syntax: '<number>'; inherits: false; initial-value: . }").contains("is not a <number>"));component(css)]` reads `{name}.css` next to the component, scopes
+//! Component stylesheets. `#[component(css)]` reads `{name}.css` next to the component, scopes
 //! every class in it to the component (`.title` becomes `.offer-list__title`), and gives the
 //! markup one constant per class, so `class={Title}` is checked and printed as static markup.
 //!
@@ -321,7 +318,12 @@ impl Scoper<'_> {
                         && matches!(value.as_bytes()[0], b'"' | b'\'')
                         && value.as_bytes()[value.len() - 1] == value.as_bytes()[0];
                     if !quoted {
-                        return Err(self.error(at, format!("@property --{name}: syntax is a string, syntax: \"{value}\"; the browser ignores it unquoted")));
+                        return Err(self.error(
+                            at,
+                            format!(
+                                "@property --{name}: syntax is a string, syntax: \"{value}\"; the browser ignores it unquoted"
+                            ),
+                        ));
                     }
                     syntax = Some(value[1..value.len() - 1].trim().to_string());
                 }
