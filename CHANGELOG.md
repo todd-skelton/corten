@@ -2377,7 +2377,7 @@ Corten is pre-1.0, so any minor version may change the API.
     still fails. One helper, `scripts/steady.mjs`, wraps each smoke's browser at launch. Test code
     only
     ([#497 Browser CI fails at random on net::ERR_NETWORK_CHANGED during a smoke navigation, blocking merges until a rerun](https://github.com/todd-skelton/corten/issues/497)).
-83. `req.redirect_with_notice` from a write on a plain `http://` origin that is not loopback (a LAN
+85. `req.redirect_with_notice` from a write on a plain `http://` origin that is not loopback (a LAN
     tool at `http://automation.lan:3001`) reaches its page: a browser refuses the `Secure`
     `__Host-corten-notice` cookie there, so the notice was dropped without a trace. Corten reads
     the write (an `Origin` of this host over `http://`, no `Sec-Fetch-Site`) and sets a plain
