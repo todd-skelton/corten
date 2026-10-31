@@ -3066,9 +3066,44 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
     // Its live part's fragments too, as the stream is read after the handler returned.
     let (cache, live) = get_with(zoned.clone(), "/public-live", Some("corten-zone=America/Chicago")).await;
     assert!(live.contains("3:04 PM UTC") && cache.starts_with("public"), "{cache}: {live}");
+    // A middleware that builds a response of its own around the answer (no extensions kept)
+    // cannot lose that it is `Public`: the request's signal holds it.
+    struct Rebuild;
+    impl crate::Middleware for Rebuild {
+        async fn call(&self, req: axum::extract::Request, next: impl crate::Next) -> Response {
+            let (parts, body) = next.run(req).await.into_parts();
+            let mut res = Response::new(body);
+            *res.status_mut() = parts.status;
+            *res.headers_mut() = parts.headers;
+            res
+        }
+    }
+    let rebuilt = App::new(routes()).client_zone().middleware(Rebuild).router();
+    for uri in ["/public", "/public-live"] {
+        let (cache, page) = get_with(rebuilt.clone(), uri, Some("corten-zone=America/Chicago")).await;
+        assert!(page.contains("3:04 PM UTC") && cache.starts_with("public"), "{uri}: {cache}: {page}");
+    }
     // A live part's fragments are written in the zone, as its page was.
     let (_, live) = get_with(zoned, "/live", Some("corten-zone=America/Chicago")).await;
     assert!(live.contains("10:04 AM GMT-5"), "{live}");
+    // A `Public` route's error page is not the same for everyone: written in the zone.
+    async fn dated_error(_: Failure, req: Req) -> HtmlResult {
+        let t: ZoneMsg = req.t();
+        let at = UNIX_EPOCH + Duration::from_secs(1_774_191_845);
+        req.test_page("Failed", html! { <p>{t.date_time(at, DateStyle::Medium, TimeStyle::Short)}</p> })
+    }
+    let failing = Routes::from(
+        Router::new().route(
+            "/public-fails",
+            crate::route::get(|| async {
+                Public::new(std::time::Duration::from_secs(60), Err::<&'static str, _>(Error::not_found()))
+            })
+            .0,
+        ),
+    );
+    let failing = App::new(failing).client_zone().error_page(dated_error, ()).router();
+    let (cache, page) = get_with(failing, "/public-fails", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains("10:04 AM GMT-5") && cache.contains("private"), "{cache}: {page}");
     // An app that does not learn zones writes UTC and knows it is meant to.
     let (_, page) = get_with(App::new(routes()).router(), "/", Some("corten-zone=America/Chicago")).await;
     assert!(page.contains(&format!("{utc}<p>known</p>{utc}")), "{page}");

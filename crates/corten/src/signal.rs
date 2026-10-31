@@ -111,6 +111,10 @@ struct Inner {
     /// known, its live part's fragments too.
     #[cfg(feature = "zones")]
     for_everyone: AtomicBool,
+    /// With [`crate::App::client_zone`]: the zone the browser reported, read from its cookie once
+    /// for the request, for its page and its live part's fragments alike.
+    #[cfg(feature = "zones")]
+    zone: Option<crate::client::ZoneName>,
     /// The page rendered the request's notice ([`crate::Req::notice`]), so a navigation's answer
     /// does not send it to the runtime as well.
     notice_drawn: AtomicBool,
@@ -126,6 +130,13 @@ impl Signal {
     /// A request's signal in an app.
     pub(crate) fn for_app(shared: Arc<crate::page::Shared>) -> Signal {
         Signal(Arc::new(Inner { shared: Some(shared), ..Inner::default() }))
+    }
+
+    /// A request's signal in an app that learns its visitors' zones, with the one the browser
+    /// reported.
+    #[cfg(feature = "zones")]
+    pub(crate) fn for_app_in(shared: Arc<crate::page::Shared>, zone: Option<crate::client::ZoneName>) -> Signal {
+        Signal(Arc::new(Inner { shared: Some(shared), zone, ..Inner::default() }))
     }
 
     /// A task's signal and the handle that begins its shutdown, for a test of an app's task: the
@@ -338,6 +349,13 @@ impl Signal {
         self.0.for_everyone.load(Ordering::Relaxed)
     }
 
+    /// The zone the request's answer is written in: the browser's, but none for a `Public`
+    /// answer, the same for everyone (its error page, which is not, has it).
+    #[cfg(feature = "zones")]
+    pub(crate) fn zone(&self) -> Option<crate::client::ZoneName> {
+        self.0.zone.filter(|_| !self.is_for_everyone() || self.is_error_page())
+    }
+
     /// The page drew the request's notice.
     pub(crate) fn mark_notice_drawn(&self) {
         self.0.notice_drawn.store(true, Ordering::Relaxed);
@@ -409,11 +427,17 @@ impl Drop for Watch {
 ///
 /// `zone`: the visitor's (`zones` feature, [`crate::App::client_zone`]), which a stream's
 /// fragments (a live part, rendered as the stream is read) are written in, as the page was.
-pub(crate) fn follow(res: Response, watch: Watch, zone: Option<crate::i18n::Scope>) -> Response {
+/// `zoned`: the app learns its visitors' zones ([`crate::App::client_zone`]), so a stream's
+/// fragments are written in the request's.
+pub(crate) fn follow(res: Response, watch: Watch, #[cfg_attr(not(feature = "zones"), allow(unused))] zoned: bool) -> Response {
     if res.body().size_hint().exact().is_some() {
         watch.0.abort(Abort::Responded);
         return res;
     }
+    #[cfg(feature = "zones")]
+    let zone = zoned.then(|| crate::i18n::Scope::of(watch.0.zone(), &watch.0));
+    #[cfg(not(feature = "zones"))]
+    let zone = None;
     let (parts, body) = res.into_parts();
     Response::from_parts(parts, Body::new(Followed { body, watch, zone }))
 }
@@ -484,19 +508,19 @@ mod tests {
     async fn a_body_read_to_its_end_was_sent_and_one_dropped_early_was_not() {
         use http_body_util::BodyExt;
         let page = Signal::default();
-        drop(follow(Response::new(Body::from("hello")), Watch(page.clone()), None));
+        drop(follow(Response::new(Body::from("hello")), Watch(page.clone()), false));
         assert_eq!(page.reason(), Some(Abort::Responded), "a body in memory is the whole response");
 
         let sent = Signal::default();
         let stream = futures_util::stream::iter([Ok::<_, std::io::Error>(Bytes::from("a")), Ok(Bytes::from("b"))]);
-        let res = follow(Response::new(Body::from_stream(stream)), Watch(sent.clone()), None);
+        let res = follow(Response::new(Body::from_stream(stream)), Watch(sent.clone()), false);
         assert_eq!(sent.reason(), None, "a stream is running until its last frame");
         assert_eq!(res.into_body().collect().await.unwrap().to_bytes(), "ab");
         assert_eq!(sent.reason(), Some(Abort::Responded));
 
         let left = Signal::default();
         let stream = futures_util::stream::pending::<Result<Bytes, std::io::Error>>();
-        drop(follow(Response::new(Body::from_stream(stream)), Watch(left.clone()), None));
+        drop(follow(Response::new(Body::from_stream(stream)), Watch(left.clone()), false));
         assert_eq!(left.reason(), Some(Abort::Disconnected));
     }
 }

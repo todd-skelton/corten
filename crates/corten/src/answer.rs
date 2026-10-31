@@ -1306,7 +1306,46 @@ impl<A: IntoResponse> IntoResponse for NoStore<A> {
     }
 }
 
-impl<A: Answer> Answer for NoStore<A> {
+/// Not around a [`Public`] answer, which is the same for everyone and kept by shared caches: an
+/// answer cannot be both, so it does not compile.
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+/// use std::time::Duration;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/", get = home)]
+///     pub struct Home;
+/// }
+///
+/// async fn home(req: Req) -> NoStore<Public<HtmlResult>> {
+///     let page = req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> });
+///     NoStore(Public::new(Duration::from_secs(60), page))
+/// }
+/// # fn main() { let _ = url::router(); }
+/// ```
+///
+/// Around any other answer it does:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/", get = home)]
+///     pub struct Home;
+/// }
+///
+/// async fn home(req: Req) -> NoStore<HtmlResult> {
+///     NoStore(req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> }))
+/// }
+/// # fn main() { let _ = url::router(); }
+/// ```
+impl<A: Answer> Answer for NoStore<A>
+where
+    A::Inputs: Unshared,
+{
     const FORMAT: Format = A::FORMAT;
     type Inputs = A::Inputs;
     type Rows = A::Rows;
@@ -1327,6 +1366,11 @@ pub struct AnyInputs;
 
 /// A handler may read only [`Anonymous`] inputs.
 pub struct AnonymousInputs;
+
+/// The inputs of an answer that is not shared ([`AnyInputs`]): what [`NoStore`] wraps.
+#[doc(hidden)]
+pub trait Unshared {}
+impl Unshared for AnyInputs {}
 
 /// An input that cannot tell who is asking: no cookie, no credential header, no `Caller`. A
 /// [`Public`] answer's handler takes only these. Implement it for an extractor of the app's own
