@@ -2,7 +2,7 @@
 //! rather than by searching the text. Standard library only.
 
 /// A JSON value. Numbers are kept as their text; the CLI reads none.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Null,
     Bool(bool),

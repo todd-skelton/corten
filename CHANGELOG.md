@@ -2173,7 +2173,7 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#552 Kit Badge and Alert have no success, warning or info tone, and every Alert is announced as role=alert](https://github.com/todd-skelton/corten/issues/552)).
 102. `corten ui init` in an app with a `tokens!` theme of its own keeps it: it writes `src/ui.rs`
     without the kit's tokens and names the tokens the components read, which the app declares, most
-    as references to its own, saying when a group of the theme has one of their names (`radius`). A
+    as references to its own, saying when a group of the theme has one of their names (`radius`, whose `$root` declares it). A
     theme it cannot read is reported and nothing is written; `corten ui init --kit-theme` writes the
     kit's theme beside the app's instead. It finds the crate's one `App::new(..)` in any file (`src/app.rs`),
     declares `pub mod ui;` in the crate root (`src/lib.rs`, else `src/main.rs`) and leaves a page
