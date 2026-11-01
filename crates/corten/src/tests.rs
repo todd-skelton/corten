@@ -1507,6 +1507,7 @@ async fn a_redirect_outside_form_action_names_the_origin_and_a_sign_in_is_checke
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert!(body.contains("https://else.example") && body.contains("Policy::form_action"), "{body}");
     assert!(!body.contains("/x?y=1"), "the origin alone: {body}");
+    assert!(body.contains("send a Host in the test"), "no host is known: {body}");
     let (status, headers, body) = call_with(dev.clone(), "POST", "/cookie", None, Some("text/html")).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     let cookies: Vec<_> = headers.get_all("set-cookie").iter().collect();

@@ -2634,11 +2634,11 @@ Corten is pre-1.0, so any minor version may change the API.
     redirect after the write's own are not checked, and a release build compiles none of it.
     Measured with callgrind (in-process `oneshot`, a POST that redirects to a path, the
     difference between 1,200 and 200 requests over 1,000, median of three and the range of the
-    nine pairs, against main at f5c76a08, the branch at 6d146b8d; later commits change only what
-    runs for a redirect to another address and a report-only flag): release 26,956 instructions a
-    request on the branch (26,904 to 27,044) against 27,035 on main (26,944 to 27,072), the runs
-    varying more than the builds; debug 215,810 on the branch (215,661 to 215,861) against 189,171
-    on main (189,119 to 189,197), the headers kept for the check
+    nine pairs, against main at f5c76a08, the branch at 7befb95d; the commit after it changes
+    only how a redirect's address is read): release 27,035 instructions a request on the branch
+    (26,988 to 27,047) against 27,035 on main (26,944 to 27,072), none of the check compiled in;
+    debug 217,283 on the branch (217,087 to 217,376) against 189,171 on main (189,119 to
+    189,197), the headers kept for the check
     ([#527 A form's redirect to another origin that the app's form-action does not allow passes every test and is blocked in the browser](https://github.com/todd-skelton/corten/issues/527)).
 
 ### Documentation

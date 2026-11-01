@@ -1268,6 +1268,12 @@ impl FormTargets {
         self.sources.iter().any(|source| source_allows(&source.to_ascii_lowercase(), to.scheme.as_deref(), page, host, port))
     }
 
+    /// Whether the page's origin is not known (a test's request that names no host, in an app
+    /// with no `Policy::host`), so an address on the app's own origin cannot be told apart.
+    pub(crate) fn own_unknown(&self) -> bool {
+        self.own.is_none() && self.names.is_empty()
+    }
+
     /// The origin of `to`, an address with a host, as a `form-action` source names it.
     pub(crate) fn origin(&self, to: &[u8]) -> String {
         let to = std::str::from_utf8(to).ok().and_then(address);
@@ -1306,6 +1312,8 @@ pub(crate) fn is_address(to: &[u8]) -> bool {
 /// read one in an `http` address.
 #[cfg(debug_assertions)]
 fn address(to: &str) -> Option<Address> {
+    // A browser strips the spaces and control characters around an address.
+    let to = to.trim_matches(|c: char| c <= ' ');
     let slash = |c: char| c == '/' || c == '\\';
     let (scheme, rest) = match to.strip_prefix(slash).and_then(|rest| rest.strip_prefix(slash)) {
         Some(rest) => (None, rest),
@@ -1328,7 +1336,8 @@ fn address(to: &str) -> Option<Address> {
     let at = at.rsplit_once('@').map_or(at, |(_, at)| at).to_ascii_lowercase();
     let path = after.split(['?', '#']).next().unwrap_or("").replace('\\', "/");
     let path = if path.is_empty() { "/".to_owned() } else { path };
-    let bare = scheme.is_some() && !to.split_once(':').is_some_and(|(_, rest)| rest.starts_with(slash));
+    // Fewer than two slashes after the scheme: on a page of that scheme, a path.
+    let bare = scheme.is_some() && to.split_once(':').is_some_and(|(_, rest)| rest.chars().take_while(|&c| slash(c)).count() < 2);
     (!at.is_empty()).then_some(Address { scheme, at, path, bare })
 }
 
@@ -1754,6 +1763,11 @@ mod tests {
             // Without slashes, a scheme other than the page's names a host; the page's, a path.
             (&[], "http:evil.example/x", false),
             (&[], "https:done", true),
+            (&[], "https:/evil.example/x", true),
+            (&[], "https:\\evil.example/x", true),
+            (&[], "http:/evil.example/x", false),
+            // A browser strips the spaces around an address.
+            (&[], " https://evil.example/", false),
         ];
         for (sources, to, allowed) in cases {
             assert_eq!(targets(sources).allows(to.as_bytes()), *allowed, "{sources:?} {to}");

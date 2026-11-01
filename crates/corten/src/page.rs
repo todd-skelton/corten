@@ -1672,6 +1672,8 @@ impl Req {
     /// [`crate::App::new`] or to an area that the router picks for its path (the most specific,
     /// as axum picks it) has a `GET` handler. A return address the app does not serve (a page of
     /// another app of the product, or none) goes elsewhere; one it serves is `req.redirect(&to)`.
+    /// A form's write sent to another origin needs that origin in the form's page's `form-action`
+    /// ([`crate::security::Policy::form_action`]), or the browser stops it.
     /// A route that only takes writes, a path under an API and Corten's own paths are not served.
     /// It does not look at who is asking: a page an area's caller check refuses still counts, and
     /// a record that is not there is still a 404.
@@ -1783,8 +1785,13 @@ fn outside_form_action(check: &crate::security::FormCheck, to: &HeaderValue) -> 
     } else {
         "so a browser stops the form there"
     };
+    let own = if targets.own_unknown() {
+        "; if it is the app's own origin, send a Host in the test or name it with Policy::host"
+    } else {
+        ""
+    };
     Some(format!(
-        "corten: this write redirects to {origin}, which the form's page does not allow in its CSP's form-action, {stops} with only a console error: allow it with Policy::form_action(\"{origin}\") (Sources::form_action for an area), or redirect to a page of the app"
+        "corten: this write redirects to {origin}, which the form's page does not allow in its CSP's form-action, {stops} with only a console error: allow it with Policy::form_action(\"{origin}\") (Sources::form_action for an area), or redirect to a page of the app{own}"
     ))
 }
 
