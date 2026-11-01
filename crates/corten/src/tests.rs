@@ -1341,6 +1341,41 @@ async fn a_page_with_a_refresh_header_is_an_error_in_debug_builds() {
     assert_eq!(call(app(api, None), "GET", None).await.0, StatusCode::OK, "only pages are checked");
 }
 
+/// A value only the layout shows is read for a full load, not for an answer the runtime swaps in.
+#[tokio::test]
+async fn a_layout_value_is_read_only_when_the_layout_renders() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static READS: AtomicU32 = AtomicU32::new(0);
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            let count = if req.mode.swaps() { None } else { Some(READS.fetch_add(1, Ordering::Relaxed) + 7) };
+            req.page::<()>(html! {
+                <html>
+                    <head>
+                        <title>"Shop"</title>
+                        <Corten />
+                    </head>
+                    <body>
+                        <header>"Cart "{count.unwrap_or(0)}</header>
+                        <main>"Items"</main>
+                    </body>
+                </html>
+            })
+        }),
+    );
+    let (_, _, body) = call_with(app(routes.clone(), None), "GET", "/", None, Some("text/html")).await;
+    assert!(body.contains("Cart 7"), "{body}");
+    for mode in ["nav", "action"] {
+        let (_, _, body) = call_with(app(routes.clone(), None), "GET", "/", Some(mode), Some("text/html")).await;
+        assert!(!body.contains("Cart") && body.contains("Items"), "{mode}: {body}");
+    }
+    assert_eq!(READS.load(Ordering::Relaxed), 1, "read once, for the full load");
+    assert!(
+        [Mode::Navigation, Mode::Action].iter().all(|m| m.swaps()) && ![Mode::Document, Mode::Data].iter().any(|m| m.swaps())
+    );
+}
+
 fn request_in(mode: Option<&str>) -> Request<Body> {
     let req = Request::builder().uri("/").header("accept", "text/html");
     match mode {

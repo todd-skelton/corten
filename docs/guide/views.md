@@ -108,6 +108,57 @@ for caching it per request and for the page key. In the handler the lookup runs 
 routes that ask for it, and the type says which pages show a viewer. A page with more than one call site keeps the viewer in its own
 function's parameters (`fn alerts_page(req: &Req, viewer: Option<&Viewer>, ..)`), as watchlist does.
 
+A value only the layout shows and that needs a read of its own (a cart's count, an unread count)
+need not be read when the runtime swaps the answer in: `req.mode.swaps()` is true for a
+navigation and a `data-patch` action, whose answer the runtime puts into the page it has, keeping
+the header the full load drew. Read it in the function that builds the layout's props, so every page passes it
+the same way and a click between pages does not read it:
+
+```rust,ignore
+async fn cart_count(req: &Req, carts: &Carts, viewer: Option<&Viewer>) -> Option<u32> {
+    if req.mode.swaps() {
+        return None; // the runtime keeps the count the full load drew
+    }
+    Some(carts.count(viewer?).await)
+}
+```
+
+A full load, a reload and a page without JavaScript draw it in the HTML, with no second request
+and nothing that moves when it arrives. A data client (`Mode::Data`) still pays for the read,
+since `req.page` draws the whole document for it; only a handler that answers with `req.screen`
+alone, which renders just the title, may skip it there too.
+
+Since a navigation does not draw the header again, a write that changes the value draws it
+itself. The badge is a component the layout renders and a patch can carry (an `#[derive(Id)]`
+on it), and the write reads the value directly, not through the helper above (which skips the
+read for its `Mode::Action` answer), and only for the patch: without JavaScript the redirect's
+next page is a full load that reads it.
+
+```rust,ignore
+#[component]
+fn CartBadge(count: Option<u32>) -> impl Patch {
+    html! { <span id={CartBadgeId}>{count.unwrap_or(0)}</span> }
+}
+
+async fn add_to_cart(req: Req, carts: State<Carts>, viewer: Caller<Viewer>) -> HtmlResult {
+    carts.add(&viewer, ..).await?;
+    if req.mode == Mode::Action {
+        let count = carts.count(&viewer).await;
+        return req.patch(CartBadge { count: Some(count) });
+    }
+    req.redirect(&url::Cart)
+}
+```
+
+A `data-patch` write that answers only with a redirect leaves the old value: the runtime follows
+it as a navigation, which keeps the header (in a browser with the Navigation API; older ones load
+the next page in full). Answer such a write with the patch, as above, or leave `data-patch` off
+the form, so the browser submits it and loads the next page in full.
+
+Corten has no layout slot that fills itself: the layout is the app's component (design rule 10),
+so the value reaches it as a prop, and the read stays where the handler can see it, its failure
+included.
+
 A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
 `href`, `data-nav` and `aria-current="page"` when it is the page (`req.nav_section` for a link
 that stays current on the pages under it). The full load renders `aria-current`, and the runtime
