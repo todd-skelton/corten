@@ -1429,6 +1429,15 @@ mod tests {
         const KWD: Currency = Currency::new("KWD");
         assert_eq!((KWD.digits(), Currency::parse("kwd").map(|c| c.digits())), (3, Some(3)));
         assert_eq!(format!("{KWD:?}"), r#"Currency("KWD")"#);
+        // Hashed by its code alone, as when a currency was only its code.
+        let hash = |h: &dyn Fn(&mut std::collections::hash_map::DefaultHasher)| {
+            use std::hash::Hasher as _;
+            let mut state = std::collections::hash_map::DefaultHasher::new();
+            h(&mut state);
+            state.finish()
+        };
+        use std::hash::Hash as _;
+        assert_eq!(hash(&|s| KWD.hash(s)), hash(&|s| (*b"KWD").hash(s)));
 
         let secs = |s| parse_timestamp(s).map(super::format::unix_seconds_for_test);
         assert_eq!(secs("1970-01-01T00:00:00Z"), Some(0));

@@ -306,12 +306,39 @@ impl<T: Amount + ?Sized> Amount for &T {
 
 /// An ISO 4217 currency: `const USD: Currency = Currency::new("USD");`, or
 /// `Currency::parse(&order.currency)` for one an API sends.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy)]
 pub struct Currency {
     code: [u8; 3],
     /// The fraction digits it is shown with, looked up once when it is made rather than for each
-    /// amount written in it.
+    /// amount written in it. It follows from `code`, so a currency compares, orders and hashes by
+    /// its code alone.
     digits: u8,
+}
+
+impl PartialEq for Currency {
+    fn eq(&self, other: &Self) -> bool {
+        self.code == other.code
+    }
+}
+
+impl Eq for Currency {}
+
+impl PartialOrd for Currency {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Currency {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.code.cmp(&other.code)
+    }
+}
+
+impl std::hash::Hash for Currency {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.code.hash(state);
+    }
 }
 
 impl fmt::Debug for Currency {
