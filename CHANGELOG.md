@@ -2768,6 +2768,12 @@ Corten is pre-1.0, so any minor version may change the API.
     189,197), the headers kept for the check
     ([#527 A form's redirect to another origin that the app's form-action does not allow passes every test and is blocked in the browser](https://github.com/todd-skelton/corten/issues/527)).
 
+94. `corten new --corten-path` given a checkout's root (a workspace, not the corten crate) wrote
+    a dependency that does not build, and `corten ui add` could not find `corten-ui` beside it. A
+    root with `crates/corten` now means that crate, and a directory that is neither is refused
+    before anything is written
+    ([#560 corten new --corten-path takes the repository root and writes a corten dependency that does not build](https://github.com/todd-skelton/corten/issues/560)).
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

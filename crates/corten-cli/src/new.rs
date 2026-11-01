@@ -73,15 +73,43 @@ fn check_name(name: &str) -> Result<(), String> {
 }
 
 /// The app's `corten` dependency: the release this command was built with (the crates share one
-/// version), or a local checkout with `--corten-path`.
+/// version), or a local checkout with `--corten-path`: the corten crate, or a checkout's root,
+/// whose `crates/corten` it is. Anything else is refused before a file is written.
 fn dependency(path: Option<&str>) -> Result<String, String> {
     match path {
-        Some(path) => {
-            let path = std::fs::canonicalize(path).map_err(|e| format!("--corten-path {path}: {e}"))?;
+        Some(given) => {
+            let path = std::fs::canonicalize(given).map_err(|e| format!("--corten-path {given}: {e}"))?;
+            let is_corten = |dir: &Path| {
+                std::fs::read_to_string(dir.join("Cargo.toml")).is_ok_and(|toml| package_name(&toml).as_deref() == Some("corten"))
+            };
+            let path = if is_corten(&path) {
+                path
+            } else if is_corten(&path.join("crates").join("corten")) {
+                path.join("crates").join("corten")
+            } else {
+                return Err(format!(
+                    "--corten-path {given}: not the corten crate (its Cargo.toml names another package or none) nor a checkout with crates/corten"
+                ));
+            };
             Ok(format!("path = {:?}", path.to_string_lossy().trim_start_matches(r"\\?\")))
         }
         None => Ok(format!("version = {:?}", env!("CARGO_PKG_VERSION"))),
     }
+}
+
+/// The `name` in a manifest's `[package]` table, if it has one.
+fn package_name(toml: &str) -> Option<String> {
+    let mut in_package = false;
+    for line in toml.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_package = line == "[package]";
+        } else if let Some(value) =
+            line.strip_prefix("name").map(str::trim_start).and_then(|l| l.strip_prefix('=')).filter(|_| in_package)
+        {
+            return Some(value.split('#').next().unwrap_or("").trim().trim_matches('"').to_string());
+        }
+    }
+    None
 }
 
 fn crate_name(dir: &Path) -> Result<String, String> {
@@ -132,9 +160,13 @@ mod tests {
 
     #[test]
     fn corten_path_points_the_app_at_a_local_checkout() {
-        let here = std::fs::canonicalize(env!("CARGO_MANIFEST_DIR")).unwrap();
-        let written = dependency(Some(env!("CARGO_MANIFEST_DIR"))).unwrap();
-        assert_eq!(written, format!("path = {:?}", here.to_string_lossy().trim_start_matches(r"\\?\")));
+        let corten = std::fs::canonicalize(concat!(env!("CARGO_MANIFEST_DIR"), "/../corten")).unwrap();
+        let expected = format!("path = {:?}", corten.to_string_lossy().trim_start_matches(r"\\?\"));
+        assert_eq!(dependency(Some(concat!(env!("CARGO_MANIFEST_DIR"), "/../corten"))).unwrap(), expected);
+        // A checkout's root is a workspace: its crates/corten is the crate.
+        assert_eq!(dependency(Some(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))).unwrap(), expected);
+        let other = dependency(Some(env!("CARGO_MANIFEST_DIR"))).unwrap_err();
+        assert!(other.contains("not the corten crate"), "{other}");
         assert!(dependency(Some("no/such/dir")).unwrap_err().starts_with("--corten-path no/such/dir: "));
     }
 }
