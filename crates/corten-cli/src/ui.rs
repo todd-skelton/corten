@@ -11,20 +11,51 @@ struct Piece {
     summary: &'static str,
     owner: &'static str,
     files: &'static [(&'static str, &'static str)],
+    /// The corten-ui component it styles, which the app depends on and lists itself.
+    styles: Option<&'static str>,
 }
 
 macro_rules! piece {
     ($name:literal, $owner:literal, $summary:literal, [$($file:literal),+]) => {
-        Piece { name: $name, owner: $owner, summary: $summary, files: &[$(($file, include_str!(concat!("../kit/", $file)))),+] }
+        Piece { name: $name, owner: $owner, summary: $summary, files: &[$(($file, include_str!(concat!("../kit/", $file)))),+], styles: None }
+    };
+    ($name:literal, $owner:literal, $summary:literal, [$($file:literal),+], styles $widget:literal) => {
+        Piece { name: $name, owner: $owner, summary: $summary, files: &[$(($file, include_str!(concat!("../kit/", $file)))),+], styles: Some($widget) }
     };
 }
 
 const KIT: &[Piece] = &[
+    piece!("accordion", "Accordion", "sections that open one at a time, on <details name>", ["accordion.rs", "accordion.css"]),
     piece!("alert", "Alert", "a message the page calls out, neutral or destructive", ["alert.rs", "alert.css"]),
+    piece!("avatar", "Avatar", "a person's picture over their initials", ["avatar.rs", "avatar.css"]),
     piece!("badge", "Badge", "a short label: a status, a count, a tag", ["badge.rs", "badge.css"]),
+    piece!("breadcrumb", "Breadcrumb", "typed links to the pages above this one", ["breadcrumb.rs", "breadcrumb.css"]),
     piece!("button", "Button", "the look of a <button> or <a>, in six variants and four sizes", ["button.rs", "button.css"]),
     piece!("card", "Card", "a surface that groups content, with a header, content and footer", ["card.rs", "card.css"]),
+    piece!("checkbox", "Checkbox", "a checkbox and its label", ["checkbox.rs", "checkbox.css"]),
+    piece!("combobox", "Combobox", "the look of corten-ui's ComboBox: a filtered list under an input", ["combobox.rs", "combobox.css"], styles "ComboBox"),
+    piece!("dialog", "Dialog", "a modal <dialog>, opened by command=\"show-modal\" with no script", ["dialog.rs", "dialog.css"]),
+    piece!("dropdown_menu", "DropdownMenu", "the look of corten-ui's MenuButton", ["dropdown_menu.rs", "dropdown_menu.css"], styles "MenuButton"),
+    piece!("field", "Field", "a label, its control and a hint or the server's error", ["field.rs", "field.css"]),
     piece!("input", "Input", "the look of a text <input>, invalid state included", ["input.rs", "input.css"]),
+    piece!("pagination", "Pagination", "typed links to the pages of a list", ["pagination.rs", "pagination.css"]),
+    piece!("popover", "Popover", "content over the page beside its button, on popover", ["popover.rs", "popover.css"]),
+    piece!("radio_group", "RadioGroup", "a fieldset of radio buttons and their labels", ["radio_group.rs", "radio_group.css"]),
+    piece!(
+        "select",
+        "Select",
+        "the look of a <select>, its open list where base-select is supported",
+        ["select.rs", "select.css"]
+    ),
+    piece!("separator", "Separator", "a line between sections, across or upright", ["separator.rs", "separator.css"]),
+    piece!("sheet", "Sheet", "a <dialog> that slides in from an edge of the window", ["sheet.rs", "sheet.css"]),
+    piece!("skeleton", "Skeleton", "a placeholder's shape while a part loads", ["skeleton.rs", "skeleton.css"]),
+    piece!("slider", "Slider", "the look of an <input type=\"range\">", ["slider.rs", "slider.css"]),
+    piece!("switch", "Switch", "an on and off setting: a checkbox with role=\"switch\"", ["switch.rs", "switch.css"]),
+    piece!("table", "Table", "the look of a <table>, scrolling sideways when it is wide", ["table.rs", "table.css"]),
+    piece!("tabs", "Tabs", "the look of corten-ui's TabGroup: a segmented tab list", ["tabs.rs", "tabs.css"], styles "TabGroup"),
+    piece!("textarea", "Textarea", "the look of a <textarea>", ["textarea.rs", "textarea.css"]),
+    piece!("toasts", "Toasts", "the look and place of corten-ui's Toaster", ["toasts.rs", "toasts.css"], styles "Toaster"),
 ];
 
 /// What `init` writes, from the app's root.
@@ -199,6 +230,9 @@ fn add(root: &Path, args: &[String]) -> Result<(), String> {
             written.push(slash(&path));
         }
         println!("  added {}: {}", piece.name, written.join(", "));
+        if let Some(widget) = piece.styles {
+            println!("    it styles corten_ui::{widget}: the app depends on corten-ui and lists corten_ui::COMPONENTS");
+        }
         listed = listed.and_then(|m| list_in(&m, piece));
     }
     match listed {
@@ -333,8 +367,8 @@ mod tests {
         for piece in KIT {
             module = list_in(&module, piece).unwrap();
         }
-        assert!(module.contains("pub const COMPONENTS: &[Component] = &[\n    TOKENS,\n    alert::Alert,\n"), "{module}");
-        assert!(module.ends_with("    input::Input,\n];\n"), "{module}");
+        assert!(module.contains("pub const COMPONENTS: &[Component] = &[\n    TOKENS,\n    accordion::Accordion,\n"), "{module}");
+        assert!(module.ends_with("    toasts::Toasts,\n];\n"), "{module}");
     }
 
     #[test]

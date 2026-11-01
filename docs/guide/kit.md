@@ -59,16 +59,34 @@ use crate::ui::{button::*, card::*, input::*};
 </Card>
 ```
 
+Each component's keyframes start with its own name (`dialog-in`), as an `@page` name does, since
+they are the whole page's.
+
 | Component | Renders | Variants |
 |---|---|---|
 | `Button` | the look of the `<button>` or `<a>` inside it | `ButtonVariant`: `Primary`, `Secondary`, `Outline`, `Ghost`, `Destructive`, `Link`; `ButtonSize`: `Sm`, `Md`, `Lg`, `Icon` |
 | `Badge` | a `<span>` label | `BadgeVariant`: `Primary`, `Secondary`, `Outline`, `Destructive` |
 | `Card`, `CardHeader`, `CardContent`, `CardFooter` | a surface and its parts; the heading and description in the header are the app's (`<h2>` or `<h3>`, as the page's outline needs, then `<p>`) | |
-| `Input` | the look of the `<input>` inside it, with the destructive border once the user has edited an invalid value (`:user-invalid`) or the server marked it (`aria-invalid`, which `e.aria(field)` writes) | |
 | `Alert` | a `role="alert"` box, so a screen reader reads it when a patch brings it in | `AlertVariant`: `Neutral`, `Destructive` |
+| `Field` | a `<label>` around its text and the control, then a note: a hint in text, or the server's message for the field (`note={e.message(f.email)}`), drawn destructive | |
+| `Input`, `Textarea`, `Select`, `Slider` | the look of the `<input>`, `<textarea>`, `<select>` or `<input type="range">` inside it, with the destructive border once the user has edited an invalid value (`:user-invalid`) or the server marked it (`aria-invalid`, which `e.aria(field)` writes); `Select` styles the open list where the browser has `appearance: base-select` | |
+| `Checkbox`, `Switch` | a `<label>` with the `<input type="checkbox">` inside and its text after; a switch is `role="switch"` on the checkbox, so it posts as one | |
+| `RadioGroup`, `Radio` | a `<fieldset>` with its `<legend>`, and each `<input type="radio">` with its text | |
+| `Separator` | an `<hr>` | `Orientation`: `Horizontal`, `Vertical` |
+| `Skeleton` | a placeholder's shape, hidden from screen readers, still under `prefers-reduced-motion` | `SkeletonShape`: `Line`, `Block`, `Circle` |
+| `Table` | the look of the `<table>` inside it, scrolling sideways when it is wider than the page | |
+| `Breadcrumb` | a `<nav>` of typed links to the pages above (`Crumb { label, link: &url::Sets }`), then the page, `aria-current="page"` | |
+| `Pagination` | a `<nav>` of links to a list's pages, each from `link(n)`, a typed route; the first, the last and two each side of the current page, Previous and Next disabled at the ends | |
+| `Avatar` | a person's picture over their initials, which show while it loads and when there is none | |
+| `Dialog`, `DialogFooter` | the look of the `<dialog>` inside it, its `::backdrop` and its actions; a button opens it with `command="show-modal" commandfor={..}` and closes it with `command="close"`, with no script | |
+| `Sheet` | the same, sliding in from an edge of the window | `Side`: `Top`, `Right`, `Bottom`, `Left` |
+| `Popover` | the look of the `popover` inside it, opened by `popovertarget`, under its button where the browser has anchor positioning | |
+| `Accordion` | the look of the `<details name>` inside it, which open one at a time, and find-in-page opens the one with the match | |
+| `Tabs`, `DropdownMenu`, `Combobox`, `Toasts` | the look of corten-ui's `TabGroup`, `MenuButton`, `ComboBox` and `Toaster` inside them, by role and state (`[role="tab"][aria-selected="true"]`, `[role="menu"]:popover-open`, `[role="option"][data-highlighted]`); `Toasts` places the toaster at the bottom right. The app depends on `corten-ui` and lists `corten_ui::COMPONENTS`, which `corten ui add` says | |
 
 Variants are Rust enums matched to the stylesheet's classes, so a variant without a rule does
 not compile, and every prop is written where the component is used, as for any component
 ([views](views.md)). The classes are static text chosen by a `match`: a page pays for joining two
 or three of them, not for any lookup. No component has a script: each works without
-JavaScript and under the CSP, with no `style=`.
+JavaScript and under the CSP, with no `style=`, and the labels they show (Previous, Next, a
+legend) are the app's, in its language.

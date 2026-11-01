@@ -1258,15 +1258,22 @@ Corten is pre-1.0, so any minor version may change the API.
     listing the kit's components, and the page's colors in `static/style.css`, and lists
     `ui::COMPONENTS` on the `App`. `corten ui add <name>..` (or `--all`) copies a component into
     `src/ui/` with the kit version it came from, refusing to replace a file unless `--force`, and
-    lists it; `corten ui list` names them. The first five are `Button` (six variants, four
-    sizes), `Badge`, `Card` with its header, content and footer, `Input` and `Alert`: ordinary
+    lists it; `corten ui list` names them. The components are `Button` (six variants, four
+    sizes), `Badge`, `Card` with its header, content and footer, `Alert`, `Field`, `Input`,
+    `Textarea`, `Select`, `Slider`, `Checkbox`, `Switch`, `RadioGroup`, `Separator`, `Skeleton`,
+    `Table`, `Breadcrumb` and `Pagination` (typed route links), `Avatar`, `Dialog` and `Sheet`
+    (a `<dialog>` opened by `command="show-modal"`), `Popover`, `Accordion` (`<details name>`),
+    and `Tabs`, `DropdownMenu`, `Combobox` and `Toasts`, which style corten-ui's widgets: ordinary
     `#[component(css)]`s whose variants are enums matched to classes, so one without a rule does not
     compile (a `compile_fail` doctest in each), with no script and no `style=`. A component whose
     element takes the app's attributes (a button, a link, an input) styles the element written
     inside it, so `html!` checks those attributes as always. The `corten new` check now also runs
     `corten ui init`, `corten ui add --all` and `corten check` on the new app
     ([#404 corten ui init: no theme tokens a component kit can build on, and a shadcn theme cannot be brought over](https://github.com/todd-skelton/corten/issues/404),
-    [#405 corten ui add: no command copies a component's source into an app](https://github.com/todd-skelton/corten/issues/405)).
+    [#405 corten ui add: no command copies a component's source into an app](https://github.com/todd-skelton/corten/issues/405),
+    [#406 Kit components: styled plain elements and native controls](https://github.com/todd-skelton/corten/issues/406),
+    [#407 Kit components: Dialog, Sheet, Popover and Accordion on the platform's elements](https://github.com/todd-skelton/corten/issues/407),
+    [#408 Kit components: styled Tabs, Dropdown Menu, Combobox and Toast over corten-ui](https://github.com/todd-skelton/corten/issues/408)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

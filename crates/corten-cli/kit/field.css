@@ -1,0 +1,9 @@
+/* corten ui {{version}}: field */
+.field { display: grid; gap: .5rem; }
+.field > label { display: grid; gap: .5rem; }
+.label { font-size: .875rem; font-weight: 500; line-height: 1; }
+.note { font-size: .8125rem; color: var(--muted-foreground); }
+.note:empty { display: none; }
+.note > p { margin: 0; }
+/* The server's message for the field (e.message(..)). */
+.note > [id$="-error"] { color: var(--destructive); }

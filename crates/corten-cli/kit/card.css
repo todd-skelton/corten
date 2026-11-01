@@ -8,5 +8,5 @@
 .header { display: grid; gap: .375rem; padding-inline: 1.5rem; }
 .header > :is(h1, h2, h3, h4, h5, h6) { margin: 0; font-size: 1rem; font-weight: 600; line-height: 1.25; }
 .header > p { margin: 0; font-size: .875rem; color: var(--muted-foreground); }
-.content { padding-inline: 1.5rem; }
+.content { display: grid; gap: 1.25rem; padding-inline: 1.5rem; }
 .footer { display: flex; align-items: center; gap: .5rem; padding-inline: 1.5rem; }
