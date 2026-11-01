@@ -172,7 +172,9 @@ impl Policy {
     /// cross-origin post as CSRF), so posting here and redirecting is usually simpler. Writes
     /// coming in from another site are [`Policy::allow_origin`]. A debug build answers a write
     /// from one of the app's pages that redirects to an origin its page does not allow as an error
-    /// naming it, so a test sees what a browser would stop.
+    /// naming it, so a test sees what a browser would stop. A redirect after the write's own (the
+    /// page it goes to sending someone to sign in elsewhere) is held to the same policy by the
+    /// browser and is not checked.
     pub fn form_action(mut self, source: &str) -> Self {
         self.sources = self.sources.form_action(source);
         self
@@ -730,6 +732,9 @@ pub(crate) struct Applied {
     /// the policies it loaded with.
     areas: Vec<(&'static str, Csp, u64)>,
     api_csp: HeaderValue,
+    /// The `form-action` of each policy, for a debug build's check of a write's redirect.
+    #[cfg(debug_assertions)]
+    forms: Arc<FormPolicy>,
 }
 
 /// One CSP for pages, split around the nonce once, at startup, and the opener and referrer
@@ -840,7 +845,22 @@ impl Applied {
             })
             .collect();
         placed.sort_by_key(|(prefix, ..)| std::cmp::Reverse(prefix.len()));
-        Applied { policy, csp, areas: placed, api_csp: HeaderValue::from_static(API_CSP) }
+        #[cfg(debug_assertions)]
+        let forms = Arc::new(FormPolicy {
+            app: csp.form_action.clone(),
+            areas: placed.iter().map(|(prefix, csp, _)| (*prefix, csp.form_action.clone())).collect(),
+            whole: std::iter::once(&csp)
+                .chain(placed.iter().map(|(_, csp, _)| csp))
+                .all(|csp| csp.referrer.same == Part::Address),
+        });
+        Applied {
+            policy,
+            csp,
+            areas: placed,
+            api_csp: HeaderValue::from_static(API_CSP),
+            #[cfg(debug_assertions)]
+            forms,
+        }
     }
 
     /// The CSP of the pages at `path` and what it adds to their shell key: its innermost area's
@@ -852,70 +872,31 @@ impl Applied {
         self.areas.iter().find(|(prefix, ..)| crate::api::under(prefix, path)).map_or((&self.csp, 0), |(_, csp, key)| (csp, *key))
     }
 
-    /// What a debug build holds a redirect answering this request to, when it is a submission a
-    /// form on one of the app's pages may have sent ([`FormTargets`]). A `GET` form cannot be told
-    /// from a link, a script's own `fetch` is held to `connect-src`, and a form on another site's
-    /// page (an identity provider's `form_post`) is held to that page's policy, so none is checked.
-    /// The form's page is the `Referer` when it says the page; otherwise a browser's submission
-    /// may go wherever any of the app's policies allows, and one with neither header (a test) is
-    /// held to the policy at its path, `csp`.
+    /// What a debug build needs to hold a redirect answering this request to the `form-action`
+    /// of the form's page ([`FormCheck`]), when it is a submission: a `GET` form cannot be told
+    /// from a link, and a script's own `fetch` is held to `connect-src`. Only the request's
+    /// headers are kept; the page and its policy are worked out for a redirect to another address.
     #[cfg(debug_assertions)]
-    pub(crate) fn form_targets(
-        &self,
-        method: &Method,
-        uri: &axum::http::Uri,
-        csp: &Csp,
-        headers: &HeaderMap,
-    ) -> Option<FormTargets> {
+    pub(crate) fn form_check(&self, method: &Method, uri: &axum::http::Uri, headers: &HeaderMap) -> Option<FormCheck> {
         if matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) {
             return None;
         }
-        let bytes = |name: &str| headers.get(name).map(HeaderValue::as_bytes);
-        let text = |name: HeaderName| headers.get(name).and_then(|v| v.to_str().ok());
         // The runtime's `data-patch` submission is a `fetch` too, and is checked: the same form
         // without JavaScript is a submission the browser holds to `form-action`.
-        let scripted = bytes("sec-fetch-mode").is_some_and(|mode| mode != b"navigate");
+        let scripted = headers.get("sec-fetch-mode").is_some_and(|mode| mode.as_bytes() != b"navigate");
         let action = headers.get(crate::page::MODE_HEADER).is_some_and(|mode| mode.as_bytes() == b"action");
         if scripted && !action {
             return None;
         }
-        let host = text(header::HOST)
-            .or_else(|| uri.authority().map(|at| at.as_str()))
-            .map(|at| at.rsplit_once('@').map_or(at, |(_, at)| at).to_ascii_lowercase());
-        let origin = text(header::ORIGIN).filter(|origin| *origin != "null").and_then(address);
-        let ours = match bytes("sec-fetch-site") {
-            Some(site) => site == b"same-origin",
-            None => origin.as_ref().is_none_or(|origin| host.as_deref() == Some(origin.at.as_str())),
-        };
-        if !ours {
-            return None;
-        }
-        // The page's origin: `Origin`, which a browser sends with every submission and a proxy
-        // leaves as the visitor's, else the host the request names.
-        let own = match origin {
-            Some(origin) => Some(Own { scheme: origin.scheme, at: origin.at }),
-            None => host.map(|at| Own { scheme: None, at }),
-        };
-        let all = std::iter::once(&self.csp).chain(self.areas.iter().map(|(_, csp, _)| csp));
-        // A page under a referrer policy that sends only the origin to itself has a `Referer` of
-        // `/` wherever it is.
-        let whole = all.clone().all(|csp| csp.referrer.same == Part::Address);
-        let page = text(header::REFERER)
-            .and_then(address)
-            .filter(|page| own.as_ref().is_some_and(|own| own.is(page.scheme.as_deref(), &page.at)))
-            .map(|page| page.path)
-            .filter(|path| whole || path != "/");
-        let sources = match page {
-            Some(path) => self.csp_for(&path).0.form_action.clone(),
-            None if bytes("sec-fetch-site").is_some() || headers.contains_key(header::ORIGIN) => {
-                let mut sources: Vec<String> = all.flat_map(|csp| csp.form_action.iter().cloned()).collect();
-                sources.sort_unstable();
-                sources.dedup();
-                sources
-            }
-            None => csp.form_action.clone(),
-        };
-        Some(FormTargets { sources, own, action })
+        Some(FormCheck {
+            forms: self.forms.clone(),
+            uri: uri.clone(),
+            host: headers.get(header::HOST).cloned(),
+            origin: headers.get(header::ORIGIN).cloned(),
+            referer: headers.get(header::REFERER).cloned(),
+            site: headers.get("sec-fetch-site").cloned(),
+            action,
+        })
     }
 
     /// The 403 for a write another site sent, if this is one. `origins` are the extra origins
@@ -1108,18 +1089,96 @@ pub(crate) fn misdirected() -> Response {
     (StatusCode::MISDIRECTED_REQUEST, "Misdirected request.").into_response()
 }
 
+/// The `form-action` sources of the app's policy and of each area's that adds to it (innermost
+/// prefix first), and whether every policy sends a page's whole address to itself as `Referer`.
+#[cfg(debug_assertions)]
+pub(crate) struct FormPolicy {
+    app: Vec<String>,
+    areas: Vec<(&'static str, Vec<String>)>,
+    whole: bool,
+}
+
+#[cfg(debug_assertions)]
+impl FormPolicy {
+    fn at(&self, path: &str) -> &[String] {
+        self.areas.iter().find(|(prefix, _)| crate::api::under(prefix, path)).map_or(&self.app, |(_, sources)| sources)
+    }
+}
+
+/// A write a form may have sent, as [`Applied::form_check`] kept it.
+#[cfg(debug_assertions)]
+#[derive(Clone)]
+pub(crate) struct FormCheck {
+    forms: Arc<FormPolicy>,
+    uri: axum::http::Uri,
+    host: Option<HeaderValue>,
+    origin: Option<HeaderValue>,
+    referer: Option<HeaderValue>,
+    site: Option<HeaderValue>,
+    /// The runtime sent it (`data-patch`): the browser stops only the same form without
+    /// JavaScript.
+    pub(crate) action: bool,
+}
+
+#[cfg(debug_assertions)]
+impl FormCheck {
+    /// Where the form's page lets a submission go, when one of the app's pages sent it
+    /// (`Sec-Fetch-Site: same-origin`, or an `Origin` on its host, or neither header, as a test
+    /// sends); a form on another site's page (an identity provider's `form_post`) is held to that
+    /// page's policy, so `None`. The form's page is the `Referer` when it says the page;
+    /// otherwise a browser's submission may go wherever any of the app's policies allows, and one
+    /// with neither header (a test) is held to the policy at the path it posts to.
+    pub(crate) fn targets(&self) -> Option<FormTargets> {
+        fn text(value: &Option<HeaderValue>) -> Option<&str> {
+            value.as_ref().and_then(|v| v.to_str().ok())
+        }
+        let host = text(&self.host)
+            .or_else(|| self.uri.authority().map(|at| at.as_str()))
+            .map(|at| at.rsplit_once('@').map_or(at, |(_, at)| at).to_ascii_lowercase());
+        let origin = text(&self.origin).filter(|origin| *origin != "null").and_then(address);
+        let ours = match &self.site {
+            Some(site) => site.as_bytes() == b"same-origin",
+            None => origin.as_ref().is_none_or(|origin| host.as_deref() == Some(origin.at.as_str())),
+        };
+        if !ours {
+            return None;
+        }
+        // The page's origin: `Origin`, which a browser sends with every submission and a proxy
+        // leaves as the visitor's, else the host the request names.
+        let own = match origin {
+            Some(origin) => Some(Own { scheme: origin.scheme, at: origin.at }),
+            None => host.map(|at| Own { scheme: None, at }),
+        };
+        // A page under a referrer policy that sends only the origin to itself has a `Referer` of
+        // `/` wherever it is.
+        let page = text(&self.referer)
+            .and_then(address)
+            .filter(|page| own.as_ref().is_some_and(|own| own.is(page.scheme.as_deref(), &page.at)))
+            .map(|page| page.path)
+            .filter(|path| self.forms.whole || path != "/");
+        let sources = match page {
+            Some(path) => self.forms.at(&path).to_vec(),
+            None if self.site.is_some() || self.origin.is_some() => {
+                let all = std::iter::once(&self.forms.app).chain(self.forms.areas.iter().map(|(_, sources)| sources));
+                let mut sources: Vec<String> = all.flatten().cloned().collect();
+                sources.sort_unstable();
+                sources.dedup();
+                sources
+            }
+            None => self.forms.at(self.uri.path()).to_vec(),
+        };
+        Some(FormTargets { sources, own })
+    }
+}
+
 /// The origins a form on the page that sent a write may go to (`'self'` and its `form-action`
 /// sources), which Chromium and WebKit also hold the redirects the submission follows to: a debug
 /// build checks a write's redirect against them, so a test sees what the browser would stop.
 #[cfg(debug_assertions)]
-#[derive(Clone)]
 pub(crate) struct FormTargets {
     sources: Vec<String>,
     /// The page's origin, `'self'`.
     own: Option<Own>,
-    /// The runtime sent it (`data-patch`): the browser stops only the same form without
-    /// JavaScript.
-    pub(crate) action: bool,
 }
 
 /// An origin: its scheme when known, and its host and port, lowercase.
@@ -1170,6 +1229,19 @@ impl FormTargets {
         let (host, port) = split_port(&to.at);
         self.sources.iter().any(|source| source_allows(&source.to_ascii_lowercase(), to.scheme.as_deref(), page, host, port))
     }
+
+    /// The origin of `to`, an address with a host, as a `form-action` source names it.
+    pub(crate) fn origin(&self, to: &[u8]) -> String {
+        let to = std::str::from_utf8(to).ok().and_then(address);
+        let page = self.own.as_ref().and_then(|own| own.scheme.as_deref());
+        match to {
+            Some(to) => match to.scheme.as_deref().or(page) {
+                Some(scheme) => format!("{scheme}://{}", to.at),
+                None => format!("https://{}", to.at),
+            },
+            None => String::new(),
+        }
+    }
 }
 
 /// An address with a host, as a browser reads a `Location`.
@@ -1181,6 +1253,12 @@ struct Address {
     at: String,
     /// Its path, `/` when it has none.
     path: String,
+}
+
+/// Whether `to` (a `Location`) is an address with a host, which a form's page may not allow.
+#[cfg(debug_assertions)]
+pub(crate) fn is_address(to: &[u8]) -> bool {
+    std::str::from_utf8(to).ok().and_then(address).is_some()
 }
 
 /// `to` as an [`Address`], or `None` for a path, an address with no host (`mailto:`) or one
@@ -1587,7 +1665,6 @@ mod tests {
         let targets = |sources: &[&str]| FormTargets {
             sources: sources.iter().map(|s| s.to_string()).collect(),
             own: Some(Own { scheme: Some("https".into()), at: "app.example".into() }),
-            action: false,
         };
         let cases: &[(&[&str], &str, bool)] = &[
             (&[], "/done", true),

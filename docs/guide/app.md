@@ -1210,7 +1210,11 @@ request is held to the policy at the path it posts to. A `data-patch` form is ch
 the same form without JavaScript is stopped. Not checked: a `GET` (a link is not held to
 `form-action`), a script's own `fetch` (held to `connect-src`), a write another site's page
 sent, a `Relay` answer, and a release build, which sends the redirect as written and does no
-work for the check.
+work for the check. The browser holds every redirect the submission follows to the form's
+page's `form-action`, not only the write's own: a write that redirects to `/`, where a
+signed-out `Caller` is sent to sign in on another origin, is stopped too. A later redirect
+answers a `GET` the server cannot tell from a link, so it is not checked; allow those origins
+as well.
 
 Every page is sent with `Cross-Origin-Opener-Policy: same-origin`, so a window another site
 opened, or one this page opens on another site, cannot reach it. Two things loosen it, for the

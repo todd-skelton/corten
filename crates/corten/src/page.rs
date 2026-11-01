@@ -1741,8 +1741,8 @@ fn refresh_header_is_an_error(res: Response) -> Response {
 /// every test passes. A debug build answers it as an error that says so; a release build sends
 /// it as it is.
 #[cfg(debug_assertions)]
-fn redirect_outside_form_action(res: Response, targets: Option<&crate::security::FormTargets>) -> Response {
-    let Some(targets) = targets else { return res };
+fn redirect_outside_form_action(res: Response, check: Option<&crate::security::FormCheck>) -> Response {
+    let Some(check) = check else { return res };
     // A relayed answer is passed on as it came, under the policy it came with.
     if res.extensions().get::<crate::answer::Relayed>().is_some() {
         return res;
@@ -1752,24 +1752,33 @@ fn redirect_outside_form_action(res: Response, targets: Option<&crate::security:
         StatusCode::NO_CONTENT => res.headers().get(LOCATION_HEADER),
         _ => None,
     };
-    match to.and_then(|to| outside_form_action(targets, to)) {
-        Some(message) => Error::new(message).into_response(),
-        None => res,
+    let Some(message) = to.and_then(|to| outside_form_action(check, to)) else { return res };
+    // What the handler set besides the redirect (a session cookie, which the browser keeps even
+    // when it stops the redirect) goes out with the error page.
+    let (parts, _) = res.into_parts();
+    let mut error = Error::new(message).into_response();
+    let own: Vec<HeaderName> = error.headers().keys().cloned().collect();
+    for (name, value) in &parts.headers {
+        if name != header::LOCATION && name != LOCATION_HEADER && !own.contains(name) {
+            error.headers_mut().append(name, value.clone());
+        }
     }
+    error
 }
 
 /// What a debug build says of a write redirected to `to`, when the form's page does not allow it.
 #[cfg(debug_assertions)]
-fn outside_form_action(targets: &crate::security::FormTargets, to: &HeaderValue) -> Option<String> {
+fn outside_form_action(check: &crate::security::FormCheck, to: &HeaderValue) -> Option<String> {
+    // A path, the common case, is the page's own origin: nothing else is worked out.
+    if !crate::security::is_address(to.as_bytes()) {
+        return None;
+    }
+    let targets = check.targets()?;
     if targets.allows(to.as_bytes()) {
         return None;
     }
-    let to = String::from_utf8_lossy(to.as_bytes());
-    let origin = to.split_once("://").map_or(to.as_ref(), |(scheme, rest)| {
-        let end = rest.find(['/', '?', '#']).map_or(to.len(), |at| scheme.len() + 3 + at);
-        &to[..end]
-    });
-    let stops = if targets.action {
+    let origin = targets.origin(to.as_bytes());
+    let stops = if check.action {
         "so without JavaScript a browser stops the same form there"
     } else {
         "so a browser stops the form there"
@@ -1845,12 +1854,14 @@ pub(crate) async fn render_errors<S: crate::app::Steps>(
     // Taken now, while the request (its nonce, its credentials) is here; it allocates nothing.
     let asked = Asked::new(&req, shared.clone(), Credentials::of(req.headers()));
     #[cfg(debug_assertions)]
-    let targets = req.extensions().get::<crate::security::FormTargets>().cloned();
+    let mut req = req;
+    #[cfg(debug_assertions)]
+    let check = req.extensions_mut().remove::<crate::security::FormCheck>();
     let res = run(req, next, deadline, signal).await;
     #[cfg(debug_assertions)]
     let res = refresh_header_is_an_error(res);
     #[cfg(debug_assertions)]
-    let mut res = redirect_outside_form_action(res, targets.as_ref());
+    let mut res = redirect_outside_form_action(res, check.as_ref());
     #[cfg(not(debug_assertions))]
     let mut res = res;
     let status = res.status();
@@ -1868,7 +1879,7 @@ pub(crate) async fn render_errors<S: crate::app::Steps>(
         let kept = std::mem::take(res.headers_mut());
         let Some(message) = sign_in_loops(asked.path(), &to) else {
             #[cfg(debug_assertions)]
-            if let Some(message) = targets.as_ref().and_then(|targets| outside_form_action(targets, &to)) {
+            if let Some(message) = check.as_ref().and_then(|check| outside_form_action(check, &to)) {
                 tracing::error!("{message}");
                 let failure = Failure::Failed { status: StatusCode::INTERNAL_SERVER_ERROR, detail: Some(Arc::from(message)) };
                 let failure = if shared.dev { failure } else { failure.without_detail() };

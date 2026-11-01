@@ -1463,12 +1463,33 @@ async fn a_redirect_outside_form_action_names_the_origin_and_a_sign_in_is_checke
                 req.redirect::<()>(&"https://else.example/x?y=1".parse::<axum::http::Uri>().unwrap())
             }),
         )
-        .route("/account", axum::routing::post(|_: Caller<Elsewhere>| async { "saved" }));
+        .route("/account", axum::routing::post(|_: Caller<Elsewhere>| async { "saved" }))
+        .route(
+            "/cookie",
+            axum::routing::post(|| async {
+                use axum::{
+                    http::{header, HeaderValue},
+                    response::IntoResponse,
+                };
+                let mut res = StatusCode::SEE_OTHER.into_response();
+                let headers = res.headers_mut();
+                headers.insert(header::LOCATION, HeaderValue::from_static("//user:pw@else.example/secret?token=abc"));
+                headers.append(header::SET_COOKIE, HeaderValue::from_static("a=1"));
+                headers.append(header::SET_COOKIE, HeaderValue::from_static("b=2"));
+                res
+            }),
+        );
     let dev = App::new(Routes::from(routes.clone())).dev(true).router();
     let (status, _, body) = call_with(dev.clone(), "POST", "/go", None, Some("text/html")).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert!(body.contains("https://else.example") && body.contains("Policy::form_action"), "{body}");
     assert!(!body.contains("/x?y=1"), "the origin alone: {body}");
+    let (status, headers, body) = call_with(dev.clone(), "POST", "/cookie", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    let cookies: Vec<_> = headers.get_all("set-cookie").iter().collect();
+    assert_eq!(cookies, ["a=1", "b=2"], "the handler's cookies are kept");
+    assert!(!headers.contains_key("location"));
+    assert!(body.contains("else.example") && !body.contains("token") && !body.contains("pw@"), "the origin alone: {body}");
     let (status, _, body) = call_with(dev, "POST", "/account", None, Some("text/html")).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
     assert!(body.contains("https://id.example") && body.contains("Policy::form_action"), "{body}");
