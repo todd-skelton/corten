@@ -1384,6 +1384,15 @@ Corten is pre-1.0, so any minor version may change the API.
     route, `/api/ping` is 17,189 and `/api/items/7` 18,682; with an outer `/api/{*rest}`, 17,422 and
     19,034, each the same in every run, a router with one more route as well as the check)
     ([#539 An API cannot sit inside another API's prefix, so a feature cannot own its JSON routes under a shared /api the way it owns its pages in an area](https://github.com/todd-skelton/corten/issues/539)).
+165. The kit's theme has three tones for status, `--info`, `--success` and `--warning`, each with
+    a `-foreground`, and `Badge` and `Alert` an `Info`, `Success` and `Warning` variant for them. A
+    test of `corten ui` now checks the contrast the guide states, in both themes: each
+    `-foreground` on its color, each tone on a card and the muted text 4.5:1, a field's border 3:1
+    ([#552 Kit Badge and Alert have no success, warning or info tone, and every Alert is announced as role=alert](https://github.com/todd-skelton/corten/issues/552)).
+166. `corten ui add` refuses a component the app has by the same name with a stylesheet of its own
+    (the app's `Field` beside the kit's), naming the app's file, before it writes anything: the two
+    would style one class prefix, and the program would not link
+    ([#550 A kit component and an app component with the same name fail at link time, and corten ui add does not warn](https://github.com/todd-skelton/corten/issues/550)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -2171,6 +2180,20 @@ Corten is pre-1.0, so any minor version may change the API.
     881 and `fr` JPY 951 against 1,036. Most of the page's rise in the issue is card-market writing
     more prices, which stays
     ([#545 The item page's user-mode instructions rose 14.8% between benchmark rounds r7 and r10 (95,949 to 110,172) while its CPU time per page fell](https://github.com/todd-skelton/corten/issues/545)).
+102. The kit's `Alert` takes its role from its variant, so a screen reader interrupts only for what
+    needs the user now: `role="alert"` for `Warning` and `Destructive`, `role="status"` for
+    `Success`, and none for `Neutral` and `Info`, which were all `role="alert"`. A copy made
+    before keeps its role until `corten ui add --force alert`
+    ([#552 Kit Badge and Alert have no success, warning or info tone, and every Alert is announced as role=alert](https://github.com/todd-skelton/corten/issues/552)).
+103. `corten ui init` in an app with a `tokens!` theme of its own keeps it: it writes `src/ui.rs`
+    without the kit's tokens and names the tokens the components read, which the app declares, most
+    as references to its own, saying when a group of the theme has one of their names (`radius`, whose `$root` declares it). A
+    theme it cannot read is reported and nothing is written; `corten ui init --kit-theme` writes the
+    kit's theme beside the app's instead. It finds the crate's one `App::new(..)` in any file (`src/app.rs`),
+    declares `pub mod ui;` in the crate root (`src/lib.rs`, else `src/main.rs`) and leaves a page
+    stylesheet that sets `color-scheme` as it is, saying what to add; `corten ui add` lists
+    `corten_ui::COMPONENTS` beside the kit's list wherever it is, and not again when a file has it
+    ([#551 corten ui init on an app that already has tokens adds a second theme instead of mapping onto the app's](https://github.com/todd-skelton/corten/issues/551)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -3048,6 +3071,10 @@ Corten is pre-1.0, so any minor version may change the API.
     fields inside it, feeds and agent output, and would still not give canonical bytes (design.md,
     Limits 16)
     ([#540 Json writes a whole f64 as 2.0 where JSON.stringify writes 2, so a route ported from a Node service changes its numbers' text and how clients read them](https://github.com/todd-skelton/corten/issues/540)).
+44. The kit guide says why the kit's tokens are at the top of the file (shadcn/ui's names, and
+    none an app's scale would make, so the two themes do not replace each other's values) and how a
+    utility over them is written, with its values (`fg_success()`)
+    ([#553 Kit role tokens are loose top-level properties, so utilities like fg/bg cannot be generated from a group](https://github.com/todd-skelton/corten/issues/553)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
