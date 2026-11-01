@@ -181,9 +181,13 @@ version it can compare. A page that differs in any other
 way around `<main>` loads in full, as a browser without JavaScript loads it: an element more or
 fewer beside one (a banner shown now), an attribute of `<main>` or of an element around it (`lang`,
 a theme on `<html>`), or the layout's own head tags (not the page's values for `style={..}`,
-which are set on what is swapped in). A browser extension that adds to `<head>`, to `<html>` or
-beside `<main>`'s ancestors in `<body>` before the runtime starts (a dark-mode extension) makes
-every such write load in full, which is right and as slow as without JavaScript. A layout element
+which are set on what is swapped in). The frame the first write's page is compared with is
+read from the page as it loaded, so what a browser extension added before the runtime started (an
+attribute on `<html>`, a `<style>` in `<head>`) is in it: a write's page only has to add or change
+nothing there, and an attribute the server stops writing stays until a full load. After that the
+frame is the last write's page, as the server sent it. An element an extension adds beside
+`<main>`'s ancestors in `<body>` stays, as a script's does. A patch that lands while the write's
+page is on its way, in a layout element that page would replace, wins: the element keeps the patch. A layout element
 whose markup differs on every render (a form with a submit key, a `<corten-live>` with its
 position) is replaced on every such write, losing what scripts did to it; keep it out of the
 layout, or draw it in a component a patch updates. A layout element that shows the redirect's

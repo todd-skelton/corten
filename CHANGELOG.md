@@ -2178,12 +2178,15 @@ Corten is pre-1.0, so any minor version may change the API.
     element the server draws the same stays the same element, with what scripts added to it. When
     the frame around `<main>` changed (an attribute of `<main>` or of an element around it, or the
     layout's own head tags) or the elements around it are not the same tags, the page loads in
-    full instead. Every other navigation still swaps `<main>` alone. A whole document now carries
+    full instead; what an extension added to the frame before the runtime started (Dark Reader's
+    attributes on `<html>`) does not count, since the first write's page need only have no part
+    the load lacked. Every other navigation still swaps `<main>` alone. A whole document now carries
     its notice in `corten-notice` too, so the runtime announces one the page did not draw.
-    Measured: the runtime is 784 bytes larger gzipped (10,091 to 10,875; brotli 9,119 to 9,836;
-    27,882 to 30,258 minified); keeping the layout to compare costs each full load a median under
-    0.1 ms and at most 0.4 ms on the watchlist's and the gallery's pages (Chromium, 495 and 327
-    bytes kept), and the watchlist's briefing write, which redirects to `/news`,
+    Measured: the runtime is 917 bytes larger gzipped (10,091 to 11,008; brotli 9,119 to 9,978;
+    27,882 to 30,574 minified); keeping the layout to compare (its markup as loaded; it is
+    normalized only when a write compares it) costs each full load a median under 0.1 ms and at
+    most 0.4 ms on the watchlist's and the gallery's pages (Chromium, 495 and 327 bytes kept),
+    and 1 ms (1.2 ms at most) on a 61.5 KB layout, and the watchlist's briefing write, which redirects to `/news`,
     now reads 1,919 bytes gzipped where the swap read 1,410 (brotli 1,786 against 1,328; 4,871
     against 3,566 uncompressed), once per write, and the server draws the layout for it as for a
     full load. From the submit to the drawn page (headless Chromium on localhost, 20 rounds of each,

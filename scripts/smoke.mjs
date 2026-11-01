@@ -987,6 +987,35 @@ async function run(browser) {
       await page.unroute(news);
       // After the loads are counted: the page that drew the notice removed it.
       if (engine !== "webkit") check("the notice is said once", !(await page.evaluate(async () => (await (await fetch("/news")).text()).includes("on the list"))));
+      // A browser extension that marks <html> and adds to <head> before the runtime starts (a
+      // dark-mode extension) is in the frame the first write's page is compared with: the write
+      // still swaps its page into the same document, with one request.
+      const extensionCheck = "a write on a page an extension marked before the runtime started keeps the document";
+      if (engine !== "webkit") {
+        const marked = await (await browser.newContext()).newPage();
+        await marked.addInitScript(() => {
+          new MutationObserver((_, seen) => {
+            if (!document.head) return;
+            document.documentElement.setAttribute("data-darkreader-scheme", "dark");
+            document.head.append(Object.assign(document.createElement("style"), { className: "darkreader" }));
+            seen.disconnect();
+          }).observe(document, { childList: true, subtree: true });
+        });
+        await marked.goto(`${base}/news`);
+        let documents = 0;
+        marked.on("request", (r) => r.resourceType() === "document" && documents++);
+        await marked.evaluate(() => {
+          (/** @type {any} */ (window)).__marker = 1;
+          /** @type {HTMLInputElement} */ (document.querySelector("#briefing [name=email]")).value = "ada@example.com";
+          /** @type {HTMLButtonElement} */ (document.querySelector("#briefing button")).click();
+        });
+        const said = await marked
+          .waitForFunction(() => document.querySelector("#briefing [role=status]")?.textContent === "You're on the list for the morning briefing.", null, { timeout: 5000 })
+          .then(() => true, () => false);
+        const kept = await marked.evaluate(() => (/** @type {any} */ (window)).__marker === 1);
+        check(extensionCheck, said && kept && documents === 0, `said ${said}, kept ${kept}, document requests ${documents}`);
+        await marked.context().close();
+      } else skip(extensionCheck, "no Navigation API: navigations are full page loads");
     }
     if (size) await page.setViewportSize(size);
     // Back over the four entries this added (checked, unchecked, the link, the place) to the

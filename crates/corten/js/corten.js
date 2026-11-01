@@ -1099,10 +1099,10 @@ function focusNear(el, root, fresh) {
  * @param {Notice} [notice] the answer's, kept if the page has to load in full instead
  * @param {{ apply: () => void } | null} [layout] what changes around `<main>`, drawn in the same
  *   frame as the page ({@link swapDocument})
+ * @param {DocumentFragment} [content] `html` parsed already (a whole page's head tags and page)
  * @returns {Promise<boolean>} false when it loaded the page in full instead
  */
-async function swapPage(html, signal, stay, notice = null, layout = null) {
-  const content = parse(html);
+async function swapPage(html, signal, stay, notice = null, layout = null, content = parse(html)) {
   const [, styled] = await Promise.all([modulesOf(content), stylesOf(content)]);
   signal?.throwIfAborted();
   if (!styled) {
@@ -1143,8 +1143,10 @@ async function swapPage(html, signal, stay, notice = null, layout = null) {
  * (`markCurrent`).
  * @param {Element} el
  */
-const markupOf = (el) =>
-  el.outerHTML
+const markupOf = (el) => comparable(el.outerHTML);
+/** @param {string} html */
+const comparable = (html) =>
+  html
     .replace(/<noscript\b([^>]*)>[\s\S]*?<\/noscript>/gi, "<noscript$1></noscript>")
     .replace(/ nonce="[^"]*"/g, "")
     .replace(/<a\b[^>]*>/g, (tag) => (tag.includes(" data-nav") ? tag.replace(' aria-current="page"', "") : tag));
@@ -1166,35 +1168,46 @@ const drawn = new WeakMap();
 function changedIn(el) {
   for (let up = /** @type {Element | null} */ (el); up; up = up.parentElement) {
     if (drawn.has(up)) {
-      drawn.set(up, "");
+      // No markup is this, and no patch's is another's.
+      drawn.set(up, `\0${(patched += 1)}`);
       return;
     }
   }
 }
+/** Patches into the layout so far. */
+let patched = 0;
 for (let el = document.querySelector("main"); el && el !== document.body; el = el.parentElement) {
-  for (const beside of Array.from(el.parentElement?.children ?? [])) if (beside !== el) drawn.set(beside, markupOf(beside));
+  // As sent, made comparable only if a write's page is compared with it, so a load pays for the copy alone.
+  for (const beside of Array.from(el.parentElement?.children ?? [])) if (beside !== el) drawn.set(beside, beside.outerHTML);
 }
 
 /**
- * What a write's page can change only by loading in full: the attributes of `<main>` and of each
- * element around it (`lang`, a theme on `<html>`), and the layout's own head tags (not the page's
- * head tags, its title, stylesheets or scripts).
+ * What a write's page can change only by loading in full, one entry each: the element path from
+ * `<main>` up and each of those elements' attributes (`lang`, a theme on `<html>`), and the layout's
+ * own head tags (not the page's head tags, its title, stylesheets or scripts).
  * @param {Document} doc
  */
 function frameOf(doc) {
   const parts = [];
   for (let el = doc.querySelector("main"); el; el = el.parentElement) {
-    parts.push(el.localName + Array.from(el.attributes, (a) => (a.name === "nonce" || a.name === "aria-busy" ? "" : ` ${a.name}="${a.value}"`)).join(""));
+    parts.push(`<${el.localName}`);
+    for (const a of Array.from(el.attributes)) if (a.name !== "nonce" && a.name !== "aria-busy") parts.push(`${el.localName} ${a.name}="${a.value}"`);
   }
   for (const el of Array.from(doc.head.children)) {
     // The page's values (`style={..}`) are its own, set on what is swapped in (`setVars`).
     if (el.localName === "style" && el.textContent?.startsWith("[data-vars=")) continue;
     if (!el.matches('title, script, [data-corten-head], link[data-corten-style], link[rel="modulepreload"]')) parts.push(markupOf(el));
   }
-  return parts.join("\n");
+  return parts;
 }
-/** This document's, as the server sent it. */
-let frame = frameOf(document);
+/**
+ * This document's frame. At first it is read from the page as it loaded, which may hold what an
+ * extension added before the runtime ran (an attribute on `<html>`, a `<style>` in the head), so
+ * a write's page only has to have nothing it lacks: one that adds or changes an entry loads in
+ * full, and one that only stops writing an entry leaves it until the next full load. Once a
+ * write's page is swapped in, it is that page's, as the server sent it, and must match.
+ */
+let frame = { parts: new Set(frameOf(document)), sent: false };
 
 /**
  * What `doc`, a whole page, draws around `<main>` otherwise than the server drew it here: at each
@@ -1207,9 +1220,10 @@ let frame = frameOf(document);
  * @param {Document} doc @param {Notice} notice @returns {{ fresh: Element[], apply: () => void } | null}
  */
 function layoutChanges(doc, notice) {
-  const said = notice?.has("d") ? notice.get("m") : null;
-  if (frameOf(doc) !== frame) return null;
-  /** @type {[Element, Element][]} */
+  const said = notice?.has("d") ? notice.get("m") || null : null;
+  const parts = frameOf(doc);
+  if (!parts.every((part) => frame.parts.has(part)) || (frame.sent && parts.length !== frame.parts.size)) return null;
+  /** @type {[Element, Element, string | undefined][]} */
   const changed = [];
   let here = document.querySelector("main");
   let there = doc.querySelector("main");
@@ -1223,7 +1237,8 @@ function layoutChanges(doc, notice) {
     for (let i = 0; i < mine.length; i++) {
       if (mine[i] === here) continue;
       if (mine[i].localName !== theirs[i].localName) return null;
-      if (drawn.get(mine[i]) !== markupOf(theirs[i]) || (said && theirs[i].textContent?.includes(said))) changed.push([mine[i], theirs[i]]);
+      const was = drawn.get(mine[i]);
+      if (comparable(was ?? "") !== markupOf(theirs[i]) || (said && theirs[i].textContent?.includes(said))) changed.push([mine[i], theirs[i], was]);
     }
     here = up;
     there = upThere;
@@ -1232,9 +1247,11 @@ function layoutChanges(doc, notice) {
   return {
     fresh: changed.map(([, el]) => el),
     apply() {
-      for (const [old, el] of changed) {
-        // One a patch replaced while the page was on its way is newer than the page: it stays.
-        if (!old.isConnected) continue;
+      frame = { parts: new Set(parts), sent: true };
+      for (const [old, el, was] of changed) {
+        // One a patch replaced, or changed inside, while the page was on its way is newer than the
+        // page: it stays.
+        if (!old.isConnected || drawn.get(old) !== was) continue;
         replaceKeeping(old, el, null);
         setVars(el);
       }
@@ -1264,8 +1281,14 @@ async function swapDocument(html, signal, notice) {
   signal.throwIfAborted();
   // What a navigation's answer holds: the title, the page's head tags, the section stylesheets and
   // the page.
-  const head = [doc.querySelector("title"), ...Array.from(doc.head.querySelectorAll("[data-corten-head], link[data-corten-style]"))];
-  return swapPage(head.map((el) => el?.outerHTML ?? "").join("") + main.innerHTML, signal, false, notice, layout);
+  const head = [doc.querySelector("title"), ...Array.from(doc.head.querySelectorAll("[data-corten-head], link[data-corten-style]"))].filter(
+    (el) => el !== null,
+  );
+  const text = head.map((el) => el.outerHTML).join("") + main.innerHTML;
+  // The nodes parsed above, not the text parsed again.
+  const content = document.createDocumentFragment();
+  content.append(...head, ...Array.from(main.childNodes));
+  return swapPage(text, signal, false, notice, layout, content);
 }
 
 /**

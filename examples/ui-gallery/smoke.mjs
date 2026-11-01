@@ -500,6 +500,26 @@ async function run(browser) {
     check(noticeChecks[4], kept && loaded && (await page.locator("#ui-toast").isVisible()), `${loaded} ${await page.locator("#ui-toast").textContent()}`);
     await page.unroute("**/*");
   } else for (const name of noticeChecks) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
+  // A plain navigation whose page comes with another layout (here a shell key changed on the way)
+  // loads in full, as a write's does when its frame changed.
+  const shellCheck = "a navigation to a page in another layout loads it in full";
+  if (engine !== "webkit") {
+    await page.goto(`${base}/`);
+    await page.route("**/*", async (route) => {
+      if (route.request().method() !== "GET" || route.request().headers()["corten"] !== "nav") return route.fallback();
+      const res = await route.fetch();
+      await route.fulfill({ response: res, headers: { ...res.headers(), "corten-shell": "0000000000000000" } });
+    });
+    await page.evaluate(() => ((/** @type {any} */ (window)).__before = 1));
+    // Only a full load fires the page's load event; a swap does not.
+    const reloaded = page.waitForEvent("load", { timeout: 5000 }).then(() => true, () => false);
+    await page.getByRole("link", { name: "Orders", exact: true }).first().click();
+    const full = await reloaded;
+    await page.waitForURL(/\/orders$/);
+    check(shellCheck, full && (await page.evaluate(() => (/** @type {any} */ (window)).__before === undefined)));
+    await page.unroute("**/*");
+    await page.goto(`${base}/`);
+  } else skip(shellCheck, "no Navigation API: navigations are full page loads");
   // Over plain http from an address that is not loopback (a tool on the LAN) the browser refuses
   // the Secure `__Host-` cookie, so the notice rides in a plain one there, in every engine (#498).
   const lan = await lanBase(base);
