@@ -17,8 +17,118 @@
 //! [`Params`] reads back into a `Vec`); a map marked `#[route(prefix = "dim.")]` is a parameter
 //! per entry, `?dim.form=graded` ([`Pairs`]). Field types only need `Display`, so a
 //! link borrows (`&str`) and copies nothing. The derive checks the path when it compiles: a
-//! parameter without a field, a parameter that is not a whole segment, or a character that would
+//! parameter without a field, text before a parameter in its segment, or a character that would
 //! need escaping is an error. Renaming the route's path changes every link with it.
+//!
+//! A parameter may be followed by plain text in its segment, a file's extension: `{page}.xml`.
+//! A request whose segment does not end in the text, or is only the text, is a 404 before the
+//! handler runs, and [`Params`] reads the parameter without it, as its type:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[derive(Route)]
+//! #[route("/sitemap/{kind}/{page}.xml")]
+//! struct SitemapPage<'a> { kind: &'a str, page: u32 }
+//!
+//! assert_eq!(SitemapPage { kind: "items", page: 3 }.href(), "/sitemap/items/3.xml");
+//! ```
+//!
+//! The router matches such a segment whole, so two routes of one module that differ only in the
+//! text after a parameter do not compile:
+//!
+//! ```compile_fail
+//! use corten::Params;
+//!
+//! #[corten::routes]
+//! mod url {
+//!     #[route("/feeds/{name}.rss", get = rss)]
+//!     pub struct Rss<'a> { pub name: &'a str }
+//!
+//!     #[route("/feeds/{name}.atom", get = atom)]
+//!     pub struct Atom<'a> { pub name: &'a str }
+//! }
+//! async fn rss(_: Params<url::Rss<'_>>) -> &'static str { "" }
+//! async fn atom(_: Params<url::Atom<'_>>) -> &'static str { "" }
+//! # fn main() {}
+//! ```
+//!
+//! Text goes after a parameter, in its segment, and only one parameter is in a segment; a
+//! `{*rest}`, which takes the rest of the path, has nothing after it:
+//!
+//! ```compile_fail
+//! #[derive(corten::Route)]
+//! #[route("/files/{*path}.xml")]
+//! struct File { path: String }
+//! ```
+//!
+//! ```compile_fail
+//! #[derive(corten::Route)]
+//! #[route("/files/{name}.{ext}")]
+//! struct File { name: String, ext: String }
+//! ```
+//!
+//! ```compile_fail
+//! #[derive(corten::Route)]
+//! #[route("/items/item_{id}")]
+//! struct Item { id: u32 }
+//! ```
+//!
+//! Nor does a route with a parameter where another of the module has its catch-all, after the same
+//! segments, which the router cannot hold (`/docs/{name}.md` can sit beside `/{*page}`, which has
+//! its catch-all where the other has `docs`):
+//!
+//! ```compile_fail
+//! use corten::Params;
+//!
+//! #[corten::routes]
+//! mod url {
+//!     #[route("/{name}.txt", get = text)]
+//!     pub struct Text<'a> { pub name: &'a str }
+//!
+//!     #[route("/{*page}", get = page)]
+//!     pub struct Page<'a> { pub page: &'a str }
+//! }
+//! async fn text(_: Params<url::Text<'_>>) -> &'static str { "" }
+//! async fn page(_: Params<url::Page<'_>>) -> &'static str { "" }
+//! # fn main() {}
+//! ```
+//!
+//! ```
+//! use corten::Params;
+//!
+//! #[corten::routes]
+//! mod url {
+//!     #[route("/docs/{name}.md", get = doc)]
+//!     pub struct Doc<'a> { pub name: &'a str }
+//!
+//!     #[route("/{*page}", get = page)]
+//!     pub struct Page<'a> { pub page: &'a str }
+//! }
+//! async fn doc(_: Params<url::Doc<'_>>) -> &'static str { "" }
+//! async fn page(_: Params<url::Page<'_>>) -> &'static str { "" }
+//! # fn main() { let _ = corten::App::new(url::router()).router(); }
+//! ```
+//!
+//! (Either feed route alone compiles, as does `/files/{name}.xml`:)
+//!
+//! ```
+//! #[derive(corten::Route)]
+//! #[route("/files/{name}.xml")]
+//! struct File { name: String }
+//! ```
+//!
+//! ```
+//! use corten::Params;
+//!
+//! #[corten::routes]
+//! mod url {
+//!     #[route("/feeds/{name}.rss", get = rss)]
+//!     pub struct Rss<'a> { pub name: &'a str }
+//! }
+//! async fn rss(_: Params<url::Rss<'_>>) -> &'static str { "" }
+//! # fn main() {}
+//! ```
 //!
 //! A route's handler reads the same parameters back as [`Params`]: the struct's fields, owned, so a
 //! link and its handler cannot disagree about a parameter. A route struct says where a link goes;
@@ -476,8 +586,16 @@ pub use corten_macros::routes;
 /// A URL built from a typed value. Implemented by `#[derive(Route)]`, together with `Render`,
 /// `AttrValue` (so `href={route}` works) and `Display` (the plain URL).
 pub trait Route {
-    /// The path as axum matches it: `"/items/{id}"`.
+    /// The path as axum matches it: `"/items/{id}"`. A parameter followed by text in its segment
+    /// (`#[route("/sitemap/{page}.xml")]`) is matched as the whole segment (`"/sitemap/{page}"`),
+    /// and Corten checks the text.
     const PATH: &'static str;
+
+    /// The path as written, `"/sitemap/{page}.xml"`, when a parameter is followed by text in its
+    /// segment; otherwise [`Route::PATH`]. A request whose segment does not end in the text is a 404
+    /// before the handler runs, and `Params` reads the parameter without it.
+    #[doc(hidden)]
+    const WRITTEN: &'static str = Self::PATH;
 
     /// Whether the runtime may fetch the page ahead of a click (on a hover): `false` for a route
     /// declared `#[route("/..", prefetch = false)]`, a page costly to draw, so a link to it
@@ -596,6 +714,7 @@ pub trait Route {
 /// (`ReadAgain::from(route)`) takes `&route` as well.
 impl<R: Route + ?Sized> Route for &R {
     const PATH: &'static str = R::PATH;
+    const WRITTEN: &'static str = R::WRITTEN;
 
     fn write_href(&self, out: &mut String, html: bool) {
         (**self).write_href(out, html);
@@ -1171,16 +1290,19 @@ fn write_text(url: &str, out: &mut String, html: bool) {
     }
 }
 
+/// A byte a route's path has as text, which a browser sends as it is.
+const fn plain(c: u8) -> bool {
+    c.is_ascii_alphanumeric()
+        || matches!(c, b'-' | b'.' | b'_' | b'~' | b'!' | b'$' | b'*' | b'+' | b',' | b';' | b'=' | b':' | b'@')
+}
+
 /// Whether `path` has the shape `#[derive(Route)]` writes, checked when the app compiles so a
 /// `Route` written by hand is held to it too: each segment is `{name}` (lowercase letters, digits
 /// and `_`), `{*name}` as the last, or text a browser sends as it is (letters, digits and
-/// `-._~!$*+,;=:@`). [`chosen`] matches only this shape, as the router does. (The derive also
+/// `-._~!$*+,;=:@`); [`with_suffixes`] adds a route with text after a parameter (`{name}.xml`), and
+/// [`chosen`] matches both shapes, as the router does. (The derive also
 /// refuses a name used twice; that changes no route's match, so it is not checked here.)
 pub(crate) const fn route_shaped(path: &str) -> bool {
-    const fn plain(c: u8) -> bool {
-        c.is_ascii_alphanumeric()
-            || matches!(c, b'-' | b'.' | b'_' | b'~' | b'!' | b'$' | b'*' | b'+' | b',' | b';' | b'=' | b':' | b'@')
-    }
     const fn name(c: u8, first: bool) -> bool {
         c.is_ascii_lowercase() || c == b'_' || (!first && c.is_ascii_digit())
     }
@@ -1260,29 +1382,40 @@ fn a_route_path_has_the_shape_the_derive_writes() {
 /// `path`: of those that match, the one whose segments are most specific from the left, text
 /// before `{name}` before `{*rest}`, as matchit tries them.
 pub(crate) fn chosen(routes: &[(&'static str, bool)], path: &str) -> Option<(&'static str, bool)> {
-    let preference = |pattern: &str| -> Vec<u8> {
-        pattern
-            .split('/')
-            .map(|s| {
-                if s.starts_with("{*") {
-                    0
-                } else if s.starts_with('{') {
-                    1
-                } else {
-                    2
-                }
-            })
-            .collect()
-    };
-    routes.iter().copied().filter(|(pattern, _)| routes_path(pattern, path)).max_by_key(|(pattern, _)| preference(pattern))
+    // Each segment's rank, compared from the left without collecting them.
+    fn preference(pattern: &str) -> impl Iterator<Item = u8> + '_ {
+        pattern.split('/').map(|s| {
+            if s.starts_with("{*") {
+                0
+            } else if s.starts_with('{') {
+                1
+            } else {
+                2
+            }
+        })
+    }
+    // The router picks by each segment's shape (it matches `{page}.xml` as `{page}`); a route with
+    // text after a parameter then answers 404 when the segment lacks it, so the path is not served.
+    routes
+        .iter()
+        .copied()
+        .filter(|(pattern, _)| segments_match(pattern, path, false))
+        .max_by(|(a, _), (b, _)| preference(a).cmp(preference(b)))
+        .filter(|(pattern, _)| routes_path(pattern, path))
 }
 
 /// Whether `path` is one `pattern` routes, as axum (matchit) matches it: `{name}` is one segment,
 /// which may be empty when another follows (`/items//edit` is `/items/{id}/edit`) but not when it
-/// is the last; `{*rest}` is the rest of the path (not empty); and the text is compared as it is
-/// written, so `/items/` is not `/items`. A route macro only takes a parameter as a whole
-/// segment, so these are all the shapes a pattern has.
+/// is the last; `{*rest}` is the rest of the path (not empty); `{name}text` is a segment that
+/// ends in the text with something before it (Corten checks the text, as axum matches `{name}`);
+/// and the text is compared as it is written, so `/items/` is not `/items`. These are all the
+/// shapes a route macro takes.
 pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
+    segments_match(pattern, path, true)
+}
+
+/// [`routes_path`], with the text after a parameter required (`text`) or not (as axum matches).
+fn segments_match(pattern: &str, path: &str, text: bool) -> bool {
     let (mut pattern, mut path) = (pattern.split('/'), path.split('/'));
     loop {
         match (pattern.next(), path.next()) {
@@ -1291,8 +1424,20 @@ pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
                 return !got.is_empty() || path.next().is_some();
             }
             (Some(want), Some(got)) if want.starts_with('{') => {
-                if got.is_empty() && pattern.clone().next().is_none() {
+                let after = if text { want.split_once('}').map_or("", |(_, after)| after) } else { "" };
+                if after.is_empty() && got.is_empty() && pattern.clone().next().is_none() {
                     return false;
+                }
+                if !after.is_empty() {
+                    // The text must end the segment as written, not as the tail of an escape
+                    // (`a%2e` does not end in `e`: it is `a.`).
+                    let Some(head) = got.strip_suffix(after).filter(|head| !head.is_empty()) else {
+                        return false;
+                    };
+                    let head = head.as_bytes();
+                    if head.ends_with(b"%") || (head.len() >= 2 && head[head.len() - 2] == b'%') {
+                        return false;
+                    }
                 }
             }
             (Some(want), Some(got)) if want == got => {}
@@ -1328,8 +1473,57 @@ mod local_tests {
             ("/{*rest}", "/a", true),
             ("/items/{id}", "/items/%2F", true),
             ("/check", "/%63heck", false),
+            ("/sitemap/{page}.xml", "/sitemap/3.xml", true),
+            ("/sitemap/{page}.xml", "/sitemap/3", false),
+            ("/sitemap/{page}.xml", "/sitemap/.xml", false),
+            ("/sitemap/{page}.xml", "/sitemap/3.xml.bak", false),
+            ("/x/{n}e", "/x/a%2e", false),
+            ("/x/{n}ab", "/x/a%ab", false),
+            ("/x/{n}e", "/x/a%25e", true),
+            ("/sitemap/{page}.xml/x", "/sitemap/3.xml/x", true),
         ] {
             assert_eq!(routes_path(pattern, path), want, "{pattern} {path}");
+        }
+        for (path, written, want) in [
+            ("/items/{id}", "/items/{id}", true),
+            ("/sitemap/{kind}/{page}", "/sitemap/{kind}/{page}.xml", true),
+            ("/s/{a}/{b}", "/s/{a}.x/{b}.y", true),
+            ("/s/{a}", "/s/{a}.x/y", false),
+            ("/s/{a}", "/s/{b}.x", false),
+            ("/s/x", "/s/x.y", false),
+            ("/f/{*rest}", "/f/{*rest}.xml", false),
+            ("/s/{a}", "/s/{a}.{b}", false),
+            ("/s/{a}/b", "/s/{a}/b", true),
+            // Only the text a browser sends as it is.
+            ("/s/{a}", "/s/{a}.x|y", false),
+            ("/s/{a}/b", "/s/{a}?x/b", false),
+            ("/s/{a}", "/s/{a}%20", false),
+        ] {
+            assert_eq!(super::written_fits(path, written), want, "{path} {written}");
+        }
+        for (a, b, want) in [
+            ("/feeds/{name}.rss", "/feeds/{id}.atom", true),
+            ("/feeds/{name}.rss", "/feeds/{name}.rss", false),
+            ("/feeds/{name}.rss", "/feeds/{id}.rss", false),
+            ("/feeds/{name}.rss", "/feeds/{name}", true),
+            ("/feeds/{name}.rss", "/feeds/{*rest}", false),
+            ("/feeds/{name}.rss", "/other/{name}.atom", false),
+            ("/a/{x}.r/b", "/a/{y}.s/b", true),
+            ("/a/{x}.r/b", "/a/{y}.s/c", false),
+            ("/a/{x}", "/a/{y}", false),
+        ] {
+            assert_eq!(super::clash(a, b), want, "{a} {b}");
+            assert_eq!(super::clash(b, a), want, "{b} {a}");
+        }
+        for (path, other, beside) in [
+            ("/{name}.txt", "/{*page}", true),
+            ("/docs/{name}.md", "/docs/{*rest}", true),
+            ("/{kind}.x/{name}", "/{a}/{*rest}", true),
+            ("/docs/{name}.md", "/{*page}", false),
+            ("/docs/{name}.md", "/blog/{*rest}", false),
+            ("/{*page}", "/{*page}", false),
+        ] {
+            assert_eq!(super::beside_catch_all(path, other), beside, "{path} beside {other}");
         }
     }
 
@@ -1944,7 +2138,9 @@ impl ParamsRejection {
     fn query(error: crate::form::FormError) -> Self {
         use axum::response::IntoResponse as _;
         let status = axum::http::StatusCode::BAD_REQUEST;
-        let rejection = crate::form::FormRejection::invalid(status, "Failed to deserialize query string", error);
+        // A parameter followed by text is read here rather than by axum's `Path`: said as axum says it.
+        let what = if error.is_in_path() { "Invalid URL" } else { "Failed to deserialize query string" };
+        let rejection = crate::form::FormRejection::invalid(status, what, error);
         ParamsRejection(Box::new(rejection.into_response()))
     }
 
@@ -2123,8 +2319,248 @@ impl Routes {
     #[doc(hidden)]
     pub fn __route<R: Route>(self, methods: Methods) -> Self {
         let mut paths = self.1;
-        paths.push((R::PATH, methods.1));
-        Routes(self.0.route(R::PATH, methods.0), paths)
+        paths.push((R::WRITTEN, methods.1));
+        Routes(self.0.route(R::PATH, with_suffixes::<R, ()>(methods.0)), paths)
+    }
+}
+
+/// Whether `written` is `path` with text after some of its `{name}` parameters (in their segment),
+/// as `#[derive(Route)]` writes the two.
+const fn written_fits(path: &str, written: &str) -> bool {
+    let (p, w) = (path.as_bytes(), written.as_bytes());
+    let (mut i, mut j) = (0, 0);
+    // Just past a `{name}` (not a `{*rest}`, which nothing follows), and inside a `{*..}`.
+    let (mut closed, mut rest) = (false, false);
+    while i < p.len() {
+        if j >= w.len() {
+            return false;
+        }
+        if closed && p[i] == b'/' && w[j] != b'/' {
+            // Text after a parameter, up to the segment's end.
+            if !plain(w[j]) {
+                return false;
+            }
+            j += 1;
+            continue;
+        }
+        if p[i] != w[j] {
+            return false;
+        }
+        if p[i] == b'*' && i > 0 && p[i - 1] == b'{' {
+            rest = true;
+        }
+        closed = p[i] == b'}' && !rest;
+        if p[i] == b'}' {
+            rest = false;
+        }
+        i += 1;
+        j += 1;
+    }
+    // Text after the last parameter, to the end.
+    while closed && j < w.len() {
+        if !plain(w[j]) {
+            return false;
+        }
+        j += 1;
+    }
+    j == w.len()
+}
+
+/// Whether routes written `a` and `b` are one path to the router but not the same route: each
+/// segment the same text or the same kind of parameter (`{name}`, `{*rest}`, whatever its name),
+/// and the text after some parameter different (`/feeds/{name}.rss` and `/feeds/{id}.atom`).
+/// Compares in place, with nothing allocated.
+pub(crate) fn clash(a: &str, b: &str) -> bool {
+    let (mut a, mut b) = (a.split('/'), b.split('/'));
+    let mut differ = false;
+    loop {
+        match (a.next(), b.next()) {
+            (None, None) => return differ,
+            (Some(x), Some(y)) => match (x.strip_prefix('{'), y.strip_prefix('{')) {
+                (Some(x), Some(y)) => {
+                    if x.starts_with('*') != y.starts_with('*') {
+                        return false;
+                    }
+                    differ |= text_after(x) != text_after(y);
+                }
+                (None, None) if x == y => {}
+                _ => return false,
+            },
+            _ => return false,
+        }
+    }
+}
+
+/// The text after a parameter's `}` in its segment (`.xml` for `page}.xml`).
+fn text_after(segment: &str) -> &str {
+    segment.find('}').map_or("", |n| &segment[n + 1..])
+}
+
+/// Two routes of the app (in any module, area or API) that differ only in the text after a
+/// parameter, which axum matches as one path: a startup panic naming both, since only one could
+/// be reached (a `#[corten::routes]` module already refuses them when it compiles). Routes that
+/// differ only in their parameters' names are left to the router, which refuses them itself. So
+/// is a route with text beside a catch-all where it has its parameter, which axum would refuse
+/// naming the path without the text. Only a route with text after a parameter can clash, so each
+/// of those is compared with the others, and an app with none compares nothing.
+pub(crate) fn assert_no_clash(written: &[&str]) {
+    for (i, a) in written.iter().enumerate().filter(|(_, a)| has_text_after(a)) {
+        for other in written[..i].iter().chain(&written[i + 1..]) {
+            check(other, a);
+        }
+    }
+}
+
+/// Refuses `a` beside `b`, one of them having text after a parameter: the two differ only in that text,
+/// or one has a parameter where the other has its catch-all (`/{name}.txt` and `/{*page}`), which
+/// the router would refuse naming `/{name}`.
+fn check(a: &str, b: &str) {
+    if clash(a, b) {
+        refuse(a, b);
+    }
+    if (a.contains("{*") || b.contains("{*")) && (beside_catch_all(a, b) || beside_catch_all(b, a)) {
+        panic!(
+            "corten: the routes {a:?} and {b:?} have a parameter where the other has its catch-all, which the router cannot hold together: give the parameter's route a segment of its own"
+        )
+    }
+}
+
+/// Whether `path` has a parameter where `other` has its catch-all, after segments the router
+/// matches alike (the same text, or a parameter in each, with or without text after it).
+pub(crate) fn beside_catch_all(path: &str, other: &str) -> bool {
+    let param = |s: &str| s.starts_with('{');
+    let mut ours = path.split('/');
+    for theirs in other.split('/') {
+        let Some(mine) = ours.next() else { return false };
+        if theirs.starts_with("{*") {
+            return param(mine) && !mine.starts_with("{*");
+        }
+        if !(mine == theirs || param(mine) && param(theirs)) {
+            return false;
+        }
+    }
+    false
+}
+
+/// [`assert_no_clash`] for one route `new`, as an area or an API adds it: against every earlier
+/// route when `new` has text after a parameter, else against the earlier ones that have
+/// (`with_text`).
+pub(crate) fn assert_no_clash_with(earlier: &[&str], with_text: &[&str], new: &str) {
+    let against = if has_text_after(new) { earlier } else { with_text };
+    for other in against {
+        check(other, new);
+    }
+}
+
+/// Whether a route written `written` has text after one of its parameters.
+pub(crate) fn has_text_after(written: &str) -> bool {
+    written.split('/').any(|segment| segment.starts_with('{') && !text_after(segment).is_empty())
+}
+
+fn refuse(a: &str, b: &str) -> ! {
+    panic!(
+        "corten: the routes {a:?} and {b:?} differ only in the text after a parameter, which the router does not tell apart: give one a segment of its own"
+    )
+}
+
+/// `methods` for `R`'s path: when a parameter of it is followed by text (`{page}.xml`), a request
+/// whose segment does not end in that text is a 404 before a handler runs, whatever its method. The
+/// route still takes every path of its shape from the router, so another route (a `/{*page}`
+/// catch-all) does not answer `/sitemap/about` either, and the 404 has the route's `MatchedPath`.
+/// A route with none is `methods` as it is.
+///
+/// A `WRITTEN` path that is not `PATH` with text after some parameters does not build:
+///
+/// ```compile_fail,E0080
+/// # use corten::prelude::*;
+/// #[derive(Route)]
+/// #[route("/feeds")]
+/// struct Feeds;
+///
+/// struct Feed;
+/// impl corten::Route for Feed {
+///     const PATH: &'static str = "/feeds/{name}";
+///     const WRITTEN: &'static str = "/feeds/{name}.x/extra";
+///     fn write_href(&self, out: &mut String, _: bool) {
+///         out.push_str("/feeds/a.x/extra");
+///     }
+/// }
+///
+/// let app = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Feed>(get(|| async { "feed" })));
+/// # let _ = app.router();
+/// ```
+///
+/// (with `WRITTEN` `"/feeds/{name}.x"` it builds:)
+///
+/// ```
+/// # use corten::prelude::*;
+/// #[derive(Route)]
+/// #[route("/feeds")]
+/// struct Feeds;
+///
+/// struct Feed;
+/// impl corten::Route for Feed {
+///     const PATH: &'static str = "/feeds/{name}";
+///     const WRITTEN: &'static str = "/feeds/{name}.x";
+///     fn write_href(&self, out: &mut String, _: bool) {
+///         out.push_str("/feeds/a.x");
+///     }
+/// }
+///
+/// let app = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Feed>(get(|| async { "feed" })));
+/// # let _ = app.router();
+/// ```
+pub(crate) fn with_suffixes<R: Route + ?Sized, S: Clone + Send + Sync + 'static>(
+    methods: axum::routing::MethodRouter<S>,
+) -> axum::routing::MethodRouter<S> {
+    const {
+        assert!(
+            written_fits(R::PATH, R::WRITTEN),
+            "corten: a route's WRITTEN path is its PATH with text after some parameters (`/sitemap/{{page}}.xml` for `/sitemap/{{page}}`)"
+        )
+    };
+    if R::WRITTEN == R::PATH {
+        return methods;
+    }
+    methods.layer(Suffixed { written: R::WRITTEN, inner: () })
+}
+
+/// [`with_suffixes`]'s layer and service: a 404 unless the path ends each segment as `written`
+/// does. A service of its own rather than `middleware::from_fn`, which boxes a `Next` and a future
+/// of its own on each request (the router still boxes the layered route, as it does any layer).
+#[derive(Clone)]
+struct Suffixed<S> {
+    written: &'static str,
+    inner: S,
+}
+
+impl<S> tower_layer::Layer<S> for Suffixed<()> {
+    type Service = Suffixed<S>;
+
+    fn layer(&self, inner: S) -> Suffixed<S> {
+        Suffixed { written: self.written, inner }
+    }
+}
+
+impl<S> tower_service::Service<axum::extract::Request> for Suffixed<S>
+where
+    S: tower_service::Service<axum::extract::Request, Response = axum::response::Response>,
+{
+    type Response = axum::response::Response;
+    type Error = S::Error;
+    type Future = futures_util::future::Either<std::future::Ready<Result<Self::Response, S::Error>>, S::Future>;
+
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), S::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: axum::extract::Request) -> Self::Future {
+        if routes_path(self.written, req.uri().path()) {
+            futures_util::future::Either::Right(self.inner.call(req))
+        } else {
+            let missing = axum::response::IntoResponse::into_response(axum::http::StatusCode::NOT_FOUND);
+            futures_util::future::Either::Left(std::future::ready(Ok(missing)))
+        }
     }
 }
 
@@ -2202,6 +2638,22 @@ pub mod __private {
 
     pub use crate::form::de::{sorted_pairs, Pair};
     use crate::form::FormError;
+
+    /// A path parameter followed by text in its segment (`{page}.xml`), read without the text,
+    /// then as its type. The router has checked the text is there.
+    fn unsuffixed<T: serde::de::DeserializeOwned>(text: &str, suffix: &str) -> Result<T, FormError> {
+        let value =
+            text.strip_suffix(suffix).ok_or_else(|| FormError::in_path(format!("`{text}` does not end in `{suffix}`")))?;
+        crate::form::de::in_path(value).map_err(|e| {
+            // As axum says it: a primitive's name, never the app's own type path.
+            let ty = std::any::type_name::<T>();
+            FormError::in_path(if ty.contains("::") {
+                format!("{e}")
+            } else {
+                format!("Cannot parse `{value}` to a `{ty}`: {e}")
+            })
+        })
+    }
 
     /// `T`, named with a lifetime of the `FromUrl` impl, so a bound on it (that a field reads
     /// back) is checked where `Params` is used, not where the route is declared: a link needs
@@ -2327,6 +2779,22 @@ pub mod __private {
     pub trait Deserialized {
         type T;
         fn field(pairs: &[Pair<'_>], key: &str, default: Option<fn() -> Self::T>) -> Result<Self::T, FormError>;
+    }
+
+    /// A path parameter followed by text in its segment (`{page}.xml`), read without the text,
+    /// then as its type; through `Later`, so a route used only for links needs only `Display`.
+    pub trait Unsuffixed {
+        type T;
+        fn unsuffixed(text: &str, suffix: &str) -> Result<Self::T, FormError>;
+    }
+
+    impl<T: serde::de::DeserializeOwned> Unsuffixed for Later<'_, T> {
+        type T = T;
+
+        #[inline]
+        fn unsuffixed(text: &str, suffix: &str) -> Result<T, FormError> {
+            unsuffixed(text, suffix)
+        }
     }
 
     impl<T: serde::de::DeserializeOwned> Deserialized for Later<'_, T> {

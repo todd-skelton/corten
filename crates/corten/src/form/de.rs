@@ -26,11 +26,22 @@ pub struct FormError {
     /// A word a unit-variant enum does not have: a query value written by an older version of
     /// the app, or by hand.
     unknown_word: bool,
+    /// A path parameter's, read with the query (one followed by text in its segment).
+    in_path: bool,
 }
 
 impl FormError {
     fn new(message: impl Into<String>) -> Self {
-        FormError { message: message.into(), unknown_word: false }
+        FormError { message: message.into(), unknown_word: false, in_path: false }
+    }
+
+    /// A path parameter that did not read.
+    pub(crate) fn in_path(message: impl Into<String>) -> Self {
+        FormError { message: message.into(), unknown_word: false, in_path: true }
+    }
+
+    pub(crate) fn is_in_path(&self) -> bool {
+        self.in_path
     }
 }
 
@@ -51,7 +62,7 @@ impl de::Error for FormError {
     fn unknown_variant(variant: &str, expected: &'static [&'static str]) -> Self {
         // serde's own wording, marked so a query parameter can read the word as missing.
         let message = <de::value::Error as de::Error>::unknown_variant(variant, expected).to_string();
-        FormError { message, unknown_word: true }
+        FormError { message, unknown_word: true, in_path: false }
     }
 }
 
@@ -145,6 +156,13 @@ pub fn entry<K: de::DeserializeOwned, V: de::DeserializeOwned>(
 /// One text read into `T` as a form field's value is.
 pub fn one<T: de::DeserializeOwned>(text: &str) -> Result<T, FormError> {
     T::deserialize(Values(&[(Cow::Borrowed(""), Cow::Borrowed(text))]))
+}
+
+/// A path parameter's text read into `T` as axum's `Path` reads one, for a parameter followed by
+/// text in its segment: as a field's value, except that a `bool` is `true` or `false` alone (a
+/// checkbox's `on` is a form's word, not a path's), so a type reads the same wherever it is.
+pub(crate) fn in_path<T: de::DeserializeOwned>(text: &str) -> Result<T, FormError> {
+    T::deserialize(PathText(&[(Cow::Borrowed(""), Cow::Borrowed(text))]))
 }
 
 /// A key the query does not have: `None`, an empty list, or the error serde gives a missing field.
@@ -462,6 +480,68 @@ impl<'de> Deserializer<'de> for RowKeyText<'_, '_> {
     fn deserialize_newtype_struct<V: Visitor<'de>>(self, _: &'static str, visitor: V) -> Result<V::Value, FormError> {
         // A newtype key (`struct Sku(u32)`) is read as the value it wraps, strictly too.
         visitor.visit_newtype_struct(self)
+    }
+
+    fn deserialize_tuple<V: Visitor<'de>>(self, len: usize, visitor: V) -> Result<V::Value, FormError> {
+        Values(self.0).deserialize_tuple(len, visitor)
+    }
+
+    fn deserialize_tuple_struct<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, FormError> {
+        Values(self.0).deserialize_tuple_struct(name, len, visitor)
+    }
+
+    fn deserialize_struct<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, FormError> {
+        Values(self.0).deserialize_struct(name, fields, visitor)
+    }
+
+    fn deserialize_enum<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, FormError> {
+        Values(self.0).deserialize_enum(name, variants, visitor)
+    }
+}
+
+/// [`in_path`]'s deserializer.
+struct PathText<'a, 'b>(&'b [Pair<'a>]);
+
+impl<'de> Deserializer<'de> for PathText<'_, '_> {
+    type Error = FormError;
+
+    fn deserialize_bool<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
+        match Values(self.0).one()? {
+            "true" => visitor.visit_bool(true),
+            "false" => visitor.visit_bool(false),
+            other => Err(de::Error::invalid_value(de::Unexpected::Str(other), &"true or false")),
+        }
+    }
+
+    fn deserialize_newtype_struct<V: Visitor<'de>>(self, _: &'static str, visitor: V) -> Result<V::Value, FormError> {
+        visitor.visit_newtype_struct(self)
+    }
+
+    as_values! {
+        deserialize_any, deserialize_i8, deserialize_i16, deserialize_i32, deserialize_i64, deserialize_i128,
+        deserialize_u8, deserialize_u16, deserialize_u32, deserialize_u64, deserialize_u128, deserialize_f32,
+        deserialize_f64, deserialize_char, deserialize_str, deserialize_string, deserialize_bytes,
+        deserialize_byte_buf, deserialize_option, deserialize_unit, deserialize_seq, deserialize_map,
+        deserialize_identifier, deserialize_ignored_any,
+    }
+
+    fn deserialize_unit_struct<V: Visitor<'de>>(self, name: &'static str, visitor: V) -> Result<V::Value, FormError> {
+        Values(self.0).deserialize_unit_struct(name, visitor)
     }
 
     fn deserialize_tuple<V: Visitor<'de>>(self, len: usize, visitor: V) -> Result<V::Value, FormError> {

@@ -2524,6 +2524,11 @@ fn a_prefixed_entry_the_app_no_longer_has_is_left_out() {
 /// Every kind of parameter a route has, which its handler reads back as the link wrote it.
 #[crate::routes]
 mod params_url {
+    #[route("/flags/{on}.txt", get = params_flag)]
+    pub struct Flag {
+        pub on: bool,
+    }
+
     #[route("/shops/{shop}/items/{id}", get = params_item)]
     #[serde(rename_all = "camelCase")]
     pub struct Item<'a> {
@@ -2543,6 +2548,23 @@ mod params_url {
     pub struct File<'a> {
         pub rest: std::borrow::Cow<'a, str>,
     }
+
+    /// A parameter followed by text in its segment: a sitemap's pages.
+    #[route("/sitemap/{kind}/{page}.xml", get = params_sitemap)]
+    pub struct SitemapPage<'a> {
+        pub kind: &'a str,
+        pub page: u32,
+        pub gz: Option<bool>,
+    }
+}
+
+paths! { Feeds = "/feeds" }
+
+/// A route of an area with the same, added by hand (no `Params` in its handler).
+#[derive(crate::Route)]
+#[route("/feeds/{name}.rss")]
+struct Rss<'a> {
+    name: &'a str,
 }
 
 /// A value a link prints but nothing reads back: neither `Clone`, `Send` nor `Deserialize`.
@@ -2573,6 +2595,13 @@ struct LinkTwin<'a> {
     tab: Option<&'a Shown>,
 }
 
+/// The same with text after the parameter: still only `Display` for a link.
+#[derive(crate::Route)]
+#[route("/shown-file/{value}.xml")]
+struct LinkFile<'a> {
+    value: &'a Shown,
+}
+
 async fn params_item(item: crate::Params<params_url::Item<'_>>) -> String {
     let (shop, id, sort, tags, mine, page, dims) =
         (&item.shop, item.id, &item.sort_by, &item.tags, item.mine, item.paging.page, &item.dims);
@@ -2581,6 +2610,170 @@ async fn params_item(item: crate::Params<params_url::Item<'_>>) -> String {
 
 async fn params_file(file: crate::Params<params_url::File<'_>>) -> String {
     file.rest.clone()
+}
+
+async fn params_sitemap(page: crate::Params<params_url::SitemapPage<'_>>) -> String {
+    format!("{}|{}|{:?}", page.kind, page.page, page.gz)
+}
+
+#[tokio::test]
+async fn a_parameter_followed_by_text_is_read_without_it() {
+    use crate::route::Route as _;
+    assert_eq!(<params_url::SitemapPage<'_> as crate::Route>::PATH, "/sitemap/{kind}/{page}", "axum matches the segment");
+    let link = params_url::SitemapPage { kind: "items", page: 3, gz: None };
+    assert_eq!(link.href(), "/sitemap/items/3.xml");
+    let router = App::new(params_url::router()).router();
+    let (status, _, body) = call_with(router.clone(), "GET", &link.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "items|3|None"));
+    let (_, _, body) = call_with(router.clone(), "GET", "/sitemap/items/12.xml?gz=true", None, None).await;
+    assert_eq!(body, "items|12|Some(true)", "with a query");
+    // The text is the route's: without it, or with nothing before it, no route matches.
+    for path in ["/sitemap/items/3", "/sitemap/items/3.json", "/sitemap/items/.xml", "/sitemap/items/3.xml.bak"] {
+        for method in ["GET", "DELETE"] {
+            let (status, _, _) = call_with(router.clone(), method, path, None, None).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
+        }
+    }
+    let (status, _, _) = call_with(router.clone(), "DELETE", "/sitemap/items/3.xml", None, None).await;
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "a path the route serves, by another method");
+    // A value that is not the parameter's type is refused as any path parameter is.
+    let (status, _, body) = call_with(router.clone(), "GET", "/sitemap/items/x.xml", None, Some("text/plain")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.starts_with("Invalid URL: Cannot parse `x` to a `u32`"), "{body}");
+
+    // A route added to an area by hand is checked the same, with no `Params` to do it.
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let area = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Rss>(rss));
+    let router = area.router();
+    let (status, _, body) = call_with(router.clone(), "GET", &Rss { name: "news" }.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "rss"));
+    let (status, _, _) = call_with(router, "GET", "/feeds/news.atom", None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // And one of an API, whose failures are JSON.
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let router = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiFile>(json)).router();
+    let (status, _, body) = call_with(router.clone(), "GET", &ApiFile { name: "rates" }.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "json"));
+    let (status, headers, _) = call_with(router, "GET", "/api/files/rates.csv", None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/problem+json", "an API's 404");
+}
+
+#[derive(crate::Route)]
+#[route("/api/files/{name}.json")]
+struct ApiFile<'a> {
+    name: &'a str,
+}
+
+#[derive(crate::Route)]
+#[route("/feeds/{name}.atom")]
+struct Atom<'a> {
+    name: &'a str,
+}
+
+/// Two routes that differ only in the text after a parameter, in different places (the app's
+/// routes and an area): axum would match them as one path, so the app does not start.
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn routes_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let atom = crate::Methods::reads(axum::routing::post(|| async { "atom" }));
+    let _ = App::new(Routes::new().__route::<Rss>(rss)).area::<Feeds>(|feeds| feeds.route::<Atom>(atom)).router();
+}
+
+async fn params_flag(at: crate::Params<params_url::Flag>) -> String {
+    at.on.to_string()
+}
+
+/// A value before text reads as a path parameter does: a `bool` is `true` or `false`, not a
+/// checkbox's `on`.
+#[tokio::test]
+async fn a_value_before_text_reads_as_a_path_parameter() {
+    let router = App::new(params_url::router()).router();
+    let (status, _, body) = call_with(router.clone(), "GET", "/flags/true.txt", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "true"));
+    let (status, _, _) = call_with(router, "GET", "/flags/on.txt", None, None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[derive(crate::Route)]
+#[route("/feeds/{kind}.json")]
+struct FeedJson<'a> {
+    kind: &'a str,
+}
+
+#[derive(crate::Route)]
+#[route("/api/files/{name}.csv")]
+struct ApiCsv<'a> {
+    name: &'a str,
+}
+
+/// Two routes of one API that differ only in the text after a parameter.
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn routes_of_an_api_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let csv = crate::Methods::reads(axum::routing::post(|| async { "csv" }));
+    let _ = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiFile>(json).route::<ApiCsv>(csv));
+}
+
+/// A page and an API route that differ only in the text after a parameter.
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn a_page_and_an_api_route_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let csv = crate::Methods::reads(axum::routing::post(|| async { "csv" }));
+    let _ = App::new(Routes::new().__route::<ApiCsv>(csv)).api::<ApiRoot>(|api| api.route::<ApiFile>(json)).router();
+}
+
+/// The same in one area, with other parameter names: refused by Corten before the router (which
+/// would merge the two methods into one path, or refuse the names with a message about neither).
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn routes_of_an_area_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let json = crate::Methods::reads(axum::routing::post(|| async { "json" }));
+    let _ = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Rss>(rss).route::<FeedJson>(json));
+}
+
+#[derive(crate::Route)]
+#[route("/feeds/{*rest}")]
+struct FeedsRest<'a> {
+    rest: &'a str,
+}
+
+/// A route with text after a parameter where another, in another module or an area, has its
+/// catch-all: the router cannot hold the two, and Corten names both as written (axum would name
+/// `/feeds/{name}`), in either order.
+#[test]
+#[should_panic(expected = "have a parameter where the other has its catch-all")]
+fn a_route_with_text_beside_a_catch_all_does_not_start() {
+    let rest = crate::Methods::reads(get(|| async { "rest" }));
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let _ = App::new(Routes::new().__route::<FeedsRest>(rest)).area::<Feeds>(|feeds| feeds.route::<Rss>(rss)).router();
+}
+
+#[test]
+#[should_panic(expected = "have a parameter where the other has its catch-all")]
+fn a_catch_all_beside_a_route_with_text_in_an_area_does_not_start() {
+    let rest = crate::Methods::reads(get(|| async { "rest" }));
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let _ = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Rss>(rss).route::<FeedsRest>(rest));
+}
+
+#[derive(crate::Route)]
+#[route("/api/files/{*rest}")]
+struct ApiFilesRest<'a> {
+    rest: &'a str,
+}
+
+#[test]
+#[should_panic(expected = "have a parameter where the other has its catch-all")]
+fn a_route_with_text_beside_a_catch_all_in_an_api_does_not_start() {
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let rest = crate::Methods::reads(get(|| async { "rest" }));
+    let _ = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiFile>(json).route::<ApiFilesRest>(rest));
 }
 
 #[tokio::test]
@@ -2631,6 +2824,7 @@ async fn a_handler_reads_its_routes_parameters_as_the_link_wrote_them() {
     let shown = Shown("x y".into());
     assert_eq!(LinkOnly { value: &shown, tab: Some(&shown) }.href(), "/shown/x%20y?tab=x%20y");
     assert_eq!(LinkTwin { value: &shown, tab: None }.href(), "/shown-twin/x%20y");
+    assert_eq!(LinkFile { value: &shown }.href(), "/shown-file/x%20y.xml");
     let file = params_url::File { rest: "docs/a b.txt".into() };
     let (_, _, body) = call_with(router, "GET", &file.href(), None, None).await;
     assert_eq!(body, "docs/a b.txt", "{}", file.href());
@@ -2896,6 +3090,41 @@ fn cached_routes() -> Router {
             }),
         )
         .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
+        // A one-time code that has expired, and a statement that is someone else's.
+        .route(
+            "/code",
+            get(|| async { NoStore(Err::<StatusCode, Error>(Error::status(StatusCode::BAD_REQUEST))) })
+                .post(|| async { NoStore(Err::<StatusCode, Error>(Error::status(StatusCode::BAD_REQUEST))) }),
+        )
+        // Two lines, as HTTP allows; the second says no-store.
+        .route(
+            "/lines",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "max-age=60"), (header::CACHE_CONTROL, "no-store")];
+                (StatusCode::BAD_REQUEST, axum::response::AppendHeaders(lines), "")
+            }),
+        )
+        .route("/statement/other", get(|| async { NoStore(Err::<StatusCode, Error>(Error::not_found())) }))
+        // A no-store line with a byte that is not text.
+        .route(
+            "/odd",
+            get(|| async {
+                let line = HeaderValue::from_bytes(b"no-store, x=\"\xE9\"").unwrap();
+                (StatusCode::BAD_REQUEST, [(header::CACHE_CONTROL, line)], "")
+            }),
+        )
+        // Shared, with a limited private that still lets a shared cache keep the rest.
+        .route(
+            "/limited",
+            get(|| async {
+                let lines = [
+                    (header::CACHE_CONTROL, "public, max-age=600"),
+                    (header::CACHE_CONTROL, "private=\"set-cookie\""),
+                    (header::SET_COOKIE, "seen=1"),
+                ];
+                (axum::response::AppendHeaders(lines), "limited")
+            }),
+        )
         .route(
             "/cookies",
             // `with_cookie` on a `Public` answer does not compile; a header written by hand still
@@ -3285,6 +3514,280 @@ async fn what_the_app_renders_is_private_unless_it_says_otherwise() {
     assert_eq!(cache_control(&router, runtime_path(), &[]).await, "public, max-age=31536000, immutable");
     assert_eq!(cache_control(&router, "/health/ready", &[]).await, "no-store", "Corten's own routes keep theirs");
     assert_eq!(cache_control(&router, "/statement", &[("cookie", "s=1")]).await, "no-store");
+}
+
+/// `NoStore` holds for a failure too: the error page that replaces it is not kept either.
+#[tokio::test]
+async fn a_failure_under_no_store_is_not_stored() {
+    let router = app(cached_routes(), None);
+    for (path, status) in [("/code", StatusCode::BAD_REQUEST), ("/statement/other", StatusCode::NOT_FOUND)] {
+        for extra in [&[][..], &[("accept", "text/html")], &[("corten", "nav")], &[("accept", "application/json")]] {
+            let mut req = Request::get(path);
+            for (name, value) in extra {
+                req = req.header(*name, *value);
+            }
+            let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(res.status(), status, "{path} {extra:?}");
+            assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store", "{path} {extra:?}");
+        }
+    }
+    // A form sent to the expired code: the runtime's action, answered with the error page.
+    let req = Request::post("/code").header("sec-fetch-site", "same-origin").header("corten", "action");
+    let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store", "an action");
+    // A header written by hand counts on any of its lines; the error page is `no-store` alone,
+    // since the failure's other directives described its own answer.
+    let res =
+        router.clone().oneshot(Request::get("/lines").header("accept", "text/html").body(Body::empty()).unwrap()).await.unwrap();
+    let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
+    assert_eq!(lines, ["no-store"]);
+    // Also when the error page read a caller.
+    let res = app(cached_routes(), Some("ann"))
+        .oneshot(Request::get("/lines").header("accept", "text/html").header("cookie", "s=1").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
+    assert_eq!(lines, ["no-store"], "with a caller");
+    // A line that is not text still counts.
+    let res =
+        router.clone().oneshot(Request::get("/odd").header("accept", "text/html").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store");
+}
+
+/// A `Cache-Control` whose `private` or `no-store` is not a plain directive (in a quoted value, a
+/// line that is not text, `no-store=1`, with `must-understand`) is not trusted: an answer that sets
+/// a cookie or read a caller goes out `private, no-cache`, or `no-store` when any reader could find
+/// one in its header. A plain `no-store` or `private` is trusted as written only on one line of
+/// plain text with no quoted value: otherwise a `no-store` goes out on one line (`no-store` alone
+/// beside a quoted value or a byte that is not text), so a cache that reads only one line, or a
+/// value another way, is told the same. `must-understand, no-store` on an answer nothing makes
+/// personal is left as written, and a `private` beside them is not trusted.
+#[tokio::test]
+async fn a_cache_control_counts_only_for_what_it_plainly_says() {
+    let router = Router::new()
+        .route(
+            "/valued",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "public, max-age=600, no-store=1")];
+                (StatusCode::BAD_REQUEST, line, "")
+            }),
+        )
+        .route(
+            "/second-line",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "public, max-age=600"), (header::CACHE_CONTROL, "no-store")];
+                (axum::response::AppendHeaders(lines), "second")
+            }),
+        )
+        .route(
+            "/odd-line",
+            get(|| async {
+                let odd = HeaderValue::from_bytes(b"x=\"\xE9\"").unwrap();
+                let lines = [
+                    (header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=600")),
+                    (header::CACHE_CONTROL, odd),
+                    (header::SET_COOKIE, HeaderValue::from_static("seen=1")),
+                ];
+                (axum::response::AppendHeaders(lines), "odd")
+            }),
+        )
+        .route(
+            "/quoted",
+            get(|| async {
+                let lines =
+                    [(header::CACHE_CONTROL, "public, max-age=600, no-cache=\"a, no-store, b\""), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "quoted")
+            }),
+        )
+        .route(
+            "/quoted-failure",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "public, max-age=600, no-cache=\"a, no-store, b\"")];
+                (StatusCode::BAD_REQUEST, line, "")
+            }),
+        )
+        .route(
+            "/escaped",
+            get(|| async {
+                let lines = [
+                    (header::CACHE_CONTROL, "public, max-age=600, no-cache=\"a\\\", no-store, b\""),
+                    (header::SET_COOKIE, "seen=1"),
+                ];
+                (axum::response::AppendHeaders(lines), "escaped")
+            }),
+        )
+        .route(
+            "/private-then-no-store",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private, max-age=600"), (header::CACHE_CONTROL, "no-store")];
+                (axum::response::AppendHeaders(lines), "both")
+            }),
+        )
+        .route(
+            "/later-private",
+            get(|| async {
+                let lines = [
+                    (header::CACHE_CONTROL, "public, max-age=600"),
+                    (header::CACHE_CONTROL, "private"),
+                    (header::SET_COOKIE, "seen=1"),
+                ];
+                (axum::response::AppendHeaders(lines), "later")
+            }),
+        )
+        .route(
+            "/private-then-public",
+            get(|| async {
+                let lines = [
+                    (header::CACHE_CONTROL, "private, max-age=600"),
+                    (header::CACHE_CONTROL, "public, s-maxage=600"),
+                    (header::SET_COOKIE, "seen=1"),
+                ];
+                (axum::response::AppendHeaders(lines), "both")
+            }),
+        )
+        .route(
+            "/no-store-and-more",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "public, s-maxage=600, x=\"\\\"\", no-store")];
+                (axum::response::AppendHeaders(line), "more")
+            }),
+        )
+        .route(
+            "/private-and-quoted",
+            get(|| async {
+                let lines =
+                    [(header::CACHE_CONTROL, "public, s-maxage=600, x=\"\\\"\", private"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "quoted")
+            }),
+        )
+        .route(
+            "/must-understand",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "must-understand, no-store"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "kept by a cache that knows a 200")
+            }),
+        )
+        .route(
+            "/must-understand-shared",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "max-age=60, must-understand, no-store")];
+                (axum::response::AppendHeaders(line), "kept only by a cache that knows a 200")
+            }),
+        )
+        .route(
+            "/must-understand-valued",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "no-store, must-understand=1, max-age=600"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "valued")
+            }),
+        )
+        .route(
+            "/private-must-understand",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private, no-store, must-understand"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "private")
+            }),
+        )
+        .route(
+            "/private-valued-must-understand",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private, no-store=1, must-understand"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "private")
+            }),
+        )
+        .route(
+            "/upper-valued",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "public, max-age=600, No-Store=1"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "upper")
+            }),
+        )
+        .route(
+            "/must-understand-failure",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "must-understand, no-store")];
+                (StatusCode::BAD_REQUEST, line, "")
+            }),
+        )
+        .route(
+            "/not-text-no-store",
+            get(|| async {
+                let odd = HeaderValue::from_bytes(b"public, max-age=600, no-store, x=\xE9").unwrap();
+                let lines = [(header::CACHE_CONTROL, odd), (header::SET_COOKIE, HeaderValue::from_static("seen=1"))];
+                (axum::response::AppendHeaders(lines), "odd")
+            }),
+        )
+        .route(
+            "/not-text-private",
+            get(|| async {
+                let odd = HeaderValue::from_bytes(b"public, s-maxage=600, private, x=\xE9").unwrap();
+                let lines = [(header::CACHE_CONTROL, odd), (header::SET_COOKIE, HeaderValue::from_static("seen=1"))];
+                (axum::response::AppendHeaders(lines), "odd")
+            }),
+        )
+        .route(
+            "/unquoted-limited",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "public, max-age=600, private=set-cookie"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "limited")
+            }),
+        )
+        .route(
+            "/no-transform",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "no-transform"), (header::CACHE_CONTROL, "no-store")];
+                (axum::response::AppendHeaders(lines), "both")
+            }),
+        )
+        .route(
+            "/limited-first",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private=\"set-cookie\", max-age=600"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "limited")
+            }),
+        );
+    let router = app(router, Some("ann"));
+    for (path, want) in [
+        ("/odd-line", "private, no-cache"),
+        ("/quoted", "no-store"),
+        ("/quoted-failure", "no-store"),
+        ("/valued", "no-store"),
+        ("/second-line", "public, max-age=600, no-store"),
+        ("/escaped", "no-store"),
+        ("/must-understand-shared", "max-age=60, must-understand, no-store"),
+        ("/must-understand-valued", "no-store"),
+        ("/private-must-understand", "no-store"),
+        ("/private-valued-must-understand", "no-store"),
+        ("/upper-valued", "no-store"),
+        ("/private-then-no-store", "private, max-age=600, no-store"),
+        ("/must-understand", "no-store"),
+        ("/must-understand-failure", "no-store"),
+        ("/not-text-no-store", "no-store"),
+        ("/not-text-private", "private, no-cache"),
+        ("/unquoted-limited", "private, no-cache"),
+        ("/no-transform", "no-transform, no-store"),
+        ("/later-private", "private, no-cache"),
+        ("/private-then-public", "private, no-cache"),
+        ("/no-store-and-more", "no-store"),
+        ("/private-and-quoted", "private, no-cache"),
+        ("/limited-first", "private, no-cache"),
+    ] {
+        let req = Request::get(path).header("accept", "text/html").header("cookie", "s=1");
+        let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.as_bytes().to_vec()).collect();
+        assert_eq!(lines, [want.as_bytes().to_vec()], "{path}");
+    }
+}
+
+/// `private="set-cookie"` limits only that header: a shared cache may still keep the rest, so it
+/// does not stand for a plain `private` on an answer that sets a cookie.
+#[tokio::test]
+async fn a_limited_private_is_not_private() {
+    let res = app(cached_routes(), None).oneshot(Request::get("/limited").body(Body::empty()).unwrap()).await.unwrap();
+    let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
+    assert_eq!(lines, ["private, no-cache"]);
 }
 
 #[tokio::test]
@@ -4672,6 +5175,11 @@ mod serves_router_url {
     #[route("/shop/cart", get = serves_page)]
     pub struct CartPage;
 
+    #[route("/sitemap/{page}.xml", get = serves_sitemap)]
+    pub struct Sitemap {
+        pub page: u32,
+    }
+
     #[route("/{*page}", get = serves_router_page)]
     pub struct Page {
         pub page: String,
@@ -4701,6 +5209,10 @@ async fn serves_edit(_: crate::Params<serves_router_url::Edit>) -> &'static str 
 }
 
 async fn serves_write(_: crate::Params<serves_router_url::Write>) -> &'static str {
+    serves_page().await
+}
+
+async fn serves_sitemap(_: crate::Params<serves_router_url::Sitemap>) -> &'static str {
     serves_page().await
 }
 
@@ -4741,6 +5253,11 @@ async fn serves_agrees_with_the_router() {
         ("/shop/list", true),
         ("/about", true),
         ("/health/live", false),
+        // The sitemap's route takes every path of its shape; one without its text is a 404.
+        ("/sitemap/3.xml", true),
+        ("/sitemap/about", false),
+        ("/sitemap/.xml", false),
+        ("/sitemap/3.xml/x", true),
     ] {
         let (status, _, body) = call_with(router.clone(), "GET", p, None, None).await;
         let routed = status == StatusCode::OK && body == "page";

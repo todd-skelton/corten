@@ -101,7 +101,52 @@ pub fn sitemap<'a>(urls: impl IntoIterator<Item = SitemapUrl<'a>>) -> Public<Fil
     xml(out)
 }
 
-/// A `<sitemapindex>` that points at sitemap pages (`/sitemap/items/1.xml`, ...).
+/// A `<sitemapindex>` that points at sitemap pages (`/sitemap/items/1.xml`, ...), each a typed
+/// route whose page number comes before `.xml`:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/sitemap.xml", get = index)]
+///     pub struct Index;
+///
+///     #[route("/sitemap/items/{page}.xml", get = items)]
+///     pub struct ItemsPage {
+///         pub page: u32,
+///     }
+///
+///     #[route("/items/{id}", get = item)]
+///     pub struct Item {
+///         pub id: u32,
+///     }
+/// }
+///
+/// const ORIGIN: &str = "https://shop.example";
+///
+/// async fn index() -> Public<corten::seo::File> {
+///     let pages: Vec<String> = (1..=PAGES).map(|page| format!("{ORIGIN}{}", url::ItemsPage { page }.href())).collect();
+///     corten::seo::sitemap_index(pages.iter().map(String::as_str))
+/// }
+///
+/// const PER_PAGE: u32 = 2;
+///
+/// const PAGES: u32 = 3;
+///
+/// async fn items(at: Params<url::ItemsPage>) -> corten::Result<Public<corten::seo::File>> {
+///     // `0.xml` and a page past the last are the app's to refuse.
+///     let page = at.page.checked_sub(1).filter(|page| *page < PAGES).ok_or_else(corten::Error::not_found)?;
+///     let first = page * PER_PAGE + 1;
+///     let locs: Vec<String> = (first..first + PER_PAGE).map(|id| format!("{ORIGIN}{}", url::Item { id }.href())).collect();
+///     Ok(corten::seo::sitemap(locs.iter().map(|loc| corten::seo::SitemapUrl { loc, lastmod: None })))
+/// }
+///
+/// async fn item(_: Params<url::Item>) -> &'static str {
+///     "item"
+/// }
+/// # fn main() { let _ = App::new(url::router()).router(); }
+/// ```
 pub fn sitemap_index<'a>(sitemaps: impl IntoIterator<Item = &'a str>) -> Public<File> {
     let mut out = String::from(
         r#"<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">"#,

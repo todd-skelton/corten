@@ -1252,6 +1252,33 @@ Corten is pre-1.0, so any minor version may change the API.
     screenshots are served at the sizes it says and that the shortcut opens a page. A manifest image's
     `type` comes from the static directory's own table (a GIF was written `image/png`)
     ([#515 pwa::Manifest cannot set the manifest's other members (orientation, categories, id, screenshots, shortcuts)](https://github.com/todd-skelton/corten/issues/515)).
+158. A route parameter may be followed by plain text in its segment, a file's extension:
+    `#[route("/sitemap/{kind}/{page}.xml")]` with `page: u32` links to `/sitemap/items/3.xml`, and
+    `Params` reads `page` as `3`. A segment that does not end in the text, or is only the text, is
+    a 404 before the handler runs, whatever its method (the router matches the segment whole, so
+    the route takes every path of its shape, and Corten checks the text), and a value that is not
+    the type is a 400 as for any parameter. Two routes of a module that differ only in that text
+    (`{name}.rss`, `{name}.atom`) do not compile, nor do two with a parameter where the other has
+    its catch-all (`/{name}.txt` or `/{name}` beside `/{*page}`), which the router cannot hold
+    and would refuse naming `/{name}`; in different modules, areas or APIs a route with text
+    beside a catch-all stops the app at startup naming both as written. `Req::serves` agrees
+    with the router. A field after which text comes needs only `Display` for a link, as any field, and two routes
+    anywhere in the app (modules, areas, APIs) that differ only in that text stop it at startup.
+    A route without such text generates the code it did (the expanded card-market is identical).
+    Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
+    requests over 1,000, median of three and the range of the nine pairs): `/file/37.xml` with
+    `{page}.xml` runs 20,991 instructions a request (20,970 to 21,169), against 21,083 (21,073 to
+    21,203) for the workaround (the segment as text, the handler stripping `.xml` and parsing)
+    and 18,529 (18,488 to 18,781) for `/plain/37` with a plain `{page}`. `Req::serves`, which
+    now picks a route by its segments' shape and then checks the text, costs 5,350 instructions a
+    call (5,344 to 5,364) against 5,210 (5,209 to 5,210) on main, for an app of 12 routes. The
+    startup check compares only routes with such text against the others, path by path in place
+    (and looks for a catch-all only when one of the two has one): at `App::router`, 400 routes
+    with none take 27 microseconds (26 to 27), and 449 (436 to 511) when 10 of them have text,
+    against 375 (314 to 706) without the catch-all check; an area adding the same 400 routes one
+    by one 56 and 539 (493 to 606) against 435 (394 to 748) (release build, the check's
+    functions timed alone, median and range of nine runs of 50)
+    ([#514 A route parameter cannot be followed by fixed text in its segment, so /sitemap/{kind}/{page}.xml has no typed route](https://github.com/todd-skelton/corten/issues/514)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1985,6 +2012,24 @@ Corten is pre-1.0, so any minor version may change the API.
     could not be reached by (a keyword, `std`, `test`, a dependency such as `tokio`) is refused. An app made before keeps working; the app guide
     says how to move it
     ([#508 corten new makes a bin-only app: tests/, examples/ and a second bin cannot reach its code, so #506's advice cannot be followed](https://github.com/todd-skelton/corten/issues/508)).
+97. Component scripts (`#[component(js)]`, `script!`, `corten-ui`'s) are served without their
+    comments: the macro removes them when the crate compiles and keeps every line where it was, so
+    DevTools and stack traces still show the author's line numbers, and it still reads the JSDoc
+    to check the calls. A licence comment (`/*! .. */`, `//! ..`, `@license`, `@preserve`) stays, as
+    does one the browser reads (`//# sourceMappingURL=`). Every line ending stays as it was written
+    (`\r\n`, `\r`, `\n`, U+2028, U+2029), a comment's own included. Checked against esbuild: the
+    repo's 62 JS files, each with LF and with CRLF endings, minify to the same code with and
+    without their comments, and keep their line count. A script with a `/` after a
+    statement-level `}`, after `++`/`--`, or starting a line after a value, where only a parser
+    could tell a division from a regular expression, is served as written (none of the repo's
+    scripts has one; 161 of 1,230 third-party files with comments, mostly minified, would be).
+    Measured on the 24 scripts it strips (corten-ui's, the examples' and the template's), brotli
+    11 as Corten stores them: 30,779 to 15,855 bytes (-48.5%); gzip 9 36,371 to 18,651 (-48.7%).
+    The item page (`bench/fullstack/bytes.mjs`, card-market images of main and this change): its
+    two component scripts 1,690 to 874 bytes, every script it loads 29,336 to 28,520 raw and 11,101
+    to 10,697 gzipped. Nothing a request does changes: the stripped text is what `include_str!`
+    held before
+    ([#513 Explore removing comments from component scripts as they are served, if it cuts bytes shipped enough to matter](https://github.com/todd-skelton/corten/issues/513)).
 98. `t.money` and `t.number` write a value in about two thirds of the instructions: a currency
     looks up its fraction digits once, when it is made (at compile time for a `const` one), not for
     each amount; digits are made two per division; and a one-byte separator or symbol is pushed as
@@ -2540,6 +2585,33 @@ Corten is pre-1.0, so any minor version may change the API.
     downloaded. The step order, limits and resume rule are in `round.mjs`, tested by
     `round.test.mjs` (`npm run check`)
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
+91. A failure under `NoStore` is sent with `Cache-Control: no-store`, as its doc says: the error
+    page that replaces the failed answer kept the default, `private, no-cache`, which let the
+    browser keep an expired code's page or someone else's statement's 404 and restore it from its
+    back/forward cache. A failure whose `Cache-Control` names `no-store` (`NoStore`'s, or one
+    written by hand, however a cache could find it) now gets an error page sent `no-store` (a
+    JSON failure already kept it). A request refused before the handler runs, a panic and a
+    deadline never reach `NoStore` and keep the default. When Corten decides whether an answer
+    may be shared, a `Cache-Control` written by hand now counts for what it plainly says, on any
+    of its lines: `private="set-cookie"`, `no-store=1`, a directive inside a quoted value and a
+    `no-store` beside `must-understand` (with or without a value; a cache that knows the status
+    may ignore the `no-store`) no longer stand for `private` or `no-store`, and neither does a first
+    line with a byte outside ASCII (it stood for `private`). A personal answer (it sets a cookie,
+    read a caller, has the CSP nonce, or is a `Cache` answer to a request with credentials) with
+    only those is sent `private, no-cache`, or `no-store` if any reader could find one in its
+    header. A plain `no-store` or `private` is trusted as written only on one line of plain text
+    with no quoted value, and a `private` only when no `no-store` (`no-store=1` too) sits beside
+    `must-understand`; otherwise a `private` is not trusted, and a `no-store` is sent on one
+    line (several joined, or `no-store` alone beside a quoted value or a byte that is not text),
+    so a cache that reads only one line, or a value another way, is told the same.
+    Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
+    requests over 1,000, median of three and the range of the nine pairs, against main at
+    a83452c9): a `NoStore` failure as an HTML error page runs 31,683 instructions a request
+    (31,680 to 31,691) against 30,857 (30,852 to 30,918), as it now keeps and reads the header; an
+    unknown URL's 404 26,773 (26,588 to 26,804) against 26,773 (26,772 to 26,804); a `Public`
+    answer, whose lines are now read in one pass through the lookup `settle` already made,
+    23,726 (23,688 to 23,749) against 23,793 (23,759 to 23,804)
+    ([#519 NoStore does not apply to a failure: the error page replaces its no-store with private, no-cache](https://github.com/todd-skelton/corten/issues/519)).
 92. `bench/fullstack/parity.mjs` passes again: the thirteen other apps write the item page's counts
     as Corten's plural messages do since
     [#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393),

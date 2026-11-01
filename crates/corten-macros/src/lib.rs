@@ -7,6 +7,7 @@
 //! and builds in about a second.
 
 mod assets;
+mod comments;
 mod component;
 mod derive;
 mod dom;

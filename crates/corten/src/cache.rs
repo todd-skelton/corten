@@ -109,7 +109,7 @@ impl Cache {
     fn header(self) -> HeaderValue {
         let (max_age, shared, stale) = match self.kind {
             Kind::Public { max_age, shared, stale } => (max_age, shared, stale),
-            Kind::NoStore => return HeaderValue::from_static("no-store"),
+            Kind::NoStore => return NO_STORE,
             Kind::Immutable => return crate::assets::IMMUTABLE,
         };
         let mut text = Vec::with_capacity(80);
@@ -199,18 +199,67 @@ const NOTICE_GONE: [&[u8]; 2] = [b"__Host-corten-notice=;", b"corten-notice=;"];
 /// of a shared one when the response may differ between users.
 pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     // One lookup for the usual response, which says nothing.
-    let text = match res.headers_mut().entry(header::CACHE_CONTROL) {
+    // `personal`: what an answer that may differ between users is sent instead of a header that
+    // would let a cache keep it.
+    let (text, personal) = match res.headers_mut().entry(header::CACHE_CONTROL) {
         header::Entry::Vacant(entry) => {
             entry.insert(PRIVATE);
             return;
         }
-        header::Entry::Occupied(entry) => entry.get().to_str().unwrap_or("private").to_string(),
+        header::Entry::Occupied(mut entry) => {
+            // The directives of every line count, as HTTP joins them (a second line is rare: only
+            // a header written by hand has one). Only a plain `private` makes the answer private:
+            // `private="set-cookie"` still lets a shared cache keep the rest. A `no-store` or
+            // `private` is trusted as written only when every reader sees it alike: one line of
+            // plain text with no quoted value. Otherwise a `no-store` goes out as one line of
+            // plain text (the lines joined, or `no-store` alone beside a quoted value or a byte
+            // that is not text), and such a `private` is not trusted (an answer that sets a cookie
+            // or read a caller is still made private below). With `must-understand`, a cache that
+            // knows the status may ignore `no-store` (RFC 9111 5.2.2.3), `must-understand` with
+            // or without a value: the header is left as written unless the answer is personal, and a `private`
+            // beside them is not trusted.
+            let (mut no_store, mut private, mut must_understand) = (false, false, false);
+            let (mut lines, mut quoted, mut text) = (0, false, true);
+            for line in entry.iter() {
+                let says = says(line.as_bytes());
+                no_store |= says.no_store;
+                private |= says.private;
+                must_understand |= says.must_understand;
+                lines += 1;
+                quoted |= line.as_bytes().contains(&b'"');
+                text &= line.to_str().is_ok();
+            }
+            let plain = lines == 1 && !quoted && text;
+            if no_store && !must_understand {
+                if quoted || !text {
+                    entry.insert(NO_STORE);
+                } else if lines > 1 {
+                    let mut joined = Vec::new();
+                    for line in entry.iter() {
+                        if !joined.is_empty() {
+                            joined.extend_from_slice(b", ");
+                        }
+                        joined.extend_from_slice(line.as_bytes());
+                    }
+                    entry.insert(HeaderValue::from_bytes(&joined).unwrap_or(NO_STORE));
+                }
+                return;
+            }
+            // With `must-understand`, a `no-store` any reader could find (`no-store=1` too) is one
+            // a cache that knows the status may ignore: `private` alone does not keep the browser
+            // out.
+            if private && plain && !(must_understand && entry.iter().any(|line| mentions_no_store(line.as_bytes()))) {
+                return;
+            }
+            // A personal answer whose header is replaced below gets `no-store` if any reader
+            // could find one in it (`no-store=1`, inside a quoted value, with `must-understand`):
+            // stricter than `private, no-cache` for every reading.
+            let personal = if entry.iter().any(|line| mentions_no_store(line.as_bytes())) { NO_STORE } else { PRIVATE };
+            (entry.get().to_str().unwrap_or("").to_string(), personal)
+        }
     };
     let typed = res.extensions().get::<Typed>().is_some();
     let headers = res.headers_mut();
-    if has(&text, "private") || has(&text, "no-store") {
-        return;
-    }
     let bug = if seen.nonce {
         Some("its HTML has this request's CSP nonce (req.nonce() in the layout, or a handler that takes Nonce)")
     } else if headers
@@ -224,15 +273,15 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     };
     if let Some(bug) = bug {
         if seen.dev {
-            tracing::warn!("corten: {path} is marked for shared caches, but {bug}, so it was sent private, no-cache");
+            tracing::warn!("corten: {path} is marked for shared caches, but {bug}, so it was sent private, no-cache (or no-store, if its header names it)");
         }
-        headers.insert(header::CACHE_CONTROL, PRIVATE);
+        headers.insert(header::CACHE_CONTROL, personal);
         return;
     }
     let named = res.extensions().get::<Named>().is_some();
     let headers = res.headers_mut();
     if seen.caller || (typed && seen.credentials && !named) {
-        headers.insert(header::CACHE_CONTROL, PRIVATE);
+        headers.insert(header::CACHE_CONTROL, personal);
         return;
     }
     if !typed {
@@ -246,9 +295,56 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     }
 }
 
-/// True when `Cache-Control` text has `directive`.
-fn has(text: &str, directive: &str) -> bool {
-    text.split(',').any(|d| d.split('=').next().unwrap_or("").trim().eq_ignore_ascii_case(directive))
+/// Whether a `Cache-Control` line has `no-store` anywhere in it, as a reader that matches text
+/// would find it (case aside).
+pub(crate) fn mentions_no_store(line: &[u8]) -> bool {
+    line.windows(8).any(|w| w.eq_ignore_ascii_case(b"no-store"))
+}
+
+/// `Cache-Control: no-store`, as `NoStore` writes it.
+pub(crate) const NO_STORE: HeaderValue = HeaderValue::from_static("no-store");
+
+/// Whether a `Cache-Control` line says `no-store` and `private`, each as a directive without a
+/// value (`no-store=1` is not one, and `private="set-cookie"` still lets a shared cache keep the
+/// rest). Bytes, not text: the whitespace HTTP allows around a directive is ASCII.
+pub(crate) fn says(line: &[u8]) -> Says {
+    let mut says = Says::default();
+    for d in directives(line) {
+        let d = d.trim_ascii();
+        says.no_store |= d.eq_ignore_ascii_case(b"no-store");
+        says.private |= d.eq_ignore_ascii_case(b"private");
+        // By name, whatever its value: a reader that ignores the value still sees it.
+        let name = d.split(|&b| b == b'=').next().unwrap_or(d).trim_ascii();
+        says.must_understand |= name.eq_ignore_ascii_case(b"must-understand");
+    }
+    says
+}
+
+/// What a `Cache-Control` line plainly says, of what decides whether an answer may be kept.
+#[derive(Default)]
+pub(crate) struct Says {
+    pub(crate) no_store: bool,
+    pub(crate) private: bool,
+    pub(crate) must_understand: bool,
+}
+
+/// A `Cache-Control` line's directives, split at the commas outside a quoted value
+/// (`no-cache="a, b"` is one directive, RFC 9110 5.6.4).
+fn directives(line: &[u8]) -> impl Iterator<Item = &[u8]> {
+    let mut quoted = false;
+    let mut escaped = false;
+    line.split(move |&b| {
+        if escaped {
+            escaped = false;
+        } else if quoted && b == b'\\' {
+            escaped = true;
+        } else if b == b'"' {
+            quoted = !quoted;
+        } else if b == b',' && !quoted {
+            return true;
+        }
+        false
+    })
 }
 
 /// The same lifetime for the browser alone: `public` and `s-maxage` become `private`.

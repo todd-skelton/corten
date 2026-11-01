@@ -70,8 +70,14 @@ A ref on several kinds of element is typed as one they all are: `ref={tab as HTM
 document runs the handlers, innermost element first, and `event.stopPropagation()` stops the
 walk as it would stop bubbling. Nothing runs per element until an event reaches it. Script
 modules are compiled into the binary, served at versioned URLs, loaded as module scripts by the
-pages that render them and imported when markup that names them joins later. List each component once,
-`App::new(routes).components(&[OfferList])`.
+pages that render them and imported when markup that names them joins later. They are served
+without their comments, each line where it was, so DevTools and a stack trace show the line you
+wrote; JSDoc costs the browser nothing, so document a handler as fully as it needs (a licence
+comment, `/*! .. */`, `//! ..` or one with `@license`, stays, and so do `//# sourceMappingURL=` and a
+`#!` first line).
+A script with a `/` right after a statement-level `}`, after `++` or `--`, or starting a line after
+a value keeps its comments: only a parser could tell whether that `/` divides (`docs/design.md`,
+Limits). List each component once, `App::new(routes).components(&[OfferList])`.
 
 ## Server or browser
 
