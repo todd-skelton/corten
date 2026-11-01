@@ -2960,7 +2960,23 @@ Corten is pre-1.0, so any minor version may change the API.
     example rather than a test. Corten adds no test mode or rollback helper: the driver's are the one
     way
     ([#506 No story for tests that need a database or a live service: #[ignore] runs both, and a live recorder ran with the database tests](https://github.com/todd-skelton/corten/issues/506)).
-42. The app guide (Numbers in JSON) and `ToJson` for floats say how numbers are written in a JSON
+42. The requests and forms guide has a section on work on something the app's data already names
+    that must not run twice (postage for an order, a batch over the same rows): inside
+    `Signal::finish` with a time budget, for each item a lock in the store every instance shares (a
+    Postgres advisory lock held in a transaction committed with the item's record), under it a check
+    of what is done already, a 502 that keeps what was bought when the provider fails, and a 409
+    showing the current state while another request holds the lock; and what it does not cover,
+    which is the app's to design for its provider (a call whose record is lost, answered by the
+    provider's idempotency key), with the timeouts and the shutdown grace the work needs. The app
+    guide's On a schedule has a job claim its run by its mark in the shared store, so it does not
+    run twice across instances while every instance claims and ticks on the marks (a clock ahead of
+    the others makes runs come early). `App::task` and `SubmitKey` say that a loop, a `Mutex` or a
+    static lock holds within one process, which a blue/green release or a scaled-out app is not;
+    `Signal::finish` and the cancellation guide say that a paid call is checked against the signal
+    before it starts rather than stopped midway, and `Refusal::Conflict` covers another request
+    acting on the same thing now
+    ([#537 The guide's one-at-a-time patterns (a schedule's loop, a shared Mutex) hold within one process, so a second instance during a blue/green release runs the work again, and a paid handler action has no pattern at all](https://github.com/todd-skelton/corten/issues/537)).
+43. The app guide (Numbers in JSON) and `ToJson` for floats say how numbers are written in a JSON
     response, a feed's rows and an agent tool's output: as serde_json writes them (a whole float as
     `2.0` where `JSON.stringify` writes `2`, and where each switches to an exponent), which readers
     that type a number by its text read differently; a value a client should read as an integer is

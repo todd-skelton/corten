@@ -26,7 +26,7 @@ your routes. Each default can be replaced in one line.
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
 | Work that lives as long as the app | none | `.task("refresh", refresh)`: started by `serve`, told when shutdown begins ([below](#tasks)); on a schedule, with tokio's intervals ([below](#on-a-schedule)) |
 | Connections | a request's head (its line and headers) must arrive within 30 seconds of the connection opening or its last answer, or the connection is closed; no limit on how many are open | `.header_timeout(d)` (`None` behind a proxy that buffers heads), `.max_connections(n)`: past it, connections wait to be accepted |
-| Shutdown | Ctrl-C and `SIGTERM` (on Windows Ctrl-C, Ctrl-Break, the console closing and system shutdown), or the app's `corten::shutdown()`, tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks and for work handlers finish (`Signal::finish`) (5 seconds) | `.shutdown_grace(d)`, under the platform's own bound (`docker stop`: 10 seconds) |
+| Shutdown | Ctrl-C and `SIGTERM` (on Windows Ctrl-C, Ctrl-Break, the console closing and system shutdown), or the app's `corten::shutdown()`, tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks and for work handlers finish (`Signal::finish`) (5 seconds) | `.shutdown_grace(d)`; the platform's wait before it kills the process (`docker stop`: 10 seconds; Kubernetes: 30) above the longer of the deadline and the grace |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
 | Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, JSON held as bytes (`json::Raw`) once when it is sent again, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`); a `Relay`'s answer goes on as the upstream sent it | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
@@ -295,6 +295,103 @@ hours in which each refresh is an hour after the last, at :15, and a refresh tha
 recheck's marks is followed by one recheck, not one for each; a test of an app's own schedule does
 the same. Daily at 03:30 UTC is `next_mark(HOUR * 7 / 2, 24 * HOUR)`. Jobs in separate tasks that
 must not overlap share a `tokio::sync::Mutex`.
+
+The loop and the `Mutex` hold within one process. An app that runs as several (a blue/green or
+rolling release while the old and the new both run, an app scaled out) runs each of its tasks in
+each of them, so each runs the schedule. A lock does not fix that: the instance whose tick comes a
+second after another's run ended finds it free and runs the job again. A job that must run once
+across them claims its run in the store they share, a row for the job and the mark the run is for,
+and runs only where the claim added the row:
+
+```rust,ignore
+const MINUTE: Duration = Duration::from_secs(60);
+
+/// The mark a tick is for: the nearest `past + k * period` on the wall clock to when the tick was
+/// due (`tick()` returns that), the same in every instance whose tick for it came early or late.
+/// `now` is the task's wall clock (below).
+fn mark_of(now: SystemTime, due: Instant, past: Duration, period: Duration) -> i64 {
+    let at = now - due.elapsed();
+    let at = at.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+    let (past, period) = (past.as_secs() as i64, period.as_secs() as i64);
+    past + (at - past + period / 2).div_euclid(period) * period
+}
+
+/// Whether this instance runs `job` for `mark`: the first to claim it does, the others skip it.
+/// `CREATE TABLE job_runs (job text, mark bigint, PRIMARY KEY (job, mark))`. `db` is the pool, or
+/// a transaction's connection.
+async fn claim(db: impl PgExecutor<'_>, job: &str, mark: i64) -> sqlx::Result<bool> {
+    let added = sqlx::query("INSERT INTO job_runs (job, mark) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(job)
+        .bind(mark)
+        .execute(db)
+        .await?;
+    Ok(added.rows_affected() == 1)
+}
+```
+
+`mark_of` takes the wall clock's time rather than reading it, since a test on a paused tokio
+clock (`start_paused`) does not move the wall clock, and every tick would land on the first mark.
+Every interval under a claim starts on the clock's marks, so all instances tick on the same ones:
+`recheck` above starts at once, and under a claim it starts as `hourly` does,
+`interval_at(next_mark(Duration::ZERO, 5 * MINUTE), 5 * MINUTE)`. Started when each process did,
+two instances that tick either side of half a period name adjacent marks, and both run it seconds
+apart. In the loop (the task given the pool, a wall clock `wall: impl Fn() -> SystemTime` that is
+`SystemTime::now` in the app and, in a test on a paused clock, the time the test started plus
+`Instant`'s elapsed time since, and `Job` a `name()` for its row), each tick gives when it was
+due, and the job runs only when its claim says so:
+
+```rust,ignore
+let (job, mark) = tokio::select! {
+    biased;
+    _ = signal.aborted() => return,
+    due = hourly.tick() => (Job::Refresh, mark_of(wall(), due, 15 * MINUTE, HOUR)),
+    due = recheck.tick() => (Job::Recheck, mark_of(wall(), due, Duration::ZERO, 5 * MINUTE)),
+};
+// Raced with shutdown: a claim waiting for a connection would outlast the grace.
+let claimed = tokio::select! {
+    biased;
+    _ = signal.aborted() => return,
+    claimed = claim(&pool, job.name(), mark) => claimed,
+};
+match claimed {
+    Ok(true) => {} // run it, as above
+    Ok(false) => continue, // another instance has this one
+    Err(error) => {
+        tracing::warn!(%error, "claiming a run"); // the schedule goes on; this run is skipped
+        continue;
+    }
+}
+```
+
+The claim gives at most one run for each mark. An instance that claims a run and stops before it is
+done or fails (a deploy's shutdown, a crash, an error) leaves that run undone; a job that must not
+miss one records what it finished, and the next run takes up what the last left, as the queue above
+does. The table gains a row per run, so a prune of old marks belongs in the job. Each mark runs at
+most once whatever the clocks say, since each instance names its own tick's mark. A clock ahead of
+the others runs each mark early by as much, and when the instance that runs changes (one with a
+faster clock starts, or it stops), the time between two runs is a period less or more that skew; a
+skew near a period puts two runs moments apart. Keep the clocks in sync (NTP), which a short period
+needs most. Across a release the claim holds only while the old and the new both claim and name the
+job and its marks alike: the release that brings the claim in, or renames a job or moves its marks,
+runs it in both while they overlap, so it goes out with the old drained first.
+
+A claim keeps apart runs of one job for one mark, and nothing else: one job's run that overran its
+period overlaps the next, and two jobs kept apart by one loop or one `Mutex` (the refresh and the
+recheck above) run at once on two instances. Jobs that must not overlap, across instances, take one
+lock for all of them before they claim, and a busy lock skips the tick with its mark unclaimed: a
+mark whose every tick meets another job's run (jobs in separate tasks, every instance ticking while
+it runs) is run nowhere, so a job that must not miss one records what it finished, as above. For
+work of seconds that is the advisory lock in [Work that must not run twice at
+once](requests-and-forms.md#work-that-must-not-run-twice-at-once), with the timeouts it sets there,
+and the claim and the job's writes run on the lock's transaction (`held.conn()` in place of the
+pool), so the job holds one connection and a run that fails rolls its claim back with it. Then an
+instance whose tick for that mark comes later may run it again: the failed run's database writes
+went with its claim, a call outside the database did not. For work of minutes it is the queue's
+leased claim, renewed while the work runs.
+
+Each instance's status (the map above) holds only the runs it claimed, so behind a load balancer
+a status page shows a different last run from each. Status shown across instances is kept in the
+shared store too: the run's row, given when it started, how long it took and how it ended.
 
 Limits, which are the app's to handle:
 
