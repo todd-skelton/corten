@@ -1694,6 +1694,8 @@ impl Req {
     /// [`crate::App::new`] or to an area that the router picks for its path (the most specific,
     /// as axum picks it) has a `GET` handler. A return address the app does not serve (a page of
     /// another app of the product, or none) goes elsewhere; one it serves is `req.redirect(&to)`.
+    /// A form's write sent to another origin needs that origin in the form's page's `form-action`
+    /// ([`crate::security::Policy::form_action`]), or the browser stops it.
     /// A route that only takes writes, a path under an API and Corten's own paths are not served.
     /// It does not look at who is asking: a page an area's caller check refuses still counts, and
     /// a record that is not there is still a 404.
@@ -1756,6 +1758,63 @@ fn refresh_header_is_an_error(res: Response) -> Response {
         "corten: this page sends a Refresh header, which the browser keeps after the runtime navigates away and then loads this URL again: put <ReadAgain after={..} /> in the page's head tags instead",
     )
     .into_response()
+}
+
+/// A write's redirect to an origin the form's page does not allow in `form-action`: Chromium
+/// and WebKit stop the submission there, on the form's page, with only a console error, while
+/// every test passes. A debug build answers it as an error that says so; a release build sends
+/// it as it is.
+#[cfg(debug_assertions)]
+fn redirect_outside_form_action(res: Response, check: Option<&crate::security::FormCheck>) -> Response {
+    let Some(check) = check else { return res };
+    // A relayed answer is passed on as it came, under the policy it came with.
+    if res.extensions().get::<crate::answer::Relayed>().is_some() {
+        return res;
+    }
+    let to = match res.status() {
+        status if status.is_redirection() => res.headers().get(header::LOCATION),
+        StatusCode::NO_CONTENT => res.headers().get(LOCATION_HEADER),
+        _ => None,
+    };
+    let Some(message) = to.and_then(|to| outside_form_action(check, to)) else { return res };
+    // What the handler set besides the redirect (a session cookie, which the browser keeps even
+    // when it stops the redirect) goes out with the error page.
+    let (parts, _) = res.into_parts();
+    let mut error = Error::new(message).into_response();
+    let own: Vec<HeaderName> = error.headers().keys().cloned().collect();
+    for (name, value) in &parts.headers {
+        if name != header::LOCATION && name != LOCATION_HEADER && !own.contains(name) {
+            error.headers_mut().append(name, value.clone());
+        }
+    }
+    error
+}
+
+/// What a debug build says of a write redirected to `to`, when the form's page does not allow it.
+#[cfg(debug_assertions)]
+fn outside_form_action(check: &crate::security::FormCheck, to: &HeaderValue) -> Option<String> {
+    // A path, the common case, is the page's own origin: nothing else is worked out.
+    if !crate::security::is_address(to.as_bytes()) {
+        return None;
+    }
+    let targets = check.targets()?;
+    if targets.allows(to.as_bytes()) {
+        return None;
+    }
+    let origin = targets.origin(to.as_bytes());
+    let stops = if check.action {
+        "so without JavaScript a browser stops the same form there"
+    } else {
+        "so a browser stops the form there"
+    };
+    let own = if targets.own_unknown() {
+        "; if it is the app's own origin, send a Host in the test or name it with Policy::host"
+    } else {
+        ""
+    };
+    Some(format!(
+        "corten: this write redirects to {origin}, which the form's page does not allow in its CSP's form-action, {stops} with only a console error: allow it with Policy::form_action(\"{origin}\") (Sources::form_action for an area), or redirect to a page of the app{own}"
+    ))
 }
 
 /// How long the browser keeps a [`Req::moved`] redirect: a day, its own copy only.
@@ -1823,9 +1882,15 @@ pub(crate) async fn render_errors<S: crate::app::Steps>(
     let browser = matches!(mode, Mode::Navigation | Mode::Action) || (mode == Mode::Document && accepts_html(req.headers()));
     // Taken now, while the request (its nonce, its credentials) is here; it allocates nothing.
     let asked = Asked::new(&req, shared.clone(), Credentials::of(req.headers()));
+    #[cfg(debug_assertions)]
+    let mut req = req;
+    #[cfg(debug_assertions)]
+    let check = req.extensions_mut().remove::<crate::security::FormCheck>();
     let res = run(req, next, deadline, signal).await;
     #[cfg(debug_assertions)]
-    let mut res = refresh_header_is_an_error(res);
+    let res = refresh_header_is_an_error(res);
+    #[cfg(debug_assertions)]
+    let mut res = redirect_outside_form_action(res, check.as_ref());
     #[cfg(not(debug_assertions))]
     let mut res = res;
     let status = res.status();
@@ -1842,6 +1907,13 @@ pub(crate) async fn render_errors<S: crate::app::Steps>(
     if let Some(crate::caller::SignIn(to)) = res.extensions().get::<crate::caller::SignIn>().cloned() {
         let kept = std::mem::take(res.headers_mut());
         let Some(message) = sign_in_loops(asked.path(), &to) else {
+            #[cfg(debug_assertions)]
+            if let Some(message) = check.as_ref().and_then(|check| outside_form_action(check, &to)) {
+                tracing::error!("{message}");
+                let failure = Failure::Failed { status: StatusCode::INTERNAL_SERVER_ERROR, detail: Some(Arc::from(message)) };
+                let failure = if shared.dev { failure } else { failure.without_detail() };
+                return carried(kept, error_page(shared, asked, failure).await);
+            }
             return carried(kept, redirect(mode, to));
         };
         tracing::error!("corten: {message}");

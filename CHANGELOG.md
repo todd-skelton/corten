@@ -2668,6 +2668,23 @@ Corten is pre-1.0, so any minor version may change the API.
     fixture: 16 pages, the JSON and the 404s pass for all thirteen (Laravel on a 15-item fixture,
     since PHP's default 128 MB limit does not hold the 508-item one, as its provider notes)
     ([#520 Benchmark parity fails for every app: card-market writes counts as 2,866 since plural messages, the other apps 2866](https://github.com/todd-skelton/corten/issues/520)).
+93. A form's write redirected to another origin that its page's CSP `form-action` does not allow
+    is a 500 that names the origin and `Policy::form_action` in a debug build, where it passed
+    every test and the browser stopped it on the form's page with only a console error. It holds
+    any redirect a handler answers to a form's `POST` from one of the app's pages, plain or
+    `data-patch` (a `Location`, a sign-in redirect, a `corten-location`), to that page's policy,
+    matched as CSP 3 matches a source after a redirect, with the page's `Origin` as `'self'`;
+    the handler's other headers (a cookie) go out with the 500. A `GET`, a script's `fetch`,
+    another site's post, a `Relay` answer, `Policy::report_only` and a redirect after the
+    write's own are not checked, and a release build compiles none of it.
+    Measured with callgrind (in-process `oneshot`, a POST that redirects to a path, the
+    difference between 1,200 and 200 requests over 1,000, median of three and the range of the
+    nine pairs, against main at f5c76a08, the branch at 7befb95d; the later commits change only
+    the check of a redirect to another address, which the measured request does not reach): release 27,035 instructions a request on the branch
+    (26,988 to 27,047) against 27,035 on main (26,944 to 27,072), none of the check compiled in;
+    debug 217,283 on the branch (217,087 to 217,376) against 189,171 on main (189,119 to
+    189,197), the headers kept for the check
+    ([#527 A form's redirect to another origin that the app's form-action does not allow passes every test and is blocked in the browser](https://github.com/todd-skelton/corten/issues/527)).
 
 ### Documentation
 

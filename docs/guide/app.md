@@ -1214,6 +1214,40 @@ loads the current page again rather than swap it in: answer such a form with a p
 An area that adds only sources the app already has keeps the app's policy and shell key. A policy for a single route is an area of one page. An `App::api` keeps its
 own `default-src 'none'`.
 
+A form's handler that redirects to another origin (a hosted checkout, a sibling app, a return
+address the app does not serve) needs that origin in `form-action`: Chromium and WebKit hold the
+redirects a submission follows to the form's page's policy, and stop one it does not allow there,
+on the form's page, with only a console error. A test that runs the request in process sees the
+303 either way, so a debug build checks for the browser. It answers as a 500 that names the
+origin and `Policy::form_action` (the detail under `corten dev`; it is logged either way):
+
+1. a `POST` whose body a form can send (none, `application/x-www-form-urlencoded`,
+   `multipart/form-data` or `text/plain`), plain or `data-patch` (the same form without
+   JavaScript is stopped),
+2. from one of the app's pages: `Sec-Fetch-Site: same-origin` with an `Origin`, an `Origin` on
+   the request's host, or neither header, as a test or a client that is not a browser sends,
+3. whose redirect (any a handler answers: `req.redirect`, a `Location` set by hand, a sign-in
+   redirect, or a `data-patch` answer's `corten-location`) goes to an origin that is not the
+   page's own (its `Origin`, else its host; for a request that names neither, the app's
+   `Policy::host` names) and that the page's `form-action` does not allow.
+
+The page is the one the `Referer` names, so a test that sends it is held to that page's policy.
+Without one, or with a `Referer` of `/` (what every page sends under a referrer policy that
+sends only the origin, one a page sets itself included), it may be any of the app's pages, and
+the redirect passes if any of the app's policies allows it.
+
+Not checked: another method (no form sends it), a script's own `fetch` (held to `connect-src`),
+a post from another site's page, a browser's post that does not say its page's origin
+(`Origin: null`), a `Relay` answer, an app under `Policy::report_only` (the browser reports the
+redirect and follows it), and a release build, which sends the redirect as written and does no
+work for the check. The browser holds every redirect the submission follows to the form's
+page's `form-action`, not only the write's own: a write that redirects to `/`, where a
+signed-out `Caller` is sent to sign in on another origin, is stopped too. A later redirect
+answers a `GET` the server cannot tell from a link, so it is not checked; allow those origins
+as well. A form on a relayed page posting to one of the app's routes is held to the app's policy
+at the page's path, not to the CSP the relayed page came with, which the app does not see: allow
+the origin there too, or relay the write.
+
 Every page is sent with `Cross-Origin-Opener-Policy: same-origin`, so a window another site
 opened, or one this page opens on another site, cannot reach it. Two things loosen it, for the
 whole app on `Policy` or, better, for the pages that need it on their area's `Sources`:

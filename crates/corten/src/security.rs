@@ -170,7 +170,11 @@ impl Policy {
     /// submission follows. Without it a form goes to this origin only. A form posted straight to
     /// another app also needs that app to accept posts from this origin (most frameworks refuse a
     /// cross-origin post as CSRF), so posting here and redirecting is usually simpler. Writes
-    /// coming in from another site are [`Policy::allow_origin`].
+    /// coming in from another site are [`Policy::allow_origin`]. A debug build answers a write
+    /// from one of the app's pages that redirects to an origin its page does not allow as an error
+    /// naming it, so a test sees what a browser would stop. A redirect after the write's own (the
+    /// page it goes to sending someone to sign in elsewhere) is held to the same policy by the
+    /// browser and is not checked.
     pub fn form_action(mut self, source: &str) -> Self {
         self.sources = self.sources.form_action(source);
         self
@@ -728,6 +732,9 @@ pub(crate) struct Applied {
     /// the policies it loaded with.
     areas: Vec<(&'static str, Csp, u64)>,
     api_csp: HeaderValue,
+    /// The `form-action` of each policy, for a debug build's check of a write's redirect.
+    #[cfg(debug_assertions)]
+    forms: Arc<FormPolicy>,
 }
 
 /// One CSP for pages, split around the nonce once, at startup, and the opener and referrer
@@ -740,6 +747,10 @@ pub(crate) struct Csp {
     style_at: (usize, usize, usize),
     opener: HeaderValue,
     referrer: Sent,
+    /// Its `form-action` sources besides `'self'`, which a debug build checks a write's redirect
+    /// against ([`FormTargets`]).
+    #[cfg(debug_assertions)]
+    form_action: Vec<String>,
 }
 
 impl Csp {
@@ -759,6 +770,8 @@ impl Csp {
             style_at: (at, part, offset),
             opener: policy.sources.opener.header(),
             referrer: policy.sources.referrer,
+            #[cfg(debug_assertions)]
+            form_action: policy.sources.form_action.clone(),
         }
     }
 
@@ -832,7 +845,20 @@ impl Applied {
             })
             .collect();
         placed.sort_by_key(|(prefix, ..)| std::cmp::Reverse(prefix.len()));
-        Applied { policy, csp, areas: placed, api_csp: HeaderValue::from_static(API_CSP) }
+        #[cfg(debug_assertions)]
+        let forms = Arc::new(FormPolicy {
+            names: policy.hosts.clone().unwrap_or_default(),
+            app: csp.form_action.clone(),
+            areas: placed.iter().map(|(prefix, csp, _)| (*prefix, csp.form_action.clone())).collect(),
+        });
+        Applied {
+            policy,
+            csp,
+            areas: placed,
+            api_csp: HeaderValue::from_static(API_CSP),
+            #[cfg(debug_assertions)]
+            forms,
+        }
     }
 
     /// The CSP of the pages at `path` and what it adds to their shell key: its innermost area's
@@ -842,6 +868,45 @@ impl Applied {
             return (&self.csp, 0);
         }
         self.areas.iter().find(|(prefix, ..)| crate::api::under(prefix, path)).map_or((&self.csp, 0), |(_, csp, key)| (csp, *key))
+    }
+
+    /// What a debug build needs to hold a redirect answering this request to the `form-action`
+    /// of the form's page ([`FormCheck`]), when it is a submission: a `GET` form cannot be told
+    /// from a link, and a script's own `fetch` is held to `connect-src`. Only the request's
+    /// headers are kept; the page and its policy are worked out for a redirect to another address.
+    #[cfg(debug_assertions)]
+    pub(crate) fn form_check(&self, method: &Method, uri: &axum::http::Uri, headers: &HeaderMap) -> Option<FormCheck> {
+        // A report-only policy stops nothing: the browser reports the redirect and follows it. A
+        // form sends only GET and POST, and a GET form cannot be told from a link.
+        if self.report_only || *method != Method::POST {
+            return None;
+        }
+        // A body a form cannot send (JSON from a webhook or a native client) is not a form's.
+        let form_type = |kind: &[u8]| {
+            let kind = kind.split(|&b| b == b';').next().unwrap_or(b"").trim_ascii();
+            [&b"application/x-www-form-urlencoded"[..], b"multipart/form-data", b"text/plain"]
+                .iter()
+                .any(|t| kind.eq_ignore_ascii_case(t))
+        };
+        if headers.get(header::CONTENT_TYPE).is_some_and(|kind| !form_type(kind.as_bytes())) {
+            return None;
+        }
+        // The runtime's `data-patch` submission is a `fetch` too, and is checked: the same form
+        // without JavaScript is a submission the browser holds to `form-action`.
+        let scripted = headers.get("sec-fetch-mode").is_some_and(|mode| mode.as_bytes() != b"navigate");
+        let action = headers.get(crate::page::MODE_HEADER).is_some_and(|mode| mode.as_bytes() == b"action");
+        if scripted && !action {
+            return None;
+        }
+        Some(FormCheck {
+            forms: self.forms.clone(),
+            uri: uri.clone(),
+            host: headers.get(header::HOST).cloned(),
+            origin: headers.get(header::ORIGIN).cloned(),
+            referer: headers.get(header::REFERER).cloned(),
+            site: headers.get("sec-fetch-site").cloned(),
+            action,
+        })
     }
 
     /// The 403 for a write another site sent, if this is one. `origins` are the extra origins
@@ -1032,6 +1097,317 @@ fn refused_host(host: &[u8]) {
 /// The answer to a request for a host the app does not answer to.
 pub(crate) fn misdirected() -> Response {
     (StatusCode::MISDIRECTED_REQUEST, "Misdirected request.").into_response()
+}
+
+/// The `form-action` sources of the app's policy and of each area's that adds to it (innermost
+/// prefix first).
+#[cfg(debug_assertions)]
+pub(crate) struct FormPolicy {
+    /// The names given to [`Policy::host`], the app's own when a request names no host.
+    names: Vec<String>,
+    app: Vec<String>,
+    areas: Vec<(&'static str, Vec<String>)>,
+}
+
+#[cfg(debug_assertions)]
+impl FormPolicy {
+    fn at(&self, path: &str) -> &[String] {
+        self.areas.iter().find(|(prefix, _)| crate::api::under(prefix, path)).map_or(&self.app, |(_, sources)| sources)
+    }
+}
+
+/// A write a form may have sent, as [`Applied::form_check`] kept it.
+#[cfg(debug_assertions)]
+#[derive(Clone)]
+pub(crate) struct FormCheck {
+    forms: Arc<FormPolicy>,
+    uri: axum::http::Uri,
+    host: Option<HeaderValue>,
+    origin: Option<HeaderValue>,
+    referer: Option<HeaderValue>,
+    site: Option<HeaderValue>,
+    /// The runtime sent it (`data-patch`): the browser stops only the same form without
+    /// JavaScript.
+    pub(crate) action: bool,
+}
+
+#[cfg(debug_assertions)]
+impl FormCheck {
+    /// Where the form's page lets a submission go, when one of the app's pages sent it
+    /// (`Sec-Fetch-Site: same-origin`, or an `Origin` on its host, or neither header, as a test
+    /// or another client that is not a browser sends); a form on another site's page (an identity
+    /// provider's `form_post`) is held to that page's policy, so `None`. A browser that sends no
+    /// `Origin` (or `null`) does not say the page's origin, so it is not checked either. The
+    /// form's page is the `Referer` when it says the page; otherwise it may be any of the app's
+    /// pages, and the redirect may go wherever one of the app's policies allows.
+    pub(crate) fn targets(&self) -> Option<FormTargets> {
+        fn text(value: &Option<HeaderValue>) -> Option<&str> {
+            value.as_ref().and_then(|v| v.to_str().ok())
+        }
+        let host = text(&self.host)
+            .or_else(|| self.uri.authority().map(|at| at.as_str()))
+            .map(|at| at.rsplit_once('@').map_or(at, |(_, at)| at).to_ascii_lowercase());
+        let origin = text(&self.origin).filter(|origin| *origin != "null").and_then(address);
+        let ours = match &self.site {
+            Some(site) => site.as_bytes() == b"same-origin" && origin.is_some(),
+            None => match (&origin, &self.origin) {
+                (Some(origin), _) => host.as_deref().is_some_and(|host| {
+                    without_default_port(None, host) == without_default_port(origin.scheme.as_deref(), &origin.at)
+                }),
+                (None, None) => true,
+                (None, Some(_)) => false,
+            },
+        };
+        if !ours {
+            return None;
+        }
+        // The page's origin: `Origin`, which a browser sends with every submission and a proxy
+        // leaves as the visitor's, else the host the request names.
+        let own = match origin {
+            Some(origin) => Some(Own { scheme: origin.scheme, at: origin.at }),
+            None => host.map(|at| Own { scheme: None, at }),
+        };
+        // A page under a referrer policy that sends only the origin (the app's, an area's, or one
+        // the page sends itself) has a `Referer` of `/` wherever it is, so `/` names no page.
+        let page = text(&self.referer)
+            .and_then(address)
+            // A test that names no host may still say the page.
+            .filter(|page| own.as_ref().is_none_or(|own| own.is(page.scheme.as_deref(), &page.at)))
+            .map(|page| page.path)
+            .filter(|path| path != "/");
+        let sources = match page {
+            Some(path) => self.forms.at(&path).to_vec(),
+            None => {
+                let all = std::iter::once(&self.forms.app).chain(self.forms.areas.iter().map(|(_, sources)| sources));
+                let mut sources: Vec<String> = all.flatten().cloned().collect();
+                sources.sort_unstable();
+                sources.dedup();
+                sources
+            }
+        };
+        let names = if own.is_none() { self.forms.names.clone() } else { Vec::new() };
+        Some(FormTargets { sources, own, names })
+    }
+}
+
+/// The origins a form on the page that sent a write may go to (`'self'` and its `form-action`
+/// sources), which Chromium and WebKit also hold the redirects the submission follows to: a debug
+/// build checks a write's redirect against them, so a test sees what the browser would stop.
+#[cfg(debug_assertions)]
+pub(crate) struct FormTargets {
+    sources: Vec<String>,
+    /// The page's origin, `'self'`.
+    own: Option<Own>,
+    /// When the request names no host (a test's): the app's names (`Policy::host`), on a web
+    /// scheme's default port, count as `'self'`.
+    names: Vec<String>,
+}
+
+/// An origin: its scheme when known, and its host and port, lowercase.
+#[cfg(debug_assertions)]
+#[derive(Clone)]
+struct Own {
+    scheme: Option<String>,
+    at: String,
+}
+
+#[cfg(debug_assertions)]
+impl Own {
+    /// Whether an address over `scheme` (`None`: the page's own) at `at` is this origin, as
+    /// CSP matches `'self'`: the same host and port, an `http` origin's `https` too.
+    fn is(&self, scheme: Option<&str>, at: &str) -> bool {
+        let scheme = scheme.or(self.scheme.as_deref());
+        let scheme_ok = match (self.scheme.as_deref(), scheme) {
+            (Some(ours), Some(theirs)) => ours == theirs || (ours == "http" && theirs == "https"),
+            (None, theirs) => theirs.is_none_or(|theirs| matches!(theirs, "http" | "https")),
+            (Some(_), None) => true,
+        };
+        scheme_ok && without_default_port(self.scheme.as_deref(), &self.at) == without_default_port(scheme, at)
+    }
+}
+
+/// `host:port` without the port when it is `scheme`'s default.
+#[cfg(debug_assertions)]
+fn without_default_port<'a>(scheme: Option<&str>, at: &'a str) -> &'a str {
+    match (split_port(at), scheme) {
+        ((host, Some(port)), Some(scheme)) if Some(port) == default_port(scheme) => host,
+        // A host without a known scheme (`Host` alone): either web default.
+        ((host, Some("80" | "443")), None) => host,
+        _ => at,
+    }
+}
+
+#[cfg(debug_assertions)]
+impl FormTargets {
+    /// Whether the page's `form-action` lets a submission be redirected to `to` (a `Location`):
+    /// a path is `'self'`; another address must be the page's origin or match a source, as
+    /// CSP matches one after a redirect (its path left out). An address that is not a URL with a
+    /// host is not checked.
+    pub(crate) fn allows(&self, to: &[u8]) -> bool {
+        let Ok(to) = std::str::from_utf8(to) else { return true };
+        let Some(to) = address(to) else { return true };
+        if self.own.as_ref().is_some_and(|own| own.is(to.scheme.as_deref(), &to.at)) {
+            return true;
+        }
+        // `https:done` on an https page is a path; on another scheme, `http:evil.example` is a host.
+        let page = self.own.as_ref().and_then(|own| own.scheme.as_deref());
+        if to.bare && page.is_none_or(|page| Some(page) == to.scheme.as_deref()) {
+            return true;
+        }
+        let bare = without_default_port(to.scheme.as_deref(), &to.at);
+        let named = |name: &String| match name.strip_prefix('.') {
+            Some(domain) => bare == domain || bare.strip_suffix(name.as_str()).is_some_and(|sub| !sub.is_empty()),
+            None => bare == name,
+        };
+        if to.scheme.as_deref().is_none_or(|scheme| matches!(scheme, "http" | "https")) && self.names.iter().any(named) {
+            return true;
+        }
+        let (host, port) = split_port(&to.at);
+        self.sources.iter().any(|source| source_allows(&source.to_ascii_lowercase(), to.scheme.as_deref(), page, host, port))
+    }
+
+    /// Whether the page's origin is not known (a test's request that names no host, in an app
+    /// with no `Policy::host`), so an address on the app's own origin cannot be told apart.
+    pub(crate) fn own_unknown(&self) -> bool {
+        self.own.is_none() && self.names.is_empty()
+    }
+
+    /// The origin of `to`, an address with a host, as a `form-action` source names it.
+    pub(crate) fn origin(&self, to: &[u8]) -> String {
+        let to = std::str::from_utf8(to).ok().and_then(address);
+        let page = self.own.as_ref().and_then(|own| own.scheme.as_deref());
+        match to {
+            Some(to) => match to.scheme.as_deref().or(page) {
+                Some(scheme) => format!("{scheme}://{}", to.at),
+                None => format!("https://{}", to.at),
+            },
+            None => String::new(),
+        }
+    }
+}
+
+/// An address with a host, as a browser reads a `Location`.
+#[cfg(debug_assertions)]
+struct Address {
+    /// `None` for one that starts `//`, which keeps the page's scheme.
+    scheme: Option<String>,
+    /// Its host and port, lowercase, without user info.
+    at: String,
+    /// Its path, `/` when it has none.
+    path: String,
+    /// Written `http:host`, with no slashes: a page on the same scheme reads it as a path.
+    bare: bool,
+}
+
+/// Whether `to` (a `Location`) is an address with a host, which a form's page may not allow.
+#[cfg(debug_assertions)]
+pub(crate) fn is_address(to: &[u8]) -> bool {
+    std::str::from_utf8(to).ok().and_then(address).is_some()
+}
+
+/// `to` as an [`Address`], or `None` for a path, an address with no host (`mailto:`) or one
+/// the browser would read against the page (`https:done`). A backslash is a slash, as browsers
+/// read one in an `http` address.
+#[cfg(debug_assertions)]
+fn address(to: &str) -> Option<Address> {
+    // A browser strips the spaces and control characters around an address.
+    let to = to.trim_matches(|c: char| c <= ' ');
+    let slash = |c: char| c == '/' || c == '\\';
+    let (scheme, rest) = match to.strip_prefix(slash).and_then(|rest| rest.strip_prefix(slash)) {
+        Some(rest) => (None, rest),
+        None => {
+            let (scheme, rest) = to.split_once(':')?;
+            if !is_scheme(scheme) {
+                return None;
+            }
+            let scheme = scheme.to_ascii_lowercase();
+            let rest = if matches!(scheme.as_str(), "http" | "https" | "ws" | "wss") {
+                rest.trim_start_matches(slash)
+            } else {
+                rest.strip_prefix("//")?
+            };
+            (Some(scheme), rest)
+        }
+    };
+    let end = rest.find(['/', '\\', '?', '#']).unwrap_or(rest.len());
+    let (at, after) = rest.split_at(end);
+    let at = at.rsplit_once('@').map_or(at, |(_, at)| at).to_ascii_lowercase();
+    let path = after.split(['?', '#']).next().unwrap_or("").replace('\\', "/");
+    let path = if path.is_empty() { "/".to_owned() } else { path };
+    // Fewer than two slashes after the scheme: on a page of that scheme, a path.
+    let bare = scheme.is_some() && to.split_once(':').is_some_and(|(_, rest)| rest.chars().take_while(|&c| slash(c)).count() < 2);
+    (!at.is_empty()).then_some(Address { scheme, at, path, bare })
+}
+
+#[cfg(debug_assertions)]
+fn is_scheme(scheme: &str) -> bool {
+    scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+        && scheme.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.'))
+}
+
+/// `host:port` as its host and port (`[::1]:3000`, `*.example.com:*`).
+#[cfg(debug_assertions)]
+fn split_port(at: &str) -> (&str, Option<&str>) {
+    let colon =
+        if at.starts_with('[') { at.find(']').and_then(|end| at[end..].find(':').map(|c| end + c)) } else { at.rfind(':') };
+    match colon {
+        Some(colon) => (&at[..colon], Some(&at[colon + 1..])),
+        None => (at, None),
+    }
+}
+
+#[cfg(debug_assertions)]
+fn default_port(scheme: &str) -> Option<&'static str> {
+    match scheme {
+        "http" | "ws" => Some("80"),
+        "https" | "wss" => Some("443"),
+        _ => None,
+    }
+}
+
+/// Whether CSP source expression `source` (lowercase) matches a redirect to `host` and `port`
+/// over `scheme` (`None`: an address that starts `//`) from a page over `page` (`None`: not
+/// known): a scheme (`https:`), `*`, or a host with a scheme, a `*.` wildcard and a port where
+/// it has them (CSP 3, 6.7.2.8; after a redirect a source's path is not matched). `http` also
+/// allows `https`, as browsers upgrade, and a source without a scheme takes the page's.
+#[cfg(debug_assertions)]
+fn source_allows(source: &str, scheme: Option<&str>, page: Option<&str>, host: &str, port: Option<&str>) -> bool {
+    let upgrades =
+        |ours: &str, theirs: &str| ours == theirs || (ours == "http" && theirs == "https") || (ours == "ws" && theirs == "wss");
+    let scheme = scheme.or(page);
+    if source.starts_with('\'') {
+        return false;
+    }
+    if source == "*" {
+        return scheme.is_none_or(|scheme| matches!(scheme, "http" | "https" | "ws" | "wss") || Some(scheme) == page);
+    }
+    if let Some(only) = source.strip_suffix(':').filter(|only| is_scheme(only)) {
+        return scheme.is_none_or(|scheme| upgrades(only, scheme));
+    }
+    let (theirs, rest) = match source.split_once("://") {
+        Some((theirs, rest)) => (Some(theirs), rest),
+        None => (None, source),
+    };
+    let scheme_ok = match (theirs.or(page), scheme) {
+        (Some(theirs), Some(scheme)) => upgrades(theirs, scheme),
+        (None, Some(scheme)) => matches!(scheme, "http" | "https"),
+        (_, None) => true,
+    };
+    let (source_host, source_port) = split_port(rest.split('/').next().unwrap_or(""));
+    let host_ok = match source_host.strip_prefix("*.") {
+        Some(domain) => {
+            host.len() > domain.len() + 1 && host.ends_with(domain) && host.as_bytes()[host.len() - domain.len() - 1] == b'.'
+        }
+        None => source_host == "*" || source_host == host,
+    };
+    // A URL's port, its scheme's default when it has none (which the URL parser leaves out).
+    let effective = port.or_else(|| scheme.and_then(default_port));
+    let port_ok = match source_port {
+        Some("*") => true,
+        Some(wanted) => effective == Some(wanted) || (wanted == "80" && effective == Some("443")),
+        None => port.is_none() || effective == scheme.and_then(default_port),
+    };
+    scheme_ok && host_ok && port_ok
 }
 
 /// Rejects a source that would break out of its directive.
@@ -1327,6 +1703,73 @@ mod tests {
         assert!(csp.contains("form-action 'self';"), "a form goes to this origin only: {csp}");
         let checkout = Policy::new().form_action("https://pay.example").form_action("https://id.example").csp("abc");
         assert!(checkout.contains("form-action 'self' https://pay.example https://id.example;"), "{checkout}");
+    }
+
+    /// What a debug build holds a write's redirect to: CSP's source matching, a source's path left
+    /// out (as after any redirect).
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_form_action_source_matches_as_a_browser_matches_it() {
+        let targets = |sources: &[&str]| FormTargets {
+            sources: sources.iter().map(|s| s.to_string()).collect(),
+            own: Some(Own { scheme: Some("https".into()), at: "app.example".into() }),
+            names: Vec::new(),
+        };
+        let cases: &[(&[&str], &str, bool)] = &[
+            (&[], "/done", true),
+            (&[], "https://app.example/done", true),
+            (&[], "//app.example/done", true),
+            (&[], "https://APP.example:443/x", true),
+            (&[], "https://app.example:8443/x", false),
+            (&[], "https://pay.example/", false),
+            (&["https://pay.example"], "https://pay.example/checkout?a=1", true),
+            (&["https://pay.example/only/this"], "https://pay.example/other", true),
+            (&["https://pay.example"], "http://pay.example/", false),
+            (&["http://pay.example"], "https://pay.example/", true),
+            (&["pay.example"], "https://pay.example/", true),
+            (&["pay.example"], "ftp://pay.example/", false),
+            (&["https://pay.example"], "https://pay.example:8443/", false),
+            (&["https://pay.example:8443"], "https://pay.example:8443/", true),
+            (&["https://pay.example:*"], "https://pay.example:9/", true),
+            (&["https://pay.example"], "https://pay.example:443/", true),
+            (&["https://*.shop.example"], "https://id.shop.example/", true),
+            (&["https://*.shop.example"], "https://shop.example/", false),
+            (&["https://*.shop.example"], "https://evilshop.example/", false),
+            (&["https:"], "https://anything.example/", true),
+            (&["https:"], "http://anything.example/", false),
+            (&["*"], "https://anything.example/", true),
+            (&["'self'"], "https://pay.example/", false),
+            (&["https://pay.example"], "mailto:a@pay.example", true),
+            (&["https://pay.example"], "https://user@pay.example/", true),
+            (&["http://localhost:9999"], "http://localhost:9999/account", true),
+            (&["http://localhost:9999"], "http://localhost:9998/account", false),
+            // The host is the address's own, not one a query or fragment holds.
+            (&["https://pay.example"], "https://pay.example/go?next=https://other.example/", true),
+            (&[], "https://evil.example/?next=https://app.example/", false),
+            (&[], "https://evil.example#https://app.example/", false),
+            // The page is https: 'self' over http is another origin, and so is a source with no
+            // scheme over http.
+            (&[], "http://app.example/done", false),
+            (&["pay.example"], "http://pay.example/", false),
+            (&["http://pay.example"], "https://pay.example:443/", true),
+            (&["http://pay.example:80"], "https://pay.example/", true),
+            (&["*"], "ftp://anything.example/", false),
+            // A backslash is a slash in an http address.
+            (&[], "/\\evil.example/", false),
+            (&[], "https:\\\\evil.example/", false),
+            (&["https://pay.example"], "https://pay.example\\x", true),
+            // Without slashes, a scheme other than the page's names a host; the page's, a path.
+            (&[], "http:evil.example/x", false),
+            (&[], "https:done", true),
+            (&[], "https:/evil.example/x", true),
+            (&[], "https:\\evil.example/x", true),
+            (&[], "http:/evil.example/x", false),
+            // A browser strips the spaces around an address.
+            (&[], " https://evil.example/", false),
+        ];
+        for (sources, to, allowed) in cases {
+            assert_eq!(targets(sources).allows(to.as_bytes()), *allowed, "{sources:?} {to}");
+        }
     }
 
     #[test]

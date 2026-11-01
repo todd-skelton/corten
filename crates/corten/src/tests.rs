@@ -1341,6 +1341,294 @@ async fn a_page_with_a_refresh_header_is_an_error_in_debug_builds() {
     assert_eq!(call(app(api, None), "GET", None).await.0, StatusCode::OK, "only pages are checked");
 }
 
+/// A write redirected to an origin the form's page does not allow in `form-action` is an error in
+/// a debug build, as the browser stops it there; one the policy allows, a path, a page's own
+/// host and a `GET` are not, and an area's policy or the sending page's counts.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
+    use crate::security::Policy;
+    let to = |uri: &'static str| {
+        axum::routing::post(move |req: Req| async move {
+            let uri: axum::http::Uri = uri.parse().unwrap();
+            req.redirect::<()>(&uri)
+        })
+    };
+    let routes = Router::new()
+        .route("/sibling", to("http://localhost:9999/account"))
+        .route("/pay", to("https://pay.example/checkout?o=1"))
+        .route("/sub", to("https://id.shop.example/login"))
+        .route("/own", to("http://app.localhost/done"))
+        .route("/path", to("/done"))
+        .route("/public", to("https://app.localhost/done"))
+        .route("/else", to("https://else.example/x"))
+        .route(
+            "/relay",
+            axum::routing::post(|| async {
+                let mut headers = axum::http::HeaderMap::new();
+                headers.insert(axum::http::header::LOCATION, axum::http::HeaderValue::from_static("https://upstream.example/x"));
+                crate::Relay::new(StatusCode::FOUND, headers, Body::empty())
+            }),
+        )
+        .route(
+            "/read",
+            get(|req: Req| async move { req.redirect::<()>(&"https://else.example/".parse::<axum::http::Uri>().unwrap()) }),
+        );
+    let policy = Policy::new()
+        .form_action("https://pay.example")
+        .form_action("https://*.shop.example")
+        .allow_origin("https://idp.example");
+    let router = App::new(Routes::from(routes))
+        .policy(policy)
+        .area(|area| checkout_url::area(area).policy(|p| p.form_action("http://localhost:9999")))
+        .router();
+    let send = |path: &'static str, method: &'static str, headers: &'static [(&'static str, &'static str)]| {
+        let router = router.clone();
+        async move {
+            let mut req = Request::builder().method(method).uri(path).header("accept", "text/html");
+            for (name, value) in headers {
+                req = req.header(*name, *value);
+            }
+            let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            let status = res.status();
+            let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            (status, String::from_utf8(body.to_vec()).unwrap())
+        }
+    };
+    for mode in [&[][..], &[("corten", "action")][..], &[("corten", "action"), ("sec-fetch-mode", "cors")][..]] {
+        let (status, _) = send("/else", "POST", mode).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{mode:?}");
+    }
+    // Without a Referer the form may be on any of the app's pages: the checkout area allows this.
+    let (status, _) = send("/sibling", "POST", &[]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "some page of the app allows it");
+    // A script's own fetch is held to connect-src, not form-action.
+    let (status, _) = send("/sibling", "POST", &[("sec-fetch-mode", "cors"), ("sec-fetch-site", "same-origin")]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "a fetch");
+    // A relayed answer is passed on as it came.
+    let (status, _) = send("/relay", "POST", &[]).await;
+    assert_eq!(status, StatusCode::FOUND, "a relay");
+    // Behind a proxy that rewrites Host, the page's origin is the browser's Origin.
+    const PROXIED: &[(&str, &str)] =
+        &[("host", "127.0.0.1:3000"), ("origin", "https://app.localhost"), ("sec-fetch-site", "same-origin")];
+    let (status, _) = send("/public", "POST", PROXIED).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "the page's own origin");
+    const PLAIN: &[(&str, &str)] =
+        &[("host", "app.localhost"), ("origin", "http://app.localhost"), ("sec-fetch-site", "same-origin")];
+    let (status, _) = send("/public", "POST", PLAIN).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "an http page may go to its https origin");
+    const SECURE: &[(&str, &str)] =
+        &[("host", "app.localhost"), ("origin", "https://app.localhost"), ("sec-fetch-site", "same-origin")];
+    let (status, _) = send("/own", "POST", SECURE).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "an https page's form may not go to http");
+    for path in ["/pay", "/sub", "/path"] {
+        let (status, _) = send(path, "POST", &[]).await;
+        assert!(status == StatusCode::SEE_OTHER, "{path}: {status}");
+    }
+    let (status, _) = send("/own", "POST", &[("host", "app.localhost")]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "the request's own host is 'self'");
+    let (status, _) = send("/own", "POST", &[]).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "with no Host, an address is another origin");
+    let (status, _) = send("/read", "GET", &[]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "a GET is not held to form-action");
+    // An area's policy holds a write at its path, and the page the form was on counts too.
+    let (status, _) = send("/checkout/go", "POST", &[]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "the area allows it");
+    const FROM_AREA: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/checkout?step=2")];
+    let (status, _) = send("/sibling", "POST", FROM_AREA).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "the form's page, in the area, allows it");
+    // A post from another site's page (an identity provider's form_post) is that page's policy's.
+    const IDP: &[(&str, &str)] =
+        &[("host", "app.localhost"), ("origin", "https://idp.example"), ("sec-fetch-site", "cross-site")];
+    assert_eq!(send("/else", "POST", IDP).await.0, StatusCode::SEE_OTHER, "cross-site");
+    const IDP_OLD: &[(&str, &str)] = &[("host", "app.localhost"), ("origin", "https://idp.example")];
+    assert_eq!(send("/else", "POST", IDP_OLD).await.0, StatusCode::SEE_OTHER, "another origin, no Sec-Fetch-Site");
+    // A test that names no host and sends the form's page is held to that page's policy.
+    let (status, _) = send("/sibling", "POST", &[("referer", "http://app.localhost/news")]).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the Referer alone says the page");
+    const FROM_NEWS: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/news")];
+    let (status, _) = send("/sibling", "POST", FROM_NEWS).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the news page does not allow it");
+    // A Referer of `/` is what any page under a referrer policy that sends only the origin sends
+    // (one the page set itself included): it names no page.
+    const ROOT: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/")];
+    let (status, _) = send("/sibling", "POST", ROOT).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "a Referer of / may be any page");
+    // Other ways a browser says the page is not one of the app's, and the bodies a form sends.
+    for site in ["same-site", "none"] {
+        let headers: &'static [(&'static str, &'static str)] = match site {
+            // Allowed by `allow_origin`, else the write is refused before the check.
+            "same-site" => &[("host", "app.localhost"), ("origin", "https://idp.example"), ("sec-fetch-site", "same-site")],
+            _ => &[("host", "app.localhost"), ("origin", "http://app.localhost"), ("sec-fetch-site", "none")],
+        };
+        assert_eq!(send("/else", "POST", headers).await.0, StatusCode::SEE_OTHER, "{site}");
+    }
+    for body in ["multipart/form-data; boundary=x", "text/plain"] {
+        let headers: &'static [(&'static str, &'static str)] = match body {
+            "text/plain" => &[("content-type", "text/plain")],
+            _ => &[("content-type", "multipart/form-data; boundary=x")],
+        };
+        assert_eq!(send("/else", "POST", headers).await.0, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+    }
+    // An https page's Origin and a Host that writes its default port are the same origin.
+    const PORT: &[(&str, &str)] =
+        &[("host", "app.localhost:443"), ("origin", "https://app.localhost"), ("sec-fetch-site", "same-origin")];
+    assert_eq!(send("/public", "POST", PORT).await.0, StatusCode::SEE_OTHER, "Host with :443");
+    // A browser that does not say the page's origin is not checked.
+    const NULL: &[(&str, &str)] = &[("host", "127.0.0.1:3000"), ("origin", "null"), ("sec-fetch-site", "same-origin")];
+    let (status, _) = send("/else", "POST", NULL).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "Origin: null");
+    // A Host with its scheme's default port is the same host.
+    let (status, _) = send("/own", "POST", &[("host", "app.localhost:80")]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "Host with :80");
+    // Only the form's page's policy counts, not the one at the path it posts to.
+    const FROM_HOME: &[(&str, &str)] = &[
+        ("host", "app.localhost"),
+        ("origin", "http://app.localhost"),
+        ("sec-fetch-site", "same-origin"),
+        ("referer", "http://app.localhost/news"),
+    ];
+    let (status, _) = send("/checkout/go", "POST", FROM_HOME).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the news page does not allow it");
+    // A browser that sends no page (no-referrer) may be on any of the app's pages.
+    const NO_PAGE: &[(&str, &str)] =
+        &[("host", "app.localhost"), ("origin", "http://app.localhost"), ("sec-fetch-site", "same-origin")];
+    let (status, _) = send("/sibling", "POST", NO_PAGE).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "some page of the app allows it");
+    let (status, _) = send("/pay", "POST", NO_PAGE).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+}
+
+/// The 500 says which origin and what allows it, under `corten dev`; a sign-in on another origin
+/// is checked as a redirect is.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn a_redirect_outside_form_action_names_the_origin_and_a_sign_in_is_checked() {
+    let routes = Router::new()
+        .route(
+            "/go",
+            axum::routing::post(|req: Req| async move {
+                req.redirect::<()>(&"https://else.example/x?y=1".parse::<axum::http::Uri>().unwrap())
+            }),
+        )
+        .route("/account", axum::routing::post(|_: Caller<Elsewhere>| async { "saved" }))
+        .route(
+            "/cookie",
+            axum::routing::post(|| async {
+                use axum::{
+                    http::{header, HeaderValue},
+                    response::IntoResponse,
+                };
+                let mut res = StatusCode::SEE_OTHER.into_response();
+                let headers = res.headers_mut();
+                headers.insert(header::LOCATION, HeaderValue::from_static("//user:pw@else.example/secret?token=abc"));
+                headers.append(header::SET_COOKIE, HeaderValue::from_static("a=1"));
+                headers.append(header::SET_COOKIE, HeaderValue::from_static("b=2"));
+                res
+            }),
+        );
+    let dev = App::new(Routes::from(routes.clone())).dev(true).router();
+    let (status, _, body) = call_with(dev.clone(), "POST", "/go", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(body.contains("https://else.example") && body.contains("Policy::form_action"), "{body}");
+    assert!(!body.contains("/x?y=1"), "the origin alone: {body}");
+    assert!(body.contains("send a Host in the test"), "no host is known: {body}");
+    let (status, headers, body) = call_with(dev.clone(), "POST", "/cookie", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    let cookies: Vec<_> = headers.get_all("set-cookie").iter().collect();
+    assert_eq!(cookies, ["a=1", "b=2"], "the handler's cookies are kept");
+    assert!(!headers.contains_key("location"));
+    assert!(body.contains("else.example") && !body.contains("token") && !body.contains("pw@"), "the origin alone: {body}");
+    let (status, _, body) = call_with(dev, "POST", "/account", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+    assert!(body.contains("https://id.example") && body.contains("Policy::form_action"), "{body}");
+    let allowed = App::new(Routes::from(routes.clone())).policy(crate::security::Policy::new().form_action("https://id.example"));
+    let (status, ..) = call_with(allowed.router(), "POST", "/account", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "allowed, it is the sign-in redirect");
+    let (status, _, body) =
+        call_with(App::new(Routes::from(routes.clone())).router(), "POST", "/go", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(!body.contains("else.example"), "outside dev the page does not say: {body}");
+    // A report-only policy stops nothing.
+    let watching = App::new(Routes::from(routes)).policy(crate::security::Policy::new().report_only());
+    let (status, ..) = call_with(watching.router(), "POST", "/go", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "report-only");
+}
+
+/// Only a form's post is checked (a form sends nothing else), a test's request is on the app's
+/// own names, and a page whose policy sends only its origin as `Referer` may be any page.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn only_a_form_post_is_checked_against_form_action() {
+    use crate::security::{Policy, Referrer};
+    let to = |uri: &'static str| {
+        move |req: Req| async move {
+            let uri: axum::http::Uri = uri.parse().unwrap();
+            req.redirect::<()>(&uri)
+        }
+    };
+    let routes = Router::new()
+        .route("/else", axum::routing::post(to("https://else.example/x")).put(to("https://else.example/x")))
+        .route("/canonical", axum::routing::post(to("https://app.example/done")))
+        .route("/sibling", axum::routing::post(to("http://localhost:9999/account")));
+    let router = App::new(Routes::from(routes))
+        .policy(Policy::new().host("app.example").referrer(Referrer::StrictOrigin))
+        .area(|area| checkout_url::area(area).policy(|p| p.form_action("http://localhost:9999")))
+        .router();
+    let send = |method: &'static str, path: &'static str, headers: &'static [(&'static str, &'static str)]| {
+        let router = router.clone();
+        async move {
+            let mut req = Request::builder().method(method).uri(path).header("accept", "text/html");
+            for (name, value) in headers {
+                req = req.header(*name, *value);
+            }
+            router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap().status()
+        }
+    };
+    assert_eq!(send("POST", "/else", &[]).await, StatusCode::INTERNAL_SERVER_ERROR, "a form's post");
+    const FORM: &[(&str, &str)] = &[("content-type", "application/x-www-form-urlencoded; charset=utf-8")];
+    assert_eq!(send("POST", "/else", FORM).await, StatusCode::INTERNAL_SERVER_ERROR, "a form's body");
+    assert_eq!(send("PUT", "/else", &[]).await, StatusCode::SEE_OTHER, "no form sends a PUT");
+    const JSON: &[(&str, &str)] = &[("content-type", "application/json")];
+    assert_eq!(send("POST", "/else", JSON).await, StatusCode::SEE_OTHER, "no form sends JSON");
+    assert_eq!(send("POST", "/canonical", &[]).await, StatusCode::SEE_OTHER, "the app's own name, with no Host");
+    // Under strict-origin every page's Referer is `/`: the form may be on the checkout page.
+    const ROOT: &[(&str, &str)] = &[
+        ("host", "app.example"),
+        ("origin", "https://app.example"),
+        ("sec-fetch-site", "same-origin"),
+        ("referer", "https://app.example/"),
+    ];
+    assert_eq!(send("POST", "/sibling", ROOT).await, StatusCode::SEE_OTHER, "a Referer of / is not the page");
+}
+
+/// Someone signed in on another origin's sign-in page.
+#[cfg(debug_assertions)]
+#[derive(Clone, Hash)]
+struct Elsewhere;
+
+#[cfg(debug_assertions)]
+impl<S: Sync> crate::Identify<S> for Elsewhere {
+    async fn identify(_: &axum::http::request::Parts, _: &S) -> std::result::Result<Self, crate::Refused> {
+        Err(crate::Refused::sign_in(&"https://id.example/sign-in".parse::<axum::http::Uri>().unwrap()))
+    }
+}
+
+#[cfg(debug_assertions)]
+#[crate::routes(area = Checkout)]
+mod checkout_url {
+    #[route("/checkout")]
+    pub struct Checkout;
+
+    #[route("/checkout/go", post = checkout_go)]
+    pub struct Go;
+}
+
+#[cfg(debug_assertions)]
+async fn checkout_go(req: Req) -> HtmlResult {
+    req.redirect(&"http://localhost:9999/paid".parse::<axum::http::Uri>().unwrap())
+}
+
 /// A value only the layout shows is read for a full load, not for an answer the runtime swaps in.
 #[tokio::test]
 async fn a_layout_value_is_read_only_when_the_layout_renders() {
