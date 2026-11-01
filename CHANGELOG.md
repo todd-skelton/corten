@@ -2526,6 +2526,15 @@ Corten is pre-1.0, so any minor version may change the API.
     downloaded. The step order, limits and resume rule are in `round.mjs`, tested by
     `round.test.mjs` (`npm run check`)
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
+92. `bench/fullstack/parity.mjs` passes again: the thirteen other apps write the item page's counts
+    as Corten's plural messages do since #393, digits grouped and the word singular for one
+    (`2,866 listings`, `9,920 available`, `1 listing`), each with its framework's own number
+    formatting (`Intl.NumberFormat`, `intcomma`, `number_format`, `number_with_delimiter`,
+    Thymeleaf's `formatInteger`, .NET's `N0`; Leptos and Phoenix group by hand). Corten's page is
+    unchanged. Checked with each app's image and `check-app.mjs` against card-market on the
+    fixture: 16 pages, the JSON and the 404s pass for all thirteen (Laravel on a 15-item fixture,
+    since PHP's default 128 MB limit does not hold the 508-item one, as its provider notes)
+    ([#520 Benchmark parity fails for every app: card-market writes counts as 2,866 since plural messages, the other apps 2866](https://github.com/todd-skelton/corten/issues/520)).
 
 ### Documentation
 

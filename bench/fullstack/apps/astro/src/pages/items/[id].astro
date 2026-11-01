@@ -2,7 +2,7 @@
 import { actions } from "astro:actions";
 import Base from "../../layouts/Base.astro";
 import { fetchItem } from "../../lib/api";
-import { sortListings } from "../../lib/view-model";
+import { counted, sortListings } from "../../lib/view-model";
 
 const item = await fetchItem(Astro.params.id ?? "");
 if (!item) Astro.response.status = 404;
@@ -22,7 +22,7 @@ const offers = item ? (allOffers ? item.offers : item.offers.slice(0, 5)) : [];
     <div class="gallery">{item.images.map((url, i) => <div class="img" role="img" aria-label={`${item.title} image ${i + 1}`} data-src={url}></div>)}</div>
     <section class="summary">
       {item.summary ? (
-        <><span><strong>{item.summary.lowest ?? "—"}</strong> lowest</span> <span>{`${item.summary.count} listings`}</span> <span>{`${item.summary.quantity} available`}</span></>
+        <><span><strong>{item.summary.lowest ?? "—"}</strong> lowest</span> <span>{counted(item.summary.count, "listing", "listings")}</span> <span>{counted(item.summary.quantity, "available", "available")}</span></>
       ) : <span>No listings yet</span>}
     </section>
     <section class="listings">
