@@ -1424,6 +1424,11 @@ mod tests {
         assert_eq!(Currency::parse("usd"), Some(Currency::new("USD")));
         assert_eq!(Currency::parse("US"), None);
         assert_eq!((Currency::new("JPY").digits(), Currency::new("KWD").digits(), Currency::new("XYZ").digits()), (0, 3, 2));
+        // A currency has its digits when it is made, at compile time for a `const` one, whatever
+        // case its code was written in.
+        const KWD: Currency = Currency::new("KWD");
+        assert_eq!((KWD.digits(), Currency::parse("kwd").map(|c| c.digits())), (3, Some(3)));
+        assert_eq!(format!("{KWD:?}"), r#"Currency("KWD")"#);
 
         let secs = |s| parse_timestamp(s).map(super::format::unix_seconds_for_test);
         assert_eq!(secs("1970-01-01T00:00:00Z"), Some(0));
