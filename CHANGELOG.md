@@ -2753,14 +2753,18 @@ Corten is pre-1.0, so any minor version may change the API.
     debug 217,283 on the branch (217,087 to 217,376) against 189,171 on main (189,119 to
     189,197), the headers kept for the check
     ([#527 A form's redirect to another origin that the app's form-action does not allow passes every test and is blocked in the browser](https://github.com/todd-skelton/corten/issues/527)).
-
-94. An error in an expression in `html!` (an attribute's `{..}`, a child's) pointed the call or
-    expression it was in at the whole `html!`, so the headline could name another file: `row(2)`
-    with `row` a local that shadows a function said "call expression requires function" across
-    the macro, and the compiler headed the error with an unrelated `fn row` elsewhere. The
-    parentheses the macro puts around an expression now take the expression's span, so the error
-    points at `row(2)`. What `html!` generates is otherwise the same
+94. An error in an expression in `html!` (an attribute's `{..}`, a child's, a prop's) labelled
+    the whole `html!`: `row(2)` with `row` a local that shadows a function said "call expression
+    requires function" across the macro, and a wrong prop type pointed at the macro too. The
+    parentheses the macro puts around an expression now take the expression's span, so the label
+    is on `row(2)`. Lints report there too, with a fix for the expression: `cargo clippy -D
+    warnings` (and so `corten check`) may now flag code in `html!` it reported at the macro or
+    skipped (`manual_unwrap_or_default`, `redundant_pattern_matching`). The code `html!`
+    generates is otherwise the same, and rendering costs the same (callgrind, item page: 92,390
+    instructions a request on the branch, 92,381 to 92,438, against 92,338 on main, 91,474 to
+    92,418)
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
