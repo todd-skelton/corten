@@ -2930,6 +2930,41 @@ fn cached_routes() -> Router {
             }),
         )
         .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
+        // A one-time code that has expired, and a statement that is someone else's.
+        .route(
+            "/code",
+            get(|| async { NoStore(Err::<StatusCode, Error>(Error::status(StatusCode::BAD_REQUEST))) })
+                .post(|| async { NoStore(Err::<StatusCode, Error>(Error::status(StatusCode::BAD_REQUEST))) }),
+        )
+        // Two lines, as HTTP allows; the second says no-store.
+        .route(
+            "/lines",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "max-age=60"), (header::CACHE_CONTROL, "no-store")];
+                (StatusCode::BAD_REQUEST, axum::response::AppendHeaders(lines), "")
+            }),
+        )
+        .route("/statement/other", get(|| async { NoStore(Err::<StatusCode, Error>(Error::not_found())) }))
+        // A no-store line with a byte that is not text.
+        .route(
+            "/odd",
+            get(|| async {
+                let line = HeaderValue::from_bytes(b"no-store, x=\"\xE9\"").unwrap();
+                (StatusCode::BAD_REQUEST, [(header::CACHE_CONTROL, line)], "")
+            }),
+        )
+        // Shared, with a limited private that still lets a shared cache keep the rest.
+        .route(
+            "/limited",
+            get(|| async {
+                let lines = [
+                    (header::CACHE_CONTROL, "public, max-age=600"),
+                    (header::CACHE_CONTROL, "private=\"set-cookie\""),
+                    (header::SET_COOKIE, "seen=1"),
+                ];
+                (axum::response::AppendHeaders(lines), "limited")
+            }),
+        )
         .route(
             "/cookies",
             // `with_cookie` on a `Public` answer does not compile; a header written by hand still
@@ -3319,6 +3354,280 @@ async fn what_the_app_renders_is_private_unless_it_says_otherwise() {
     assert_eq!(cache_control(&router, runtime_path(), &[]).await, "public, max-age=31536000, immutable");
     assert_eq!(cache_control(&router, "/health/ready", &[]).await, "no-store", "Corten's own routes keep theirs");
     assert_eq!(cache_control(&router, "/statement", &[("cookie", "s=1")]).await, "no-store");
+}
+
+/// `NoStore` holds for a failure too: the error page that replaces it is not kept either.
+#[tokio::test]
+async fn a_failure_under_no_store_is_not_stored() {
+    let router = app(cached_routes(), None);
+    for (path, status) in [("/code", StatusCode::BAD_REQUEST), ("/statement/other", StatusCode::NOT_FOUND)] {
+        for extra in [&[][..], &[("accept", "text/html")], &[("corten", "nav")], &[("accept", "application/json")]] {
+            let mut req = Request::get(path);
+            for (name, value) in extra {
+                req = req.header(*name, *value);
+            }
+            let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(res.status(), status, "{path} {extra:?}");
+            assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store", "{path} {extra:?}");
+        }
+    }
+    // A form sent to the expired code: the runtime's action, answered with the error page.
+    let req = Request::post("/code").header("sec-fetch-site", "same-origin").header("corten", "action");
+    let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store", "an action");
+    // A header written by hand counts on any of its lines; the error page is `no-store` alone,
+    // since the failure's other directives described its own answer.
+    let res =
+        router.clone().oneshot(Request::get("/lines").header("accept", "text/html").body(Body::empty()).unwrap()).await.unwrap();
+    let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
+    assert_eq!(lines, ["no-store"]);
+    // Also when the error page read a caller.
+    let res = app(cached_routes(), Some("ann"))
+        .oneshot(Request::get("/lines").header("accept", "text/html").header("cookie", "s=1").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
+    assert_eq!(lines, ["no-store"], "with a caller");
+    // A line that is not text still counts.
+    let res =
+        router.clone().oneshot(Request::get("/odd").header("accept", "text/html").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store");
+}
+
+/// A `Cache-Control` whose `private` or `no-store` is not a plain directive (in a quoted value, a
+/// line that is not text, `no-store=1`, with `must-understand`) is not trusted: an answer that sets
+/// a cookie or read a caller goes out `private, no-cache`, or `no-store` when any reader could find
+/// one in its header. A plain `no-store` or `private` is trusted as written only on one line of
+/// plain text with no quoted value: otherwise a `no-store` goes out on one line (`no-store` alone
+/// beside a quoted value or a byte that is not text), so a cache that reads only one line, or a
+/// value another way, is told the same. `must-understand, no-store` on an answer nothing makes
+/// personal is left as written, and a `private` beside them is not trusted.
+#[tokio::test]
+async fn a_cache_control_counts_only_for_what_it_plainly_says() {
+    let router = Router::new()
+        .route(
+            "/valued",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "public, max-age=600, no-store=1")];
+                (StatusCode::BAD_REQUEST, line, "")
+            }),
+        )
+        .route(
+            "/second-line",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "public, max-age=600"), (header::CACHE_CONTROL, "no-store")];
+                (axum::response::AppendHeaders(lines), "second")
+            }),
+        )
+        .route(
+            "/odd-line",
+            get(|| async {
+                let odd = HeaderValue::from_bytes(b"x=\"\xE9\"").unwrap();
+                let lines = [
+                    (header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=600")),
+                    (header::CACHE_CONTROL, odd),
+                    (header::SET_COOKIE, HeaderValue::from_static("seen=1")),
+                ];
+                (axum::response::AppendHeaders(lines), "odd")
+            }),
+        )
+        .route(
+            "/quoted",
+            get(|| async {
+                let lines =
+                    [(header::CACHE_CONTROL, "public, max-age=600, no-cache=\"a, no-store, b\""), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "quoted")
+            }),
+        )
+        .route(
+            "/quoted-failure",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "public, max-age=600, no-cache=\"a, no-store, b\"")];
+                (StatusCode::BAD_REQUEST, line, "")
+            }),
+        )
+        .route(
+            "/escaped",
+            get(|| async {
+                let lines = [
+                    (header::CACHE_CONTROL, "public, max-age=600, no-cache=\"a\\\", no-store, b\""),
+                    (header::SET_COOKIE, "seen=1"),
+                ];
+                (axum::response::AppendHeaders(lines), "escaped")
+            }),
+        )
+        .route(
+            "/private-then-no-store",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private, max-age=600"), (header::CACHE_CONTROL, "no-store")];
+                (axum::response::AppendHeaders(lines), "both")
+            }),
+        )
+        .route(
+            "/later-private",
+            get(|| async {
+                let lines = [
+                    (header::CACHE_CONTROL, "public, max-age=600"),
+                    (header::CACHE_CONTROL, "private"),
+                    (header::SET_COOKIE, "seen=1"),
+                ];
+                (axum::response::AppendHeaders(lines), "later")
+            }),
+        )
+        .route(
+            "/private-then-public",
+            get(|| async {
+                let lines = [
+                    (header::CACHE_CONTROL, "private, max-age=600"),
+                    (header::CACHE_CONTROL, "public, s-maxage=600"),
+                    (header::SET_COOKIE, "seen=1"),
+                ];
+                (axum::response::AppendHeaders(lines), "both")
+            }),
+        )
+        .route(
+            "/no-store-and-more",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "public, s-maxage=600, x=\"\\\"\", no-store")];
+                (axum::response::AppendHeaders(line), "more")
+            }),
+        )
+        .route(
+            "/private-and-quoted",
+            get(|| async {
+                let lines =
+                    [(header::CACHE_CONTROL, "public, s-maxage=600, x=\"\\\"\", private"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "quoted")
+            }),
+        )
+        .route(
+            "/must-understand",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "must-understand, no-store"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "kept by a cache that knows a 200")
+            }),
+        )
+        .route(
+            "/must-understand-shared",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "max-age=60, must-understand, no-store")];
+                (axum::response::AppendHeaders(line), "kept only by a cache that knows a 200")
+            }),
+        )
+        .route(
+            "/must-understand-valued",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "no-store, must-understand=1, max-age=600"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "valued")
+            }),
+        )
+        .route(
+            "/private-must-understand",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private, no-store, must-understand"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "private")
+            }),
+        )
+        .route(
+            "/private-valued-must-understand",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private, no-store=1, must-understand"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "private")
+            }),
+        )
+        .route(
+            "/upper-valued",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "public, max-age=600, No-Store=1"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "upper")
+            }),
+        )
+        .route(
+            "/must-understand-failure",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "must-understand, no-store")];
+                (StatusCode::BAD_REQUEST, line, "")
+            }),
+        )
+        .route(
+            "/not-text-no-store",
+            get(|| async {
+                let odd = HeaderValue::from_bytes(b"public, max-age=600, no-store, x=\xE9").unwrap();
+                let lines = [(header::CACHE_CONTROL, odd), (header::SET_COOKIE, HeaderValue::from_static("seen=1"))];
+                (axum::response::AppendHeaders(lines), "odd")
+            }),
+        )
+        .route(
+            "/not-text-private",
+            get(|| async {
+                let odd = HeaderValue::from_bytes(b"public, s-maxage=600, private, x=\xE9").unwrap();
+                let lines = [(header::CACHE_CONTROL, odd), (header::SET_COOKIE, HeaderValue::from_static("seen=1"))];
+                (axum::response::AppendHeaders(lines), "odd")
+            }),
+        )
+        .route(
+            "/unquoted-limited",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "public, max-age=600, private=set-cookie"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "limited")
+            }),
+        )
+        .route(
+            "/no-transform",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "no-transform"), (header::CACHE_CONTROL, "no-store")];
+                (axum::response::AppendHeaders(lines), "both")
+            }),
+        )
+        .route(
+            "/limited-first",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private=\"set-cookie\", max-age=600"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "limited")
+            }),
+        );
+    let router = app(router, Some("ann"));
+    for (path, want) in [
+        ("/odd-line", "private, no-cache"),
+        ("/quoted", "no-store"),
+        ("/quoted-failure", "no-store"),
+        ("/valued", "no-store"),
+        ("/second-line", "public, max-age=600, no-store"),
+        ("/escaped", "no-store"),
+        ("/must-understand-shared", "max-age=60, must-understand, no-store"),
+        ("/must-understand-valued", "no-store"),
+        ("/private-must-understand", "no-store"),
+        ("/private-valued-must-understand", "no-store"),
+        ("/upper-valued", "no-store"),
+        ("/private-then-no-store", "private, max-age=600, no-store"),
+        ("/must-understand", "no-store"),
+        ("/must-understand-failure", "no-store"),
+        ("/not-text-no-store", "no-store"),
+        ("/not-text-private", "private, no-cache"),
+        ("/unquoted-limited", "private, no-cache"),
+        ("/no-transform", "no-transform, no-store"),
+        ("/later-private", "private, no-cache"),
+        ("/private-then-public", "private, no-cache"),
+        ("/no-store-and-more", "no-store"),
+        ("/private-and-quoted", "private, no-cache"),
+        ("/limited-first", "private, no-cache"),
+    ] {
+        let req = Request::get(path).header("accept", "text/html").header("cookie", "s=1");
+        let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.as_bytes().to_vec()).collect();
+        assert_eq!(lines, [want.as_bytes().to_vec()], "{path}");
+    }
+}
+
+/// `private="set-cookie"` limits only that header: a shared cache may still keep the rest, so it
+/// does not stand for a plain `private` on an answer that sets a cookie.
+#[tokio::test]
+async fn a_limited_private_is_not_private() {
+    let res = app(cached_routes(), None).oneshot(Request::get("/limited").body(Body::empty()).unwrap()).await.unwrap();
+    let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
+    assert_eq!(lines, ["private, no-cache"]);
 }
 
 #[tokio::test]
