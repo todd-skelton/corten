@@ -59,8 +59,13 @@ async fn show(req: Req, Params(at): Params<url::Item<'_>>) -> HtmlResult {
    `raw` or an expression inside `<script>` (that does not compile).
 3. A client navigation gets only the `<title>`, the head tags and `<main>`'s children; the rest of
    the layout renders on full loads. A value only the layout shows that needs its own read (a
-   cart count) is read only when `!req.mode.swaps()`, in the function that builds the layout's
-   props; do not fetch it from a script on every load to draw it the first time. A `data-patch`
+   cart count) is started as the request arrives, in an app extractor that holds what the layout
+   needs: `Ahead::start(read)` when `!Mode::of(&parts.headers).swaps()` (and there is a viewer),
+   else `Ahead::ready(None)`;
+   every page that draws the layout takes it, and the layout's props builder awaits it. Never read
+   it after the page's own reads (a full load then waits for both), never join it into each
+   handler's reads by hand, and do not fetch it from a script on every load to draw it the first
+   time. A `data-patch`
    write that changes it reads it only when `req.mode == Mode::Action` and answers
    `req.patch(Badge { .. })` then, else `req.redirect(..)` (a redirect alone leaves the old value
    with JavaScript), or the form drops `data-patch`. Write each nav link from

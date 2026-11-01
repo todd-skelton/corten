@@ -2148,6 +2148,53 @@ async fn an_area_or_an_api_sets_its_own_deadline() {
     assert_eq!(status("/api/slow").await, StatusCode::OK, "None removes it for the API");
 }
 
+/// A layout's read started ahead by an extractor (`crate::Ahead`): under a path ending `/panics`
+/// it panics, and `AHEAD_FINISHED` counts the reads that ran to their end.
+struct StartedAhead(crate::Ahead<u32>);
+
+static AHEAD_FINISHED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+impl<S: Sync> axum::extract::FromRequestParts<S> for StartedAhead {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, _: &S) -> Result<Self, Self::Rejection> {
+        let panics = parts.uri.path().ends_with("/panics");
+        Ok(StartedAhead(crate::Ahead::start(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            if panics {
+                panic!("the cart store");
+            }
+            AHEAD_FINISHED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            3
+        })))
+    }
+}
+
+/// A read started ahead fails the request where it is awaited, as the handler's own panic does,
+/// and is stopped with the handler when the deadline passes.
+#[tokio::test]
+async fn a_read_started_ahead_is_the_requests() {
+    let awaited = || {
+        crate::Methods::reads(get(|ahead: StartedAhead| async move {
+            ahead.0.await;
+            "drawn"
+        }))
+    };
+    let app = |deadline: Duration| {
+        App::new(Routes::from(Router::new().route("/ahead/panics", awaited().0).route("/ahead/slow", awaited().0)))
+            .error_page(test_error_page, ())
+            .deadline(deadline)
+            .router()
+    };
+    let (status, _, body) = call_with(app(Duration::from_secs(5)), "GET", "/ahead/panics", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+    let before = AHEAD_FINISHED.load(std::sync::atomic::Ordering::SeqCst);
+    let (status, _, _) = call_with(app(Duration::from_millis(50)), "GET", "/ahead/slow", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(AHEAD_FINISHED.load(std::sync::atomic::Ordering::SeqCst), before, "the deadline stopped the read");
+}
+
 /// Writes its name into `x-steps` on the way in, so a test reads the order middleware ran in;
 /// with `refuse`, a request with `x-flood` is turned away with a 429.
 struct Step(&'static str, bool);

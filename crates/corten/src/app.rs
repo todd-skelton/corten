@@ -1534,7 +1534,7 @@ impl<S: Steps> Layer<S> {
     /// A write another site sent, to a page route: the request for the error page when a browser
     /// sent it ([`Failure::CrossSite`]); otherwise the status line answers it.
     fn cross_site(&self, req: &Request) -> Option<Asked> {
-        let mode = page::mode_of(req.headers());
+        let mode = page::Mode::of(req.headers());
         let browser = matches!(mode, Mode::Navigation | Mode::Action)
             || (mode == Mode::Document
                 && req.headers().get(header::ACCEPT).and_then(|v| v.to_str().ok()).is_some_and(|v| v.contains("text/html")));
@@ -1563,7 +1563,7 @@ impl<S: Steps> Layer<S> {
         let signal = Signal::for_app(self.shared.clone());
         let watch = Watch(signal);
         req.extensions_mut().insert(watch.0.clone());
-        let mode = page::mode_of(req.headers());
+        let mode = page::Mode::of(req.headers());
         let next = Next { steps: &self.steps, scope, route };
         let res = page::render_errors(&self.shared, req, next, deadline, &watch.0, api, mode).await;
         let personal = watch.0.is_personal();

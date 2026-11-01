@@ -58,6 +58,7 @@ extern crate self as corten;
 pub use corten_feed as feed;
 #[cfg(feature = "agent")]
 pub mod agent;
+mod ahead;
 pub mod answer;
 pub mod api;
 mod app;
@@ -105,6 +106,7 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 
+pub use ahead::Ahead;
 pub use answer::{
     Answer, FileAnswer, ForAll, ForOne, HtmlResponse, HtmlResult, LiveResponse, Media, NoStore, PageOr, Public, Relay,
 };

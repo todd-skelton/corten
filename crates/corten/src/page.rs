@@ -87,14 +87,17 @@ impl Mode {
     pub const fn swaps(self) -> bool {
         matches!(self, Mode::Navigation | Mode::Action)
     }
-}
 
-pub(crate) fn mode_of(headers: &HeaderMap) -> Mode {
-    match headers.get(MODE_HEADER).map(HeaderValue::as_bytes) {
-        Some(b"nav") => Mode::Navigation,
-        Some(b"action") => Mode::Action,
-        _ if accepts_json(headers) => Mode::Data,
-        _ => Mode::Document,
+    /// The mode a request's headers ask for, as [`Req::mode`] reads it: for code that runs before
+    /// the handler has its `Req`, an extractor or a [`crate::Middleware`] that starts a read only
+    /// a full load needs (see [`crate::Ahead`]). A handler reads `req.mode`.
+    pub fn of(headers: &HeaderMap) -> Mode {
+        match headers.get(MODE_HEADER).map(HeaderValue::as_bytes) {
+            Some(b"nav") => Mode::Navigation,
+            Some(b"action") => Mode::Action,
+            _ if accepts_json(headers) => Mode::Data,
+            _ => Mode::Document,
+        }
     }
 }
 
@@ -917,7 +920,7 @@ impl Req {
     ) -> Self {
         let signal: crate::Signal = extensions.get::<crate::Signal>().cloned().unwrap_or_default();
         Req {
-            mode: mode_of(headers),
+            mode: Mode::of(headers),
             nonce: extensions.get::<NonceSlot>().cloned(),
             uri: uri.clone(),
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
