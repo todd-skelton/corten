@@ -444,7 +444,7 @@ is:
    limit and a house that only it may enter. Read it when several people act on shared data in
    real time.
 6. [ui-gallery](examples/ui-gallery): a seller's draft listing built from every `corten-ui`
-   component, styled by a small design system.
+   component and its orders, drawn by every component of the UI kit (`corten ui`).
 7. [listings-feed](examples/listings-feed): a seller's listings table kept live by one feed that
    several instances serve (Postgres and NATS through `corten-cluster`), for when one instance is
    not enough; its failover benchmark kills instances while browsers follow.

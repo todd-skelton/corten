@@ -9,6 +9,8 @@
 //! | `POST /save` | saving the draft, answered with a toast |
 //! | `POST /rename` | the rename dialog's form: refused, the dialog drawn open; else back to the draft, whose toaster says it was renamed (`req.redirect_with_notice`) |
 //! | `GET /help` | the menu's link |
+//! | `GET /orders?page=2` | the seller's orders, a page of them: the kit's other components |
+//! | `POST /orders/settings` | the shipping settings: back to the orders, whose toaster says they were saved |
 use corten::{Component, i18n::Currency, prelude::*};
 use serde::Deserialize;
 use std::time::{Duration, SystemTime};
@@ -18,6 +20,8 @@ use corten_ui::{Toast, Toaster};
 use crate::gallery::{
     CARD, Condition, Gallery, MarketTab, MenuResult, OrderResult, Period, Pricing, Region, RenameDialog, Sale, Times,
 };
+use crate::orders::{Orders, PAGES, SettingsForm};
+use crate::ui::toasts::Toasts;
 
 corten::i18n::messages! {
     /// The gallery's text: one locale, for the relative times.
@@ -63,19 +67,32 @@ pub mod url {
 
     #[route("/rename", post = rename)]
     pub struct Rename;
+
+    #[route("/orders", get = orders)]
+    pub struct Orders {
+        pub page: Option<usize>,
+    }
+
+    #[route("/orders/settings", post = settings)]
+    pub struct Settings;
 }
 
-/// The app's components, then corten-ui's.
-pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery, crate::gallery::Sku];
+/// The app's components: the kit's (`ui::COMPONENTS`) are listed before them, corten-ui's after.
+pub const COMPONENTS: &[Component] = &[Gallery, crate::gallery::Sku, Orders];
 
 pub fn app() -> App {
-    App::new(url::router()).assets(Static).components(COMPONENTS).components(corten_ui::COMPONENTS).zoned_dates()
+    App::new(url::router())
+        .assets(Static)
+        .components(crate::ui::COMPONENTS)
+        .components(COMPONENTS)
+        .components(corten_ui::COMPONENTS)
+        .zoned_dates()
 }
 
 /// The document around every page, with the toaster: what an answer says (`toast`) or, after a
 /// redirect, what the write said (`req.notice()`), which the runtime hands the toaster on a
 /// navigation, since the layout does not run there.
-#[component(css)]
+#[component]
 fn Layout<'a>(req: &'a Req, title: &'a str, toast: Option<&'a str>, children: impl Render) -> impl Document {
     let notice = req.notice();
     let message = notice.map(|n| n as &dyn Render).or(toast.as_ref().map(|t| t as &dyn Render));
@@ -92,9 +109,7 @@ fn Layout<'a>(req: &'a Req, title: &'a str, toast: Option<&'a str>, children: im
             </head>
             <body>
                 <main>{children}</main>
-                <div class={Toasts}>
-                    <Toaster close="Dismiss" seconds={2} toast={Toast { message }} />
-                </div>
+                <Toasts><Toaster close="Dismiss" seconds={2} toast={Toast { message }} /></Toasts>
             </body>
         </html>
     }
@@ -224,6 +239,27 @@ async fn watch(req: Req) -> HtmlResult {
 
 async fn menu_action(req: Req, text: &'static str) -> HtmlResult {
     req.patch_or(MenuResult { text }, || async { req.redirect(&url::Home { tab: None, sale: None, period: None }) }).await
+}
+
+/// A page of the orders: one past the last is the last.
+async fn orders(req: Req, Params(q): Params<url::Orders>) -> HtmlResult {
+    let page = q.page.unwrap_or(1).clamp(1, PAGES);
+    // The avatar takes the address as text.
+    let (t, photo) = (req.t(), req.asset(Static::FAVICON_SVG).to_string());
+    req.page(html! {
+        <Layout req={&req} title="Orders | corten-ui" toast={None}>
+            <Orders t={t} page={page} photo={&photo} />
+        </Layout>
+    })
+}
+
+/// Saved, back to the orders, whose toaster says so.
+async fn settings(req: Req, Form(form): Form<SettingsForm>) -> HtmlResult {
+    let (from, days) = (form.warehouse.label(), form.handling.clamp(1, 5));
+    let emails = if form.notify { "on" } else { "off" };
+    let note = if form.note.trim().is_empty() { "no note" } else { "your note" };
+    let saved = format_args!("Saved: ships from {from} in {days} days with {note}; shipping emails {emails}.");
+    req.redirect_with_notice(&url::Orders { page: None }, saved)
 }
 
 async fn help(req: Req) -> HtmlResult {
@@ -386,6 +422,46 @@ mod tests {
         assert!(page.contains("<html") && page.contains(r#"<dialog id="rename" open"#), "{page}");
         let home = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(home.contains(r#"<dialog id="rename" aria-label"#), "drawn closed: {home}");
+    }
+
+    /// Each page's links are typed routes: the first page's address has no number, and a number
+    /// past the last reads as the last.
+    #[tokio::test]
+    async fn the_orders_link_to_their_pages() {
+        let first = send(Request::get("/orders").body(Body::empty()).unwrap()).await;
+        assert!(first.contains(r#"<a class="#) && first.contains(r#"href="/orders?page=2" rel="next""#), "{first}");
+        assert!(first.contains(r#"href="/orders" aria-current="page">1</a>"#), "{first}");
+        assert!(first.contains(">AL<") && !first.contains(">BL<"), "four to a page: {first}");
+        let last = send(Request::get("/orders?page=9").body(Body::empty()).unwrap()).await;
+        assert!(last.contains(r#"href="/orders?page=3" aria-current="page">3</a>"#), "{last}");
+        assert!(last.contains(">JB<") && !last.contains(">AL<"), "{last}");
+    }
+
+    #[tokio::test]
+    async fn saved_settings_go_back_to_the_orders_with_a_notice() {
+        let res = app()
+            .router()
+            .oneshot(
+                Request::post("/orders/settings")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("warehouse=austin&handling=3&note="))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res.headers()["location"], "/orders");
+        let forged = app()
+            .router()
+            .oneshot(
+                Request::post("/orders/settings")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("warehouse=mars&handling=3"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(forged.status(), StatusCode::UNPROCESSABLE_ENTITY, "a warehouse the page does not offer");
     }
 
     #[tokio::test]

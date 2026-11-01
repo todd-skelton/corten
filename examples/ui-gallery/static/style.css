@@ -1,38 +1,17 @@
-/* Element defaults and the design system's colors. (components.css starts with the rule that
-   keeps a part the components hide with the hidden attribute hidden, whatever its display.) */
+/* Element defaults, and the page's colors from the kit's theme, as `corten ui init` writes them.
+   (components.css starts with the rule that keeps a part the components hide with the hidden
+   attribute hidden, whatever its display.) */
 *, *::before, *::after { box-sizing: border-box; }
-:root {
-  color-scheme: light dark;
-  --ink: light-dark(#1f1a17, #efe9e4);
-  --muted: light-dark(#6f655e, #a89d95);
-  --line: light-dark(#e8e1da, #352e29);
-  --bg: light-dark(#faf7f4, #15120f);
-  --surface: light-dark(#fff, #1e1a17);
-  --accent: light-dark(#b4532a, #f0905f);
-  --accent-ink: light-dark(#fff, #1e1a17);
-  --tint: light-dark(#fbeee6, #3a2419);
-  --danger: light-dark(#b42318, #f87171);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: var(--ink);
-  background: var(--bg);
-}
+:root { color-scheme: light; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--foreground); background: var(--background); }
+:root:not([data-theme]) { color-scheme: light dark; }
+[data-theme="dark"] { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }
 body { max-width: 60rem; margin: 0 auto; padding: 40px 20px; }
-h1 { margin: 0; font-size: 32px; letter-spacing: -0.02em; line-height: 1.2; }
-a { color: var(--accent); }
-button { font: inherit; padding: 7px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; }
-button:hover { border-color: var(--muted); }
-input { font: inherit; color: inherit; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-[role="status"] { margin: 0; color: var(--muted); }
-dialog { border: 1px solid var(--line); border-radius: 14px; padding: 24px; background: var(--surface); color: inherit; box-shadow: 0 20px 50px rgb(0 0 0 / 0.25); }
-dialog::backdrop { background: rgb(20 15 12 / 0.45); }
-dialog form { display: grid; gap: 8px; margin: 0; }
-dialog form[method="dialog"] { margin-top: 8px; }
-dialog input { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
-dialog input[aria-invalid="true"] { border-color: var(--danger); }
-dialog form:not([method="dialog"]) button { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.field-error { margin: 0; color: var(--danger); font-size: 13px; }
+h1 { margin: 0; font-size: 2rem; letter-spacing: -0.02em; line-height: 1.2; }
+a { color: var(--primary); }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+p[role="status"] { margin: 0; font-size: .875rem; color: var(--muted-foreground); }
 /* Help: a term and its explanation, at a reading width. */
 main > p, main > dl { max-width: 40rem; }
 dt { margin-block-start: 16px; font-weight: 600; }
-dd { margin: 4px 0 0; color: var(--muted); }
+dd { margin: 4px 0 0; color: var(--muted-foreground); }

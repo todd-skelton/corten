@@ -1271,12 +1271,16 @@ Corten is pre-1.0, so any minor version may change the API.
     compile (a `compile_fail` doctest in each), with no script and no `style=`. A component whose
     element takes the app's attributes (a button, a link, an input) styles the element written
     inside it, so `html!` checks those attributes as always. The `corten new` check now also runs
-    `corten ui init`, `corten ui add --all` and `corten check` on the new app
+    `corten ui init`, `corten ui add --all` and `corten check` on the new app, and the ui-gallery
+    example is drawn by every kit component from the kit's own files (its orders page shows those
+    the draft listing does not), so its browser test runs each in Chromium and WebKit, with and
+    without JavaScript
     ([#404 corten ui init: no theme tokens a component kit can build on, and a shadcn theme cannot be brought over](https://github.com/todd-skelton/corten/issues/404),
     [#405 corten ui add: no command copies a component's source into an app](https://github.com/todd-skelton/corten/issues/405),
     [#406 Kit components: styled plain elements and native controls](https://github.com/todd-skelton/corten/issues/406),
     [#407 Kit components: Dialog, Sheet, Popover and Accordion on the platform's elements](https://github.com/todd-skelton/corten/issues/407),
     [#408 Kit components: styled Tabs, Dropdown Menu, Combobox and Toast over corten-ui](https://github.com/todd-skelton/corten/issues/408),
+    [#409 The component kit has no test that every component compiles in an app and works in each browser](https://github.com/todd-skelton/corten/issues/409),
     [#410 An app cannot see what changed in a kit component since it copied it](https://github.com/todd-skelton/corten/issues/410)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

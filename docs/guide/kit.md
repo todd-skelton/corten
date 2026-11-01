@@ -101,6 +101,10 @@ or three of them, not for any lookup. No component has a script: each works with
 JavaScript and under the CSP, with no `style=`, and the labels they show (Previous, Next, a
 legend) are the app's, in its language.
 
+Every component is in use in the [ui-gallery](../../examples/ui-gallery) example, built from the
+kit's own files, and its browser test (`examples/ui-gallery/smoke.mjs`) runs them in Chromium and
+WebKit, with and without JavaScript.
+
 ## Size
 
 The kit's CSS goes into `components.css` with the app's own, one cached file. Measured on a new

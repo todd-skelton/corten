@@ -757,6 +757,33 @@ async function run(browser) {
   check("the next page's server writes it in that zone, with no script", nextDrafted === firstDrafted && (await drafted.getAttribute("data-on")) === null, nextDrafted);
   await kiwi.context().close();
 
+  // The orders page: the kit's other components, each as plain HTML that works before any script.
+  const orders = await (await browser.newContext()).newPage();
+  const ordersErrors = [];
+  orders.on("console", (m) => m.type() === "error" && !bug(m.text()) && ordersErrors.push(m.text()));
+  orders.on("pageerror", (e) => ordersErrors.push(e.message));
+  await orders.goto(`${base}/orders`);
+  await orders.getByRole("button", { name: "Share the shop" }).click();
+  check("Popover: its button opens it", await orders.locator("#share").evaluate((p) => p.matches(":popover-open")));
+  await orders.keyboard.press("Escape");
+  check("Popover: Escape closes it", !(await orders.locator("#share").evaluate((p) => p.matches(":popover-open"))));
+  await orders.getByText("What if an order ships late?").click();
+  const open = await orders.locator("details").evaluateAll((all) => all.map((d) => /** @type {HTMLDetailsElement} */ (d).open).join());
+  check("Accordion: one section open at a time", open === "false,true,false", open);
+  await orders.getByRole("link", { name: "Next" }).click();
+  await orders.locator("caption", { hasText: "Page 2 of 3" }).waitFor({ timeout: 5000 }).catch(() => {});
+  check("Pagination: Next goes to the next page", new URL(orders.url()).search === "?page=2" && (await orders.locator('[aria-current="page"]').last().textContent()) === "2", orders.url());
+  await orders.getByLabel("Ship from").selectOption("toronto");
+  await orders.getByRole("switch", { name: "Email me when an order ships" }).uncheck();
+  await orders.getByRole("button", { name: "Save settings" }).click();
+  if (engine !== "webkit") {
+    await orders.locator("#ui-toast:not([hidden])").waitFor({ timeout: 5000 }).catch(() => {});
+    const saved = await orders.locator("#ui-toast").textContent();
+    check("Select, Slider, Switch and Textarea post with the form", saved === "Saved: ships from Toronto, ON in 2 days with your note; shipping emails off.", saved ?? "");
+  } else skip("Select, Slider, Switch and Textarea post with the form", "Playwright's WebKit never sends a Secure cookie back over http");
+  check("the orders page: no console errors", ordersErrors.length === 0, ordersErrors.join(" | "));
+  await orders.context().close();
+
   // Without JavaScript
   const plain = await (await browser.newContext({ javaScriptEnabled: false })).newPage();
   await plain.goto(`${base}/`);
@@ -792,10 +819,19 @@ async function run(browser) {
   await plain.goto(`${base}/?sale=last`);
   const plainSheet = plain.locator('dialog[aria-label="Last sale"]');
   check("no script: the address opens the sheet", await plainSheet.isVisible());
+  // The sheet slides in; without the page's script Chromium does not tell Playwright the link has
+  // stopped moving, so the click waits for the slide itself to end.
+  await plainSheet.evaluate((sheet) => Promise.all(sheet.getAnimations().map((a) => a.finished)));
   await Promise.all([plain.waitForURL((url) => !url.searchParams.has("sale")), plain.getByRole("link", { name: "Close" }).click()]);
   check("no script: its link closes it", (await plainSheet.count()) === 0);
   await plain.goto(`${base}/`);
   check("no script: the SKU is on the page and the copy button is not", (await plain.locator("code", { hasText: "ASH-DRAKE-NM" }).isVisible()) && (await plain.locator("[data-scope=ui-copy-button]").isHidden()));
   const plainPrint = plain.locator("button", { hasText: "Print label" });
   check("no script: the print button is on the page, hidden", (await plainPrint.count()) === 1 && (await plainPrint.isHidden()));
+  await plain.goto(`${base}/orders`);
+  await plain.getByRole("button", { name: "Share the shop" }).click();
+  check("no script: the popover opens", await plain.locator("#share").isVisible());
+  await plain.keyboard.press("Escape");
+  await Promise.all([plain.waitForURL("**/orders?page=3"), plain.getByRole("link", { name: "3", exact: true }).click()]);
+  check("no script: a page number is a link to that page", (await plain.locator("caption").textContent()) === "Page 3 of 3");
 }
