@@ -37,9 +37,12 @@ Usage:
                    node_modules or the PATH; without it, a note says they were not checked)
                    against the types/app.d.ts the tests wrote. At a workspace root it checks
                    the scripts of each member that uses corten.
-  corten ui init   Set up the UI kit: theme tokens (tokens/ui.*.json, light and dark),
-                   src/ui.rs listing its components, and the page's colors in
-                   static/style.css; declares mod ui and lists ui::COMPONENTS on the App.
+  corten ui init [--kit-theme]
+                   Set up the UI kit: src/ui.rs listing its components, declared as mod ui
+                   and listed on the App. An app with a color theme of its own keeps it, and
+                   is told which tokens the components read that it lacks; otherwise (or
+                   with --kit-theme) it writes the kit's theme tokens (tokens/ui.*.json,
+                   light and dark) and the page's colors in static/style.css.
   corten ui add <name>.. [--force] | corten ui add --all [--force]
                    Copy kit components into src/ui/, where they are yours to change, and
                    list them in src/ui.rs. Refuses to replace a file without --force.
