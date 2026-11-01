@@ -2779,7 +2779,7 @@ Corten is pre-1.0, so any minor version may change the API.
     92,418)
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
 
-94. `corten new --corten-path` given a checkout's root (a workspace, not the corten crate) wrote
+95. `corten new --corten-path` given a checkout's root (a workspace, not the corten crate) wrote
     a dependency that does not build, and `corten ui add` could not find `corten-ui` beside it. A
     root with `crates/corten` now means that crate, and a directory that is neither is refused
     before anything is written
