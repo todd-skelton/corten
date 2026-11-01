@@ -2,6 +2,7 @@
 /* As many figures to a row as fit, two on a phone. */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1rem; margin: 0; }
 @media (max-width: 40rem) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; } }
+/* Each figure is a surface with the values card.css uses; a change to one is made to both. */
 .stat {
   display: grid; gap: .25rem; align-content: start; min-width: 0; padding: 1rem 1.25rem;
   background: var(--card); color: var(--card-foreground);

@@ -3,12 +3,26 @@
 //! write, so a screen reader reads it as a value, not loose text:
 //!
 //! ```rust,ignore
-//! <Field id={LimitId} label="Selling limit" hint="Resets on the 1st." error="">
-//!     <meter class={Meter {}} id={LimitId} min="0" max="5000" low="3500" high="4500" optimum="0" value={sold}>
-//!         {t.money(Minor(sold_cents), USD)}
+//! <Field id={LimitId} label="Sold this month" hint="It resets on the 1st." error="">
+//!     <meter
+//!         class={Meter {}}
+//!         id={LimitId}
+//!         aria-describedby={FieldHintId(&LimitId)}
+//!         aria-valuetext={t.money(Minor(sold), USD)}
+//!         min="0"
+//!         max={LIMIT}
+//!         low={LIMIT / 3 * 2}
+//!         high={LIMIT / 10 * 9}
+//!         optimum="0"
+//!         value={sold}
+//!     >
+//!         {t.money(Minor(sold), USD)}
 //!     </meter>
 //! </Field>
 //! ```
+//!
+//! A screen reader reads the value as a number; `aria-valuetext` gives it in words (an amount, not
+//! "12375").
 //!
 //! With no `low` or `high` it is a plain measure, in the primary color. With them, its color is the
 //! state the browser works out from `low`, `high` and `optimum`: the success color in the good

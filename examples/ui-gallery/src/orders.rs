@@ -287,6 +287,7 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
                                     class={Meter {}}
                                     id={LimitId}
                                     aria-describedby={FieldHintId(&LimitId)}
+                                    aria-valuetext={t.money(Minor(sold), USD)}
                                     min="0"
                                     max={LIMIT_CENTS}
                                     low="10000"
@@ -353,6 +354,7 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
                                         "Thanks for your order!"
                                     </textarea>
                                 </Field>
+                                <p>"Changes apply to orders placed after you save."</p>
                                 <div>
                                     <button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>
                                         "Save settings"

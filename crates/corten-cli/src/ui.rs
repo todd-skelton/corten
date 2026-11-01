@@ -1509,10 +1509,27 @@ mod tests {
     }
 
     /// A meter's fill, in each state's color, stands out from its track by 3:1 in both themes, the
-    /// contrast a part that shows a value needs (WCAG 1.4.11).
+    /// contrast a part that shows a value needs (WCAG 1.4.11), and each engine's rule for each state
+    /// fills with that state's color.
     #[test]
     fn a_meters_fill_stands_out_from_its_track() {
         let meter = include_str!("../kit/meter.css");
+        let rule =
+            |start: &str| meter.lines().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("meter.css has no {start}"));
+        assert!(rule(".meter::-webkit-meter-bar {").ends_with("background: var(--border); }"), "the track");
+        let states = [
+            (".meter::-webkit-meter-optimum-value {", "primary"),
+            (".meter:is([low], [high])::-webkit-meter-optimum-value {", "success"),
+            (".meter::-webkit-meter-suboptimum-value {", "warning"),
+            (".meter::-webkit-meter-even-less-good-value {", "destructive"),
+            (".meter::-moz-meter-bar {", "primary"),
+            (".meter:is([low], [high]):-moz-meter-optimum::-moz-meter-bar {", "success"),
+            (".meter:-moz-meter-sub-optimum::-moz-meter-bar {", "warning"),
+            (".meter:-moz-meter-sub-sub-optimum::-moz-meter-bar {", "destructive"),
+        ];
+        for (state, fill) in states {
+            assert!(rule(state).ends_with(&format!("background: var(--{fill}); }}")), "{state} fills with {fill}");
+        }
         let tokens = |path: &str| INIT.iter().find(|(p, _)| *p == path).unwrap().1;
         for file in ["tokens/ui.tokens.json", "tokens/ui-dark.tokens.json"] {
             let text = tokens(file);
@@ -1526,13 +1543,7 @@ mod tests {
                 };
                 0.2126 * channel(rgb >> 16) + 0.7152 * channel(rgb >> 8) + 0.0722 * channel(rgb)
             };
-            assert!(
-                meter.contains(
-                    "::-webkit-meter-bar { height: .5rem; border: 0; border-radius: 999px; background: var(--border); }"
-                )
-            );
-            for fill in ["primary", "success", "warning", "destructive"] {
-                assert!(meter.contains(&format!("background: var(--{fill}); }}")), "meter.css does not fill with {fill}");
+            for (_, fill) in states {
                 let (x, y) = (luminance(fill), luminance("border"));
                 let r = (x.max(y) + 0.05) / (x.min(y) + 0.05);
                 assert!(r >= 3.0, "{file}: a {fill} meter on its track is {r:.2}:1, under 3:1");

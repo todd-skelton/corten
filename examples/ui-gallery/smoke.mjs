@@ -800,6 +800,40 @@ async function run(browser) {
     meter.tag === "METER" && meter.value === 12375 && meter.max === 15000 && meter.width > 100 && meter.height === 8,
     JSON.stringify(meter),
   );
+  // Its fill, as drawn: the value is between low and high with optimum under low, so the warning
+  // color, sampled from a screenshot inside the filled part (82.5% of the bar).
+  // The token as the page has it, read without writing a style (the CSP allows none). The
+  // screenshot is a page of its own: WebKit's adds a stylesheet the CSP refuses, which is
+  // Playwright's, not the page's, so it stays out of this page's console check.
+  const token = await orders.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--warning").trim());
+  const probe = await (await browser.newContext()).newPage();
+  await probe.goto(`${base}/orders`);
+  const shot = (await probe.getByLabel("Sold this month").screenshot()).toString("base64");
+  await probe.context().close();
+  const blank = await orders.context().newPage();
+  const { drawn, want } = await blank.evaluate(
+    async ([png, color]) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${png}`;
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      [canvas.width, canvas.height] = [img.width, img.height];
+      const g = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
+      g.drawImage(img, 0, 0);
+      const drawn = [...g.getImageData(Math.round(img.width * 0.4), Math.floor(img.height / 2), 1, 1).data].slice(0, 3);
+      // The token's color, as the canvas paints it.
+      g.fillStyle = color;
+      g.fillRect(0, 0, 1, 1);
+      return { drawn, want: [...g.getImageData(0, 0, 1, 1).data].slice(0, 3) };
+    },
+    [shot, token],
+  );
+  await blank.close();
+  check(
+    "Meter: drawn in the warning color between low and high",
+    drawn.every((c, i) => Math.abs(c - want[i]) <= 6),
+    JSON.stringify({ drawn, want, token }),
+  );
   // Stats: a term and its descriptions, as many to a row as fit and two on a phone.
   const stats = await orders.evaluate(() => {
     const dl = document.querySelector("dl[class*='stats__stats']");
@@ -822,10 +856,12 @@ async function run(browser) {
       dot: dot?.getAttribute("aria-hidden") === "true" && (dot.parentElement?.textContent ?? "").includes("Taking orders"),
       // Gap::Lg, 1.5rem.
       gap: stack ? parseFloat(getComputedStyle(stack).rowGap) / parseFloat(getComputedStyle(document.documentElement).fontSize) : "missing",
-      margins: stack ? [...stack.children].filter((c) => parseFloat(getComputedStyle(c).marginBlockStart) !== 0).length : -1,
+      // A paragraph's default margins (1em) are dropped: the form has one among its fields.
+      paragraph: stack?.querySelector(":scope > p") ? 1 : 0,
+      margins: stack ? [...stack.children].filter((c) => parseFloat(getComputedStyle(c).marginBlockStart) + parseFloat(getComputedStyle(c).marginBlockEnd) !== 0).length : -1,
     };
   });
-  check("StatusDot and Stack: the dot is not read, and a stack's gap is its only space", spacing.dot && spacing.gap === 1.5 && spacing.margins === 0, JSON.stringify(spacing));
+  check("StatusDot and Stack: the dot is not read, and a stack's gap is its only space", spacing.dot && spacing.gap === 1.5 && spacing.paragraph === 1 && spacing.margins === 0, JSON.stringify(spacing));
   await orders.getByRole("button", { name: "Share the shop" }).click();
   check("Popover: its button opens it", await orders.locator("#share").evaluate((p) => p.matches(":popover-open")));
   await orders.keyboard.press("Escape");

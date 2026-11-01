@@ -9,9 +9,8 @@
 //! ```
 //!
 //! The dot is drawn, not read (`aria-hidden`): color alone tells a status neither to everyone who
-//! sees it nor to a screen reader, so the status is always in the text beside it. Where a row has
-//! no room for the word, write it for screen readers only, beside the dot, rather than in a
-//! `title`, which most of them do not read on a `<span>`.
+//! sees it nor to a screen reader, so the status is always in visible text beside it, never in a
+//! `title` alone.
 use corten::prelude::*;
 
 /// The dot's color. Each is a class in `status_dot.css`, so one without a rule does not compile.

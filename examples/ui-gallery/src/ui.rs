@@ -184,6 +184,8 @@ mod tests {
         assert!(html.contains(r#"<dd class="stats__note">Past the ship-by date</dd>"#), "{html}");
         let plain = Stat { label: "Orders", value: 10, note: "", tone: StatTone::Neutral }.to_html();
         assert!(plain.starts_with(r#"<div class="stats__stat"><dt>"#), "{plain}");
+        // Nothing inside, so `:empty` hides it.
+        assert!(plain.ends_with(r#"<dd class="stats__note"></dd></div>"#), "{plain}");
     }
 
     /// The dot is drawn, not read: the status is in the text beside it.
