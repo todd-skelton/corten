@@ -98,12 +98,12 @@ pub const COMPONENTS: &[Component] = &[];
 /// Above `pub mod ui;` in `src/lib.rs`.
 const MODULE_DOC: &str = "/// The UI kit (`corten ui`): public, so a component not used yet is not a warning.";
 
-const USAGE: &str = "usage: corten ui init | corten ui add <name>.. [--force] | corten ui add --all [--force] | corten ui list | corten ui diff [name]..";
+const USAGE: &str = "usage: corten ui init [--kit-theme] | corten ui add <name>.. [--force] | corten ui add --all [--force] | corten ui list | corten ui diff [name]..";
 
 pub fn run(args: &[String]) -> Result<(), String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
     match args.first().map(String::as_str) {
-        Some("init") => init(&root),
+        Some("init") => init(&root, &args[1..]),
         Some("add") => add(&root, &args[1..]),
         Some("list") => {
             print!("{}", list());
@@ -161,22 +161,39 @@ fn stamp_of(text: &str) -> Option<(String, u64)> {
     Some((version.to_string(), u64::from_str_radix(hash, 16).ok()?))
 }
 
-fn init(root: &Path) -> Result<(), String> {
+fn init(root: &Path, args: &[String]) -> Result<(), String> {
+    let kit_theme = match args {
+        [] => false,
+        [flag] if flag == "--kit-theme" => true,
+        _ => return Err(USAGE.to_string()),
+    };
     for (path, _) in INIT {
         if root.join(path).exists() {
             return Err(format!("{path} exists: the kit is already set up here (corten ui add <name> adds a component)"));
         }
     }
     let app = sources(root);
-    // An app with colors of its own keeps them: the kit's components read their tokens from its
-    // theme. One whose theme has no colors (spacing alone), or that cannot be read, gets the kit's.
-    let theme =
-        app.iter().filter(|(path, text)| !is_kit_file(path, text) && text.contains(TOKENS_CALL)).find_map(|(path, text)| {
+    // An app with colors of its own keeps them, unless it asks for the kit's: the kit's components
+    // read their tokens from its theme. One whose theme has no colors (spacing alone) gets the
+    // kit's; one whose theme cannot be read is told why, rather than given a second theme.
+    let mut theme = None;
+    if !kit_theme {
+        for (path, text) in app.iter().filter(|(path, text)| !is_kit_file(path, text) && text.contains(TOKENS_CALL)) {
             match own_theme(root, text) {
-                Some((names, true)) => Some((path.clone(), names)),
-                _ => None,
+                Ok(Some(found)) if found.colors => {
+                    theme = Some((path.clone(), found));
+                    break;
+                }
+                Ok(_) => {}
+                Err(why) => {
+                    return Err(format!(
+                        "cannot read the theme {path}'s tokens! names ({why}), so the tokens it lacks cannot be named: \
+                         fix it and run this again, or run corten ui init --kit-theme to add the kit's theme beside it"
+                    ));
+                }
             }
-        });
+        }
+    }
     let mut files: Vec<(String, String)> = match &theme {
         None => INIT.iter().map(|(path, text)| (path.to_string(), stamped(text))).collect(),
         Some(_) => vec![("src/ui.rs".to_string(), stamped(OWN_THEME_MODULE))],
@@ -186,7 +203,10 @@ fn init(root: &Path) -> Result<(), String> {
     match wire_app(&app) {
         Ok(edits) => {
             for (path, text) in edits {
-                said.push(format!("  edited {path}"));
+                let was = app.iter().find(|(p, _)| *p == path).map_or("", |(_, t)| t.as_str());
+                let added: Vec<&str> =
+                    text.lines().map(str::trim).filter(|l| is_wiring(l) && !was.lines().any(|w| w.trim() == *l)).collect();
+                said.push(format!("  edited {path}: {}", added.join(" and ")));
                 files.push((path, text));
             }
         }
@@ -219,8 +239,9 @@ fn init(root: &Path) -> Result<(), String> {
         None => println!(
             "\nThe theme is light and dark (data-theme=\"dark\", or the system's). Add components with corten ui add <name>;\ncorten ui list names them."
         ),
-        Some((path, names)) => {
-            let missing: Vec<String> = role_tokens().into_iter().filter(|t| !names.contains(t)).collect();
+        Some((path, theme)) => {
+            let missing: Vec<String> = role_tokens().into_iter().filter(|t| !theme.properties.contains(t)).collect();
+            let taken: Vec<&String> = missing.iter().filter(|t| theme.groups.contains(t)).collect();
             if missing.is_empty() {
                 println!("\nThe components read their colors from your theme ({path}), which has every token they read.");
             } else {
@@ -232,6 +253,15 @@ fn init(root: &Path) -> Result<(), String> {
                     missing.join(", ")
                 );
             }
+            if !taken.is_empty() {
+                println!(
+                    "A group of your theme is named {}, so a token cannot take that name there: rename the group,\n\
+                     or declare --{} in static/style.css (:root {{ --radius: 0.5rem; }}).",
+                    names_of(&taken),
+                    taken.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", --")
+                );
+            }
+            println!("To take the kit's theme instead, beside yours: corten ui init --kit-theme.");
             println!("Add components with corten ui add <name>; corten ui list names them.");
         }
     }
@@ -248,51 +278,153 @@ fn role_tokens() -> Vec<String> {
     }
 }
 
-/// What the app's own theme has, read from the files its `tokens!` names (a resolver's sources
-/// too): the names at the top of each file, and whether any token is a color. None when a file
-/// cannot be read or is not JSON, so nothing is guessed.
-fn own_theme(root: &Path, code: &str) -> Option<(Vec<String>, bool)> {
-    let at = code.find(TOKENS_CALL)? + TOKENS_CALL.len();
-    let path = code[at..].trim_start().strip_prefix('"')?.split('"').next()?;
-    let mut names = Vec::new();
-    let mut colors = false;
-    let mut files = vec![root.join(path)];
-    let mut read = Vec::new();
-    while let Some(file) = files.pop() {
-        if read.contains(&file) {
-            continue;
-        }
-        let value = crate::json::parse(&std::fs::read_to_string(&file).ok()?).ok()?;
-        let dir = file.parent()?.to_path_buf();
-        read.push(file);
-        if let crate::json::Value::Object(fields) = &value {
-            names.extend(fields.iter().map(|(k, _)| k.clone()).filter(|k| !k.starts_with('$')));
-        }
-        walk(&value, &mut |key, v| {
-            if key == "$type" && v.as_str() == Some("color") {
-                colors = true;
-            }
-            if key == "$ref"
-                && let Some(to) = v.as_str().filter(|r| !r.starts_with('#'))
-            {
-                files.push(dir.join(to));
-            }
-        });
-    }
-    Some((names, colors))
+/// What an app's own theme declares, from the files its `tokens!` names (a resolver's sources too).
+#[derive(Debug, Default, PartialEq)]
+struct Theme {
+    /// Each custom property its tokens make, without the `--`: `radius-sm` for `radius.sm`.
+    properties: Vec<String>,
+    /// The groups at the top of its token files (`radius`), whose names a token there cannot take.
+    groups: Vec<String>,
+    /// Whether any token is a color.
+    colors: bool,
 }
 
-/// Calls `each` with every key and value in `value`, at any depth.
-fn walk(value: &crate::json::Value, each: &mut impl FnMut(&str, &crate::json::Value)) {
+/// The theme the `tokens!` call in `code` names. None when `code` has no call with a path in it
+/// (one in a comment); an error, naming the file, when a file it reaches cannot be read or is not
+/// JSON, so nothing is guessed.
+fn own_theme(root: &Path, code: &str) -> Result<Option<Theme>, String> {
+    let Some(at) = code.find(TOKENS_CALL).map(|at| at + TOKENS_CALL.len()) else { return Ok(None) };
+    let Some(path) = code[at..].trim_start().strip_prefix('"').and_then(|rest| rest.split('"').next()) else {
+        return Ok(None);
+    };
+    let mut theme = Theme::default();
+    // Each (file, pointer into it) still to read, and those read.
+    let mut parts = vec![(root.join(path), String::new())];
+    let mut read: Vec<(PathBuf, String)> = Vec::new();
+    while let Some((file, pointer)) = parts.pop() {
+        if read.contains(&(file.clone(), pointer.clone())) {
+            continue;
+        }
+        let shown = slash(file.strip_prefix(root).unwrap_or(&file));
+        let text = std::fs::read_to_string(&file).map_err(|e| format!("{shown}: {e}"))?;
+        let whole = crate::json::parse(&text).map_err(|e| format!("{shown}: {e}"))?;
+        let value = part(&whole, &pointer).ok_or_else(|| format!("{shown}#{pointer} names nothing"))?;
+        let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
+        read.push((file, pointer));
+        if is_structure(value) {
+            // A resolver, a set or a modifier: the files it names are the theme.
+            refs(value, &mut |to| {
+                if let Some((file, pointer)) = to.split_once('#').or(Some((to, ""))).filter(|(file, _)| !file.is_empty()) {
+                    parts.push((dir.join(file), pointer.to_string()));
+                }
+            });
+        } else {
+            tokens(value, &mut Vec::new(), &mut theme);
+        }
+    }
+    Ok(Some(theme))
+}
+
+/// A line `init` adds to the app's code: the module, or the list on the `App`.
+fn is_wiring(line: &str) -> bool {
+    line == "pub mod ui;" || line == ".components(ui::COMPONENTS)" || line == ".components(crate::ui::COMPONENTS)"
+}
+
+/// `a`, `a and b`, `a, b and c`.
+fn names_of(names: &[&String]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.iter().map(|n| n.as_str()).collect::<Vec<_>>().join(", ")),
+    }
+}
+
+/// A token name as its custom property writes it, as `tokens!` does (`slug` in corten-macros'
+/// `dtcg.rs`): `Brand Primary` and `brandPrimary` are `brand-primary`, `FONT-SIZE` is `font-size`.
+fn css_name(name: &str) -> String {
+    let mut out = String::new();
+    let mut previous: Option<char> = None;
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() {
+            if c.is_ascii_uppercase() && previous.is_some_and(|p| p.is_ascii_lowercase()) && !out.ends_with('-') {
+                out.push('-');
+            }
+            out.push(c.to_ascii_lowercase());
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+        previous = Some(c);
+    }
+    out.trim_end_matches('-').to_string()
+}
+
+/// The value a JSON pointer (`/sets/base`, or empty for the whole) names in `value`.
+fn part<'a>(value: &'a crate::json::Value, pointer: &str) -> Option<&'a crate::json::Value> {
+    let mut at = value;
+    for step in pointer.split('/').skip(1).filter(|s| !s.is_empty()) {
+        let step = step.replace("~1", "/").replace("~0", "~");
+        at = match at {
+            crate::json::Value::Object(fields) => &fields.iter().find(|(k, _)| *k == step)?.1,
+            crate::json::Value::Array(items) => items.get(step.parse::<usize>().ok()?)?,
+            _ => return None,
+        };
+    }
+    Some(at)
+}
+
+/// A resolver (`resolutionOrder`), set (`sources`) or modifier (`contexts`) rather than tokens.
+fn is_structure(value: &crate::json::Value) -> bool {
+    matches!(value, crate::json::Value::Object(fields)
+        if fields.iter().any(|(k, _)| matches!(k.as_str(), "resolutionOrder" | "sources" | "contexts")))
+}
+
+/// Calls `each` with every `$ref` in `value` that names another file, outside `$extensions`.
+fn refs(value: &crate::json::Value, each: &mut impl FnMut(&str)) {
     match value {
         crate::json::Value::Object(fields) => {
             for (k, v) in fields {
-                each(k, v);
-                walk(v, each);
+                match (k.as_str(), v.as_str()) {
+                    ("$extensions", _) => {}
+                    ("$ref", Some(to)) if !to.starts_with('#') => each(to),
+                    _ => refs(v, each),
+                }
             }
         }
-        crate::json::Value::Array(items) => items.iter().for_each(|v| walk(v, each)),
+        crate::json::Value::Array(items) => items.iter().for_each(|v| refs(v, each)),
         _ => {}
+    }
+}
+
+/// Adds what a token file's group at `path` declares to `theme`: a token's custom property (its
+/// path joined by `-`, a group's `$root` the group's own), each group at the top, and whether a
+/// `$type` is a color.
+fn tokens(value: &crate::json::Value, path: &mut Vec<String>, theme: &mut Theme) {
+    let crate::json::Value::Object(fields) = value else { return };
+    for (key, v) in fields {
+        if key == "$type" && v.as_str() == Some("color") {
+            theme.colors = true;
+        }
+        let crate::json::Value::Object(inner) = v else { continue };
+        let token = inner.iter().any(|(k, _)| k == "$value" || k == "$ref");
+        if key == "$root" && token && !path.is_empty() {
+            theme.properties.push(path.iter().map(|p| css_name(p)).collect::<Vec<_>>().join("-"));
+        }
+        if key.starts_with('$') {
+            continue;
+        }
+        path.push(key.clone());
+        if token {
+            theme.properties.push(path.iter().map(|p| css_name(p)).collect::<Vec<_>>().join("-"));
+            if inner.iter().any(|(k, t)| k == "$type" && t.as_str() == Some("color")) {
+                theme.colors = true;
+            }
+        } else {
+            if path.len() == 1 {
+                theme.groups.push(css_name(key));
+            }
+            tokens(v, path, theme);
+        }
+        path.pop();
     }
 }
 
@@ -517,7 +649,10 @@ fn add(root: &Path, args: &[String]) -> Result<(), String> {
     };
     let module = std::fs::read_to_string(root.join("src/ui.rs"))
         .map_err(|_| "src/ui.rs is missing: run corten ui init first".to_string())?;
-    let app = sources(root);
+    // The files this writes are the kit's whatever they hold now (a copy whose stamp line was lost).
+    let writes: Vec<String> =
+        pieces.iter().flat_map(|p| p.files.iter().map(|(file, _)| slash(&PathBuf::from("src/ui").join(file)))).collect();
+    let app: Vec<(String, String)> = sources(root).into_iter().filter(|(path, _)| !writes.contains(path)).collect();
     let clash = clashes(&app, &pieces);
     if !clash.is_empty() {
         let mut why = String::from(
@@ -1089,23 +1224,49 @@ mod tests {
         assert!(!module.contains("tokens!"));
     }
 
-    /// The app's theme is read from the files its `tokens!` names, a resolver's sources included:
-    /// its names, and whether it has colors.
+    /// The app's theme is read from the files its `tokens!` names, a resolver's sources (a part of a
+    /// file, `#/pointer`) included: the custom properties its tokens make, as `tokens!` names them,
+    /// its top groups, and whether it has colors. A group's name is not a token of that name.
     #[test]
     fn init_reads_the_apps_own_theme() {
         let dir = std::env::temp_dir().join(format!("corten-ui-theme-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("tokens")).unwrap();
-        std::fs::write(dir.join("tokens/base.tokens.json"), r##"{ "color": { "$type": "color", "ink": { "$value": "#000" } }, "card": { "$type": "color", "$value": "{color.ink}" } }"##).unwrap();
-        std::fs::write(dir.join("tokens/theme.resolver.json"), r##"{ "sets": { "base": { "sources": [{ "$ref": "base.tokens.json" }] } }, "resolutionOrder": [{ "$ref": "#/sets/base" }] }"##).unwrap();
+        let base = r##"{ "color": { "$type": "color", "ink": { "$value": "#000" }, "brand": { "$root": { "$value": "#00f" } } },
+            "card": { "$type": "color", "$value": "{color.ink}" }, "mutedForeground": { "$type": "color", "$value": "{color.ink}" },
+            "radius": { "$type": "dimension", "sm": { "$value": { "value": 4, "unit": "px" } } },
+            "$extensions": { "run.corten": { "x": { "$ref": "nowhere.json" } } } }"##;
+        std::fs::write(dir.join("tokens/base.tokens.json"), base).unwrap();
+        std::fs::write(
+            dir.join("tokens/dark.tokens.json"),
+            r##"{ "theme": { "border": { "$type": "color", "$value": "#111" } } }"##,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("tokens/theme.resolver.json"),
+            r##"{ "sets": { "base": { "sources": [{ "$ref": "base.tokens.json#/" }] } },
+                "modifiers": { "theme": { "contexts": { "light": [], "dark": [{ "$ref": "dark.tokens.json#/theme" }] } } },
+                "resolutionOrder": [{ "$ref": "#/sets/base" }, { "$ref": "#/modifiers/theme" }] }"##,
+        )
+        .unwrap();
         std::fs::write(
             dir.join("tokens/space.tokens.json"),
             r##"{ "space": { "$type": "dimension", "1": { "$value": { "value": 4, "unit": "px" } } } }"##,
         )
         .unwrap();
-        let (names, colors) = own_theme(&dir, "corten::style::tokens!(\"tokens/theme.resolver.json\");").unwrap();
-        assert!(colors && names.contains(&"color".to_string()) && names.contains(&"card".to_string()), "{names:?}");
-        assert_eq!(own_theme(&dir, "tokens!(\"tokens/space.tokens.json\");"), Some((vec!["space".to_string()], false)));
-        assert_eq!(own_theme(&dir, "tokens!(\"tokens/missing.json\");"), None);
+        let theme = own_theme(&dir, "corten::style::tokens!(\"tokens/theme.resolver.json\");").unwrap().unwrap();
+        assert!(theme.colors);
+        for name in ["color-ink", "color-brand", "card", "muted-foreground", "radius-sm", "border"] {
+            assert!(theme.properties.iter().any(|p| p == name), "{name}: {theme:?}");
+        }
+        assert!(!theme.properties.iter().any(|p| p == "radius" || p == "color"), "a group is not a token: {theme:?}");
+        assert_eq!(theme.groups, ["color", "radius"]);
+        let space = own_theme(&dir, "tokens!(\"tokens/space.tokens.json\");").unwrap().unwrap();
+        assert!(!space.colors && space.properties == ["space-1"], "{space:?}");
+        assert_eq!(own_theme(&dir, "// no theme here").unwrap(), None);
+        let missing = own_theme(&dir, "tokens!(\"tokens/missing.json\");").unwrap_err();
+        assert!(missing.starts_with("tokens/missing.json: "), "{missing}");
+        std::fs::write(dir.join("tokens/r.json"), r##"{ "resolutionOrder": [{ "$ref": "base.tokens.json#/nope" }] }"##).unwrap();
+        assert!(own_theme(&dir, "tokens!(\"tokens/r.json\");").unwrap_err().contains("base.tokens.json#/nope names nothing"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

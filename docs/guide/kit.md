@@ -24,7 +24,7 @@ that line; otherwise it says to add it by hand.
 
 | Command | Writes |
 |---|---|
-| `corten ui init` | `tokens/ui.tokens.json` (light), `tokens/ui-dark.tokens.json` and `tokens/ui.resolver.json` (the theme modifier, following the system when the page chose no theme), `src/ui.rs` (the tokens and the `COMPONENTS` list), the page's colors at the end of `static/style.css` (unless it sets `color-scheme` already, when it says what to add); `pub mod ui;` among the crate root's `mod` lines (`src/lib.rs`, else `src/main.rs`) and `.components(ui::COMPONENTS)` on the crate's one `App::new(..)` line, in whichever file builds the `App` (`crate::ui::COMPONENTS` from another module). An app with colors of its own (a `tokens!` theme with a color token) keeps them: `init` writes only `src/ui.rs`, without the kit's tokens, and names the tokens the components read that the theme lacks ([below](#an-apps-own-theme)). A binary that builds its `App` beside a `src/lib.rs` is told to add the line by hand. It refuses to run twice, and says what to do by hand when it cannot place a line |
+| `corten ui init` | `tokens/ui.tokens.json` (light), `tokens/ui-dark.tokens.json` and `tokens/ui.resolver.json` (the theme modifier, following the system when the page chose no theme), `src/ui.rs` (the tokens and the `COMPONENTS` list), the page's colors at the end of `static/style.css` (unless it sets `color-scheme` already, when it says what to add); `pub mod ui;` among the crate root's `mod` lines (`src/lib.rs`, else `src/main.rs`) and `.components(ui::COMPONENTS)` on the crate's one `App::new(..)` line, in whichever file builds the `App` (`crate::ui::COMPONENTS` from another module). An app with colors of its own (a `tokens!` theme with a color token) keeps them: `init` writes only `src/ui.rs`, without the kit's tokens, and names the tokens the components read that the theme lacks ([below](#an-apps-own-theme)); `corten ui init --kit-theme` writes the kit's theme beside it instead. A binary that builds its `App` beside a `src/lib.rs` is told to add the line by hand. It refuses to run twice, and says what to do by hand when it cannot place a line |
 | `corten ui add <name>..`, `--all` | each component's files in `src/ui/`, `pub mod <name>;` and the component in `src/ui.rs`'s `COMPONENTS`, laid out as rustfmt does; for a component that styles a corten-ui widget, `corten-ui` in `Cargo.toml` from where `corten` comes (next to a local `corten`, the same Git repository and revision, else this command's release) and `.components(corten_ui::COMPONENTS)` on the `App`, unless a file of the crate lists it already. A file that exists is refused, before anything is written, unless `--force`; so is a component the app has by the same name with a stylesheet of its own (a `Field` in `src/layout.rs`), naming the file, since the two would style one class prefix and the program would not link |
 | `corten ui diff [name]..` | nothing: for each copied file (of the components named, or all of `src/ui/`), whether the app edited it, whether the kit changed it since the copy, and a unified diff from the copy to the kit this command carries. A file the kit changed and the app did not is the kit's to replace (`corten ui add --force`); one both changed is merged by hand |
 
@@ -41,8 +41,11 @@ The token names are shadcn/ui's, so a theme made for it maps one variable to one
 `--input`, `--ring` and `--radius`, and three tones for status that shadcn/ui leaves to the app,
 `--info`, `--success` and `--warning` (each with a `-foreground`), which `Badge` and `Alert`
 use. They are tokens at the top of the file, so each is a custom property with no Rust enum, and
-none is named as an app's own scales are (`--color-accent`), so the kit's theme and an app's can
-be on one page without one replacing the other's values. To bring a theme over, write each of its
+none has a scale's name (`--color-accent`, `--radius-sm`), so the kit's theme and an app's can
+be on one page without one replacing the other's values; only a top-level token of the app's with
+one of these names (`--card`) would be the same property. Status tones have no `-soft` token: an
+alert's tinted background is the tone mixed into `--card` in its stylesheet (`color-mix`), as
+`destructive`'s is, so a theme sets one color per tone. To bring a theme over, write each of its
 colors into `ui.tokens.json` (`:root`'s) and `ui-dark.tokens.json` (`.dark`'s) as the [styles
 guide](styles.md#design-tokens) writes colors (sRGB with its hex, or `oklch`); the startup check
 fails, naming the file and property, if a component reads one the theme lacks. The kit's own
@@ -68,6 +71,12 @@ the app has, so it follows the app's other themes (dark, a density) with nothing
 
 The app does not start while a component reads a token no stylesheet declares, and the error names
 the stylesheet and the token, so a missing one is found at the first run.
+
+A name a group at the top of the file has (`radius`, for `--radius-sm`) cannot also be a token
+there; `init` says so when the theme has one. Rename the group, or declare that token in the page
+stylesheet (`:root { --radius: 0.5rem; }`). A theme `init` cannot read (a file its resolver names
+is missing) is reported, and nothing is written; `--kit-theme` takes the kit's theme instead,
+beside the app's.
 
 A utility over the kit's tokens, a text color for each tone (`fg_success()`), lists them as its
 values, which gives it a Rust enum as a group does:
