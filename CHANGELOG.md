@@ -1384,6 +1384,14 @@ Corten is pre-1.0, so any minor version may change the API.
     route, `/api/ping` is 17,189 and `/api/items/7` 18,682; with an outer `/api/{*rest}`, 17,422 and
     19,034, each the same in every run, a router with one more route as well as the check)
     ([#539 An API cannot sit inside another API's prefix, so a feature cannot own its JSON routes under a shared /api the way it owns its pages in an area](https://github.com/todd-skelton/corten/issues/539)).
+165. `corten::Rendered::new(view)`: a view rendered once, to place in several answers (a page's
+    body that is also a live stream's fragment). Placed in a page, it brings what its render noted:
+    the values of its `style={..}`, so the page's style block has their rules and sizes from data
+    paint without a script, and the script modules its handlers use. Markup rendered to a `String`
+    and placed with `raw()` brought neither, so its sizes painted at their initial values until a
+    patch, with nothing said; under `corten dev` a full page with a `data-vars` value its block has
+    no rule for is now an error that says so
+    ([#576 Sizes from data (data-vars) in markup placed with raw() never reach the page's style block, and nothing says so](https://github.com/todd-skelton/corten/issues/576)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

@@ -256,7 +256,7 @@ pub use route::{routes, Elsewhere, Href, Local, Methods, OnSite, Params, ParamsR
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Shutdown, Signal};
 pub use style::Style;
-pub use view::{component, html, raw, Document, Patch, Render};
+pub use view::{component, html, raw, Document, Patch, Render, Rendered};
 
 /// What a component sends to the browser: its handlers' script (`#[component(js)]` or
 /// [`script::script!`]), its stylesheet (`#[component(css)]`, or a token file's), its view class

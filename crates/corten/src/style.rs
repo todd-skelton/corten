@@ -359,7 +359,7 @@
 use std::cell::RefCell;
 
 mod vars;
-pub(crate) use vars::collect as collect_vars;
+pub(crate) use vars::{capture as capture_vars, collect as collect_vars, replay as replay_vars, Written};
 pub use vars::{syntax, Declaration, Var, Vars};
 
 /// Design tokens as CSS and Rust, from W3C Design Tokens files (DTCG 2025.10). See [the module](self)

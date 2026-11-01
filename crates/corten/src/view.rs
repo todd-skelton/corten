@@ -800,7 +800,10 @@ impl<T: Patch> Patch for Vec<T> {}
 /// Trusted HTML, written without escaping. Only for markup the app produced itself.
 pub struct Raw<T>(pub T);
 
-/// Prints `html` as is: `{raw(&cached_fragment)}`. Never pass it user input.
+/// Prints `html` as is: `{raw(&markup)}`. Never pass it user input. Markup a view rendered goes
+/// in a [`Rendered`] instead, which keeps what the render noted (sizes from data, the script
+/// modules its handlers use) for the page it is placed in; text placed with `raw` carries only
+/// its attributes, so under `corten dev` a page whose `data-vars` have no rule is an error.
 pub fn raw<T: AsRef<str>>(html: T) -> Raw<T> {
     Raw(html)
 }
@@ -808,6 +811,60 @@ pub fn raw<T: AsRef<str>>(html: T) -> Raw<T> {
 impl<T: AsRef<str>> Render for Raw<T> {
     fn render(&self, out: &mut String) {
         out.push_str(self.0.as_ref());
+    }
+}
+
+/// A view rendered once, to place in several answers: a page's body that is also a live stream's
+/// fragment, a part kept while it has not changed. Placed in a page (`{body}`, a reference), it is as if the
+/// view rendered there: it keeps, beside its markup, the values its `style={..}` wrote (a full
+/// page's style block has a rule for each, so sizes from data paint without a script), the script
+/// modules its handlers use (the page loads them) and, in debug builds, the components that
+/// rendered (checked under `corten dev`).
+///
+/// ```
+/// use corten::{prelude::*, Rendered};
+///
+/// #[derive(Id)]
+/// struct CountId;
+///
+/// let body = Rendered::new(html! { <p id={CountId}>"3 open"</p> });
+/// let placed = &body;
+/// let page = html! { <main>{placed}</main> }.to_html();
+/// assert_eq!(page, r#"<main><p id="count">3 open</p></main>"#);
+/// // The same markup, for a live stream: corten::Fragment::new(body.as_str().to_string()).
+/// assert_eq!(body.as_str(), r#"<p id="count">3 open</p>"#);
+/// ```
+pub struct Rendered {
+    html: String,
+    vars: crate::style::Written,
+    modules: Vec<&'static str>,
+    components: Vec<&'static crate::Component>,
+}
+
+impl Rendered {
+    /// Renders `view`, keeping what its render noted.
+    pub fn new(view: impl Render) -> Self {
+        let (((html, components), modules), vars) =
+            crate::style::capture_vars(|| crate::script::collect(|| crate::style::collect(|| view.to_html())));
+        Rendered { html, vars, modules, components }
+    }
+
+    /// The markup.
+    pub fn as_str(&self) -> &str {
+        &self.html
+    }
+}
+
+impl Render for Rendered {
+    fn render(&self, out: &mut String) {
+        out.push_str(&self.html);
+        crate::style::replay_vars(&self.vars);
+        for module in &self.modules {
+            crate::script::uses(module);
+        }
+        for component in &self.components {
+            crate::style::__private::rendered(component);
+        }
     }
 }
 

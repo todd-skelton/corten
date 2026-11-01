@@ -1038,6 +1038,9 @@ impl Req {
         let Some(at) = HEAD_AT.take() else {
             return Err(Error::new("corten: the document's <head> has no <Corten />"));
         };
+        if self.shared.dev && !swap {
+            unruled_vars(&out, &vars)?;
+        }
         let key = self.key(crate::view::SHELL.get());
         let mut tags = String::new();
         if swap {
@@ -2365,6 +2368,28 @@ impl<D: Document> Render for Parted<D> {
     fn render(&self, out: &mut String) {
         self.0.render_part(out, self.1)
     }
+}
+
+/// Under `corten dev`: an error when a full page has a `data-vars` value its style block has no
+/// rule for, which markup placed with `raw` gives (its render's values were not noted), so a size
+/// from data would paint at its initial value until a patch.
+#[cold]
+#[inline(never)]
+fn unruled_vars(page: &str, rules: &str) -> Result<()> {
+    const ATTR: &str = " data-vars=\"";
+    let mut rest = page;
+    while let Some(at) = rest.find(ATTR) {
+        rest = &rest[at + ATTR.len()..];
+        let Some(end) = rest.find('"') else { break };
+        let value = &rest[..end];
+        if !rules.contains(&format!("[data-vars=\"{value}\"]")) {
+            return Err(Error::new(format!(
+                "the page has data-vars=\"{value}\" and no rule for it, so that size paints at its initial value: markup placed with raw() keeps no values; render the view into a corten::Rendered and place that"
+            )));
+        }
+        rest = &rest[end..];
+    }
+    Ok(())
 }
 
 pub(crate) fn html_response(status: StatusCode, body: String, kind: Option<HeaderName>) -> Response {

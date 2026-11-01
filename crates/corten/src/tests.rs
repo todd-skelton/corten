@@ -661,6 +661,36 @@ async fn a_page_s_custom_properties_are_one_style_block_its_csp_allows_by_hash()
     assert!(headers["content-security-policy"].to_str().unwrap().contains("style-src 'self';"), "a page with none is as before");
 }
 
+/// Meters rendered ahead, placed with `place`, on a page served under `corten dev` or not.
+fn placed_meters(dev: bool, place: fn(crate::Rendered) -> Box<dyn crate::Render>) -> Router {
+    let page = move |req: Req| async move {
+        let body = crate::Rendered::new(html! { <Meter used={42.5} /> <Meter used={7.0} /> });
+        req.test_page("Meters", place(body))
+    };
+    App::new(Routes::from(Router::new().route("/", get(page))))
+        .dev(dev)
+        .error_page(test_error_page, ())
+        .components(&[Meter])
+        .router()
+}
+
+/// Markup rendered ahead into a `Rendered` keeps its values, so its page's style block has their
+/// rules; the same markup placed with `raw` has none, which `corten dev` reports.
+#[tokio::test]
+async fn markup_rendered_ahead_keeps_its_custom_properties_and_raw_markup_is_reported() {
+    let rules = r#"[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%!important}[data-vars="--meter__fill:7%"]{--meter__fill:7%!important}"#;
+    for dev in [false, true] {
+        let (status, _, body) = call(placed_meters(dev, |body| Box::new(body)), "GET", None).await;
+        assert_eq!(status, 200, "{body}");
+        assert!(body.contains(&format!("<style>{rules}</style></head>")), "{body}");
+    }
+    let (status, _, body) = call(placed_meters(false, |body| Box::new(crate::raw(body.as_str().to_string()))), "GET", None).await;
+    assert!(status == 200 && !body.contains("<style>"), "raw markup's values are not noted: {body}");
+    let (status, _, body) = call(placed_meters(true, |body| Box::new(crate::raw(body.as_str().to_string()))), "GET", None).await;
+    assert_eq!(status, 500, "{body}");
+    assert!(body.contains("data-vars=&quot;--meter__fill:42.5%&quot; and no rule for it"), "{body}");
+}
+
 #[tokio::test]
 async fn the_app_refuses_cross_site_writes() {
     let router = app(routes(), None);

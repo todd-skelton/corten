@@ -240,13 +240,37 @@ macro_rules! tuples {
 tuples!((A, B), (A, B, C), (A, B, C, D), (A, B, C, D, E), (A, B, C, D, E, F), (A, B, C, D, E, F, G), (A, B, C, D, E, F, G, H));
 
 /// The values a full page's render wrote, one after another, and where each ends.
-struct Written {
+#[derive(Default)]
+pub(crate) struct Written {
     text: String,
     ends: Vec<usize>,
 }
 
 thread_local! {
     static WRITTEN: RefCell<Option<Written>> = const { RefCell::new(None) };
+}
+
+/// Runs `render` and returns the values it wrote, for [`replay`] where its markup is placed
+/// (`view::Rendered`).
+pub(crate) fn capture<T>(render: impl FnOnce() -> T) -> (T, Written) {
+    let previous = WRITTEN.with(|w| w.replace(Some(Written::default())));
+    let value = render();
+    let written = WRITTEN.with(|w| w.replace(previous)).unwrap_or_default();
+    (value, written)
+}
+
+/// Notes values a render wrote earlier (`capture`) as written by the page rendering now.
+pub(crate) fn replay(earlier: &Written) {
+    if earlier.ends.is_empty() {
+        return;
+    }
+    WRITTEN.with(|w| {
+        if let Some(written) = w.borrow_mut().as_mut() {
+            let base = written.text.len();
+            written.text.push_str(&earlier.text);
+            written.ends.extend(earlier.ends.iter().map(|end| base + end));
+        }
+    });
 }
 
 /// Runs `render` and returns the page's style block for the values it wrote: `[data-vars="X"]{X!important}`
