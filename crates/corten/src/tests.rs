@@ -2516,6 +2516,30 @@ struct FeedJson<'a> {
     kind: &'a str,
 }
 
+#[derive(crate::Route)]
+#[route("/api/files/{name}.csv")]
+struct ApiCsv<'a> {
+    name: &'a str,
+}
+
+/// Two routes of one API that differ only in the text after a parameter.
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn routes_of_an_api_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let csv = crate::Methods::reads(axum::routing::post(|| async { "csv" }));
+    let _ = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiFile>(json).route::<ApiCsv>(csv));
+}
+
+/// A page and an API route that differ only in the text after a parameter.
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn a_page_and_an_api_route_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let csv = crate::Methods::reads(axum::routing::post(|| async { "csv" }));
+    let _ = App::new(Routes::new().__route::<ApiCsv>(csv)).api::<ApiRoot>(|api| api.route::<ApiFile>(json)).router();
+}
+
 /// The same in one area, with other parameter names: refused by Corten before the router (which
 /// would merge the two methods into one path, or refuse the names with a message about neither).
 #[test]

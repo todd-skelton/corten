@@ -1465,6 +1465,20 @@ mod local_tests {
         ] {
             assert_eq!(super::written_fits(path, written), want, "{path} {written}");
         }
+        for (a, b, want) in [
+            ("/feeds/{name}.rss", "/feeds/{id}.atom", true),
+            ("/feeds/{name}.rss", "/feeds/{name}.rss", false),
+            ("/feeds/{name}.rss", "/feeds/{id}.rss", false),
+            ("/feeds/{name}.rss", "/feeds/{name}", true),
+            ("/feeds/{name}.rss", "/feeds/{*rest}", false),
+            ("/feeds/{name}.rss", "/other/{name}.atom", false),
+            ("/a/{x}.r/b", "/a/{y}.s/b", true),
+            ("/a/{x}.r/b", "/a/{y}.s/c", false),
+            ("/a/{x}", "/a/{y}", false),
+        ] {
+            assert_eq!(super::clash(a, b), want, "{a} {b}");
+            assert_eq!(super::clash(b, a), want, "{b} {a}");
+        }
     }
 
     #[test]
@@ -2510,8 +2524,15 @@ pub mod __private {
     fn unsuffixed<T: serde::de::DeserializeOwned>(text: &str, suffix: &str) -> Result<T, FormError> {
         let value =
             text.strip_suffix(suffix).ok_or_else(|| FormError::in_path(format!("`{text}` does not end in `{suffix}`")))?;
-        crate::form::de::in_path(value)
-            .map_err(|e| FormError::in_path(format!("Cannot parse `{value}` to a `{}`: {e}", std::any::type_name::<T>())))
+        crate::form::de::in_path(value).map_err(|e| {
+            // As axum says it: a primitive's name, never the app's own type path.
+            let ty = std::any::type_name::<T>();
+            FormError::in_path(if ty.contains("::") {
+                format!("{e}")
+            } else {
+                format!("Cannot parse `{value}` to a `{ty}`: {e}")
+            })
+        })
     }
 
     /// `T`, named with a lifetime of the `FromUrl` impl, so a bound on it (that a field reads
