@@ -44,7 +44,12 @@ const KIT: &[Piece] = &[
     piece!("dropdown_menu", "DropdownMenu", "the look of corten-ui's MenuButton", ["dropdown_menu.rs", "dropdown_menu.css"], styles "MenuButton"),
     piece!("field", "Field", "a label, its control and a hint or the server's error", ["field.rs", "field.css"]),
     piece!("input", "Input", "the look of a text <input>, invalid state included", ["input.rs", "input.css"]),
-    piece!("meter", "Meter", "the look of a <meter>: a measure in a known range, colored by its state", ["meter.rs", "meter.css"]),
+    piece!(
+        "meter",
+        "Meter",
+        "the look of a <meter>: a measure in a known range, colored by its state",
+        ["meter.rs", "meter.css"]
+    ),
     piece!("pagination", "Pagination", "typed links to the pages of a list", ["pagination.rs", "pagination.css"]),
     piece!("popover", "Popover", "content over the page beside its button, on popover", ["popover.rs", "popover.css"]),
     piece!("radio_group", "RadioGroup", "a fieldset of radio buttons and their labels", ["radio_group.rs", "radio_group.css"]),
@@ -58,9 +63,19 @@ const KIT: &[Piece] = &[
     piece!("sheet", "Sheet", "a <dialog> that slides in from an edge of the window", ["sheet.rs", "sheet.css"]),
     piece!("skeleton", "Skeleton", "a placeholder's shape while a part loads", ["skeleton.rs", "skeleton.css"]),
     piece!("slider", "Slider", "the look of an <input type=\"range\">", ["slider.rs", "slider.css"]),
-    piece!("stack", "Stack", "the space between a screen's parts: a column (Stack) or a wrapping row (Cluster)", ["stack.rs", "stack.css"]),
+    piece!(
+        "stack",
+        "Stack",
+        "the space between a screen's parts: a column (Stack) or a wrapping row (Cluster)",
+        ["stack.rs", "stack.css"]
+    ),
     piece!("stats", "Stats", "labelled figures for a dashboard's summary, on a <dl>", ["stats.rs", "stats.css"]),
-    piece!("status_dot", "StatusDot", "a dot in a status's color, before the words that name it", ["status_dot.rs", "status_dot.css"]),
+    piece!(
+        "status_dot",
+        "StatusDot",
+        "a dot in a status's color, before the words that name it",
+        ["status_dot.rs", "status_dot.css"]
+    ),
     piece!("switch", "Switch", "an on and off setting: a checkbox with role=\"switch\"", ["switch.rs", "switch.css"]),
     piece!("table", "Table", "the look of a <table>, scrolling sideways when it is wide", ["table.rs", "table.css"]),
     piece!("tabs", "Tabs", "the look of corten-ui's TabGroup: a segmented tab list", ["tabs.rs", "tabs.css"], styles "TabGroup"),
@@ -1511,7 +1526,11 @@ mod tests {
                 };
                 0.2126 * channel(rgb >> 16) + 0.7152 * channel(rgb >> 8) + 0.0722 * channel(rgb)
             };
-            assert!(meter.contains("::-webkit-meter-bar { height: .5rem; border: 0; border-radius: 999px; background: var(--border); }"));
+            assert!(
+                meter.contains(
+                    "::-webkit-meter-bar { height: .5rem; border: 0; border-radius: 999px; background: var(--border); }"
+                )
+            );
             for fill in ["primary", "success", "warning", "destructive"] {
                 assert!(meter.contains(&format!("background: var(--{fill}); }}")), "meter.css does not fill with {fill}");
                 let (x, y) = (luminance(fill), luminance("border"));

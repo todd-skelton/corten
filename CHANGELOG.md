@@ -1393,6 +1393,14 @@ Corten is pre-1.0, so any minor version may change the API.
     (the app's `Field` beside the kit's), naming the app's file, before it writes anything: the two
     would style one class prefix, and the program would not link
     ([#550 A kit component and an app component with the same name fail at link time, and corten ui add does not warn](https://github.com/todd-skelton/corten/issues/550)).
+167. The kit has parts for showing data and spacing a screen: `Meter` (the look of a `<meter>`,
+    colored by the state its `low`, `high` and `optimum` give), `Stats` and `Stat` (labelled
+    figures, a term and its descriptions), `StatusDot` (a status's color beside the words that name
+    it, not read) and `Stack` and `Cluster` (a column or a wrapping row, a `Gap` apart). The
+    gallery's orders page uses each
+    ([#557 The kit has no stack or spacing primitive, so every screen hand-writes the gap between cards, alerts and forms](https://github.com/todd-skelton/corten/issues/557),
+    [#571 The kit has no meter, so every app draws a share used as a bar of divs with no meter role](https://github.com/todd-skelton/corten/issues/571),
+    [#572 The kit has no labelled figure (stat) or status dot, so a dashboard writes its own and names status only by color and title](https://github.com/todd-skelton/corten/issues/572)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

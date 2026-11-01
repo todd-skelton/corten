@@ -177,7 +177,10 @@ mod tests {
         use super::stats::{Stat, StatTone};
         use corten::view::Render;
         let html = Stat { label: "Late", value: 1, note: "Past the ship-by date", tone: StatTone::Destructive }.to_html();
-        assert!(html.starts_with(r#"<div class="stats__stat stats__destructive"><dt>Late</dt><dd class="stats__value">1</dd>"#), "{html}");
+        assert!(
+            html.starts_with(r#"<div class="stats__stat stats__destructive"><dt>Late</dt><dd class="stats__value">1</dd>"#),
+            "{html}"
+        );
         assert!(html.contains(r#"<dd class="stats__note">Past the ship-by date</dd>"#), "{html}");
         let plain = Stat { label: "Orders", value: 10, note: "", tone: StatTone::Neutral }.to_html();
         assert!(plain.starts_with(r#"<div class="stats__stat"><dt>"#), "{plain}");

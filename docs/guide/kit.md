@@ -138,6 +138,10 @@ they are the whole page's.
 | `Separator` | an `<hr>` | `Orientation`: `Horizontal`, `Vertical` |
 | `Skeleton` | a placeholder's shape, hidden from screen readers, still under `prefers-reduced-motion` | `SkeletonShape`: `Line`, `Block`, `Circle` |
 | `Table` | the look of the `<table>` inside it, scrolling sideways when it is wider than the page | |
+| `Meter` | a look: the classes of the app's `<meter>` (`class={Meter {}}`), named by a label as any control; a plain measure in the primary color, and with `low` or `high` the state the browser works out, in the success, warning or destructive color, each 3:1 against the track in both themes (the kit's test) | |
+| `Stats`, `Stat` | a look on the app's `<dl>` (`class={Stats {}}`), as many figures to a row as fit and two on a phone, and each figure a term and its descriptions (`<Stat label="Late" value={late} note="Past the ship-by date" tone={..} />`), so a screen reader reads the label with the value; `note=""` draws none | `StatTone`: `Neutral`, `Info`, `Success`, `Warning`, `Destructive` |
+| `StatusDot` | a dot in a status's color, hidden from screen readers (`aria-hidden`), before the words that name the status, as in a badge (`<span class={Badge { .. }}><StatusDot tone={..} />"Open"</span>`): color alone does not tell the status | `StatusTone`: `Neutral`, `Info`, `Success`, `Warning`, `Destructive` |
+| `Stack`, `Cluster` | looks: the app's element lays its children out in a column (`Stack`) or a row that wraps (`Cluster`), `gap` apart, their own block margins dropped, so the kit's components carry no outer margin and a screen needs no rule to space them | `Gap`: `Xs`, `Sm`, `Md`, `Lg`, `Xl` (.25 to 2rem, the kit's spacing) |
 | `Breadcrumb` | a `<nav>` of typed links to the pages above (`Crumb { label, link: &url::Sets }`), then the page, `aria-current="page"` | |
 | `Pagination` | a `<nav>` of links to a list's pages, each from `link(n)`, a typed route; the first, the last and two each side of the current page, Previous and Next disabled at the ends | |
 | `Avatar` | a person's picture over their initials, which show while it loads and when there is none; `alt` names the person on the picture, or on the avatar (`role="img"`) when there is none | |
@@ -162,5 +166,5 @@ WebKit, with and without JavaScript.
 
 The kit's CSS goes into `components.css` with the app's own, one cached file. Measured on a new
 app with every component added (`corten ui add --all`) and nothing of its own but the starter's
-counter: 26,566 bytes, 4,104 with brotli at level 11 and 4,673 with gzip at level 9, the theme's
+counter: 31,368 bytes, 4,879 with brotli at level 11 and 5,573 with gzip at level 9, the theme's
 tokens included. An app pays for the components it adds, and `corten ui add` adds one at a time.

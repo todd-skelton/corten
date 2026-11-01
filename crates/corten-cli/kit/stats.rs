@@ -42,7 +42,12 @@ pub fn Stats() -> impl ClassList {
 
 /// One figure: its label, its value in tabular figures, and a note under it.
 #[component(css = Stats)]
-pub fn Stat<'a, V: Render, N: Render>(label: &'a str, value: V, note: N, tone: StatTone) -> impl Render {
+pub fn Stat<'a, V: Render, N: Render>(
+    label: &'a str,
+    value: V,
+    note: N,
+    tone: StatTone,
+) -> impl Render {
     let tone = match tone {
         StatTone::Neutral => None,
         StatTone::Info => Some(Info),

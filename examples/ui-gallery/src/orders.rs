@@ -178,205 +178,210 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
     };
     html! {
         <div class={Stack { gap: Gap::Lg }}>
-        <Breadcrumb
-            label="Breadcrumb"
-            crumbs={&[Crumb { label: "Draft listing", link: &url::Home { tab: None, sale: None, period: None } }]}
-            current="Orders"
-        />
-        <div class={Cluster { gap: Gap::Sm }}>
-            <h1>"Orders"</h1>
-            <span class={Badge { tone: BadgeTone::Success, emphasis: BadgeEmphasis::Soft }}>
-                <StatusDot tone={StatusTone::Success} />
-                "Taking orders"
-            </span>
-        </div>
-        <Alert variant={AlertVariant::Warning}>
-            <strong>"One order is past its ship-by date"</strong>
-            <p>"Ada Lovelace's Ashen Drake was due to ship yesterday. Ship it today or message the buyer."</p>
-        </Alert>
-        <dl class={Stats {}}>
-            <Stat label="Sales" value={t.money(Minor(sold), USD)} note="This month, refunds taken out" tone={StatTone::Neutral} />
-            <Stat label="Orders" value={ORDERS.len()} note="This month" tone={StatTone::Neutral} />
-            <Stat label="To ship" value={to_ship} note="Paid, not shipped yet" tone={StatTone::Neutral} />
-            <Stat label="Late" value={late} note="Past the ship-by date" tone={StatTone::Destructive} />
-        </dl>
-        <div class={Grid}>
-            <section class={Card {}}>
-                <header class={CardHeader {}}>
-                    <div class={(Cluster { gap: Gap::Md }, Toolbar)}>
-                        <h2>"Recent orders"</h2>
-                        <Separator orientation={Orientation::Vertical} />
-                        <button
-                            class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Sm }}
-                            type="button"
-                            popovertarget={ShareId}
-                        >
-                            "Share the shop"
-                        </button>
-                        <Popover>
-                            <div id={ShareId} popover>
-                                <p><strong>"Your shop's address"</strong></p>
-                                <p><code>"corten.run/shop/ashen"</code></p>
-                            </div>
-                        </Popover>
-                    </div>
-                </header>
-                <div class={CardContent {}}>
-                    <Table>
-                        <table>
-                            <caption>"Page "{page}" of "{PAGES}</caption>
-                            <thead>
-                                <tr>
-                                    <th scope="col">"Buyer"</th>
-                                    <th scope="col">"Card"</th>
-                                    <th scope="col">"Status"</th>
-                                    <SortHeader
-                                        label="Total"
-                                        sort={by_total}
-                                        link={&url::Orders { page: None, sort: Some(next) }}
-                                        class={TableNumeric {}}
-                                    />
-                                </tr>
-                            </thead>
-                            <tbody>
-                                for o in shown {
-                                    <tr>
-                                        <td>
-                                            <span class={Buyer}>
-                                                <Avatar src={o.pictured.then_some(photo)} alt="" initials={o.initials} />
-                                                {o.buyer}
-                                            </span>
-                                        </td>
-                                        <td>{o.card}</td>
-                                        <td><span class={o.status.look()}>{o.status.label()}</span></td>
-                                        <td class={TableNumeric {}}>{t.money(Minor(o.cents), USD)}</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </Table>
-                </div>
-                <footer class={CardFooter {}}>
-                    <Pagination
-                        label="Pages"
-                        previous_label="Previous"
-                        next_label="Next"
-                        pages={PAGES}
-                        current={page}
-                        link={&|page| Box::new(url::Orders { page: Some(page).filter(|p| *p > 1), sort })}
-                    />
-                </footer>
-            </section>
-            <div class={Stack { gap: Gap::Md }}>
+            <Breadcrumb
+                label="Breadcrumb"
+                crumbs={&[Crumb { label: "Draft listing", link: &url::Home { tab: None, sale: None, period: None } }]}
+                current="Orders"
+            />
+            <div class={Cluster { gap: Gap::Sm }}>
+                <h1>"Orders"</h1>
+                <span class={Badge { tone: BadgeTone::Success, emphasis: BadgeEmphasis::Soft }}>
+                    <StatusDot tone={StatusTone::Success} />
+                    "Taking orders"
+                </span>
+            </div>
+            <Alert variant={AlertVariant::Warning}>
+                <strong>"One order is past its ship-by date"</strong>
+                <p>"Ada Lovelace's Ashen Drake was due to ship yesterday. Ship it today or message the buyer."</p>
+            </Alert>
+            <dl class={Stats {}}>
+                <Stat
+                    label="Sales"
+                    value={t.money(Minor(sold), USD)}
+                    note="This month, refunds taken out"
+                    tone={StatTone::Neutral}
+                />
+                <Stat label="Orders" value={ORDERS.len()} note="This month" tone={StatTone::Neutral} />
+                <Stat label="To ship" value={to_ship} note="Paid, not shipped yet" tone={StatTone::Neutral} />
+                <Stat label="Late" value={late} note="Past the ship-by date" tone={StatTone::Destructive} />
+            </dl>
+            <div class={Grid}>
                 <section class={Card {}}>
-                    <header class={CardHeader {}}><h2>"Selling limit"</h2></header>
-                    <div class={CardContent {}}>
-                        <Field
-                            id={LimitId}
-                            label="Sold this month"
-                            hint={html! { {t.money(Minor(sold), USD)}" of "{t.money(Minor(LIMIT_CENTS), USD)}". It resets on the 1st." }}
-                            error=""
-                        >
-                            // Lower is better: under two thirds of the limit is good, near it is a warning.
-                            <meter
-                                class={Meter {}}
-                                id={LimitId}
-                                aria-describedby={FieldHintId(&LimitId)}
-                                min="0"
-                                max={LIMIT_CENTS}
-                                low="10000"
-                                high="13500"
-                                optimum="0"
-                                value={sold}
+                    <header class={CardHeader {}}>
+                        <div class={(Cluster { gap: Gap::Md }, Toolbar)}>
+                            <h2>"Recent orders"</h2>
+                            <Separator orientation={Orientation::Vertical} />
+                            <button
+                                class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Sm }}
+                                type="button"
+                                popovertarget={ShareId}
                             >
-                                {t.money(Minor(sold), USD)}
-                            </meter>
-                        </Field>
-                    </div>
-                </section>
-                <section class={Card {}}>
-                    <header class={CardHeader {}}><h2>"Next payout"</h2></header>
+                                "Share the shop"
+                            </button>
+                            <Popover>
+                                <div id={ShareId} popover>
+                                    <p><strong>"Your shop's address"</strong></p>
+                                    <p><code>"corten.run/shop/ashen"</code></p>
+                                </div>
+                            </Popover>
+                        </div>
+                    </header>
                     <div class={CardContent {}}>
-                        // The shape the payout's live region shows before its first value.
-                        <div class={Payout} aria-busy="true">
-                            <span class={Hidden}>"Working out your next payout."</span>
-                            <Skeleton shape={SkeletonShape::Circle} />
-                            <div class={Lines}>
-                                <Skeleton shape={SkeletonShape::Line} />
-                                <Skeleton shape={SkeletonShape::Line} />
+                        <Table>
+                            <table>
+                                <caption>"Page "{page}" of "{PAGES}</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">"Buyer"</th>
+                                        <th scope="col">"Card"</th>
+                                        <th scope="col">"Status"</th>
+                                        <SortHeader
+                                            label="Total"
+                                            sort={by_total}
+                                            link={&url::Orders { page: None, sort: Some(next) }}
+                                            class={TableNumeric {}}
+                                        />
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    for o in shown {
+                                        <tr>
+                                            <td>
+                                                <span class={Buyer}>
+                                                    <Avatar src={o.pictured.then_some(photo)} alt="" initials={o.initials} />
+                                                    {o.buyer}
+                                                </span>
+                                            </td>
+                                            <td>{o.card}</td>
+                                            <td><span class={o.status.look()}>{o.status.label()}</span></td>
+                                            <td class={TableNumeric {}}>{t.money(Minor(o.cents), USD)}</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </Table>
+                    </div>
+                    <footer class={CardFooter {}}>
+                        <Pagination
+                            label="Pages"
+                            previous_label="Previous"
+                            next_label="Next"
+                            pages={PAGES}
+                            current={page}
+                            link={&|page| Box::new(url::Orders { page: Some(page).filter(|p| *p > 1), sort })}
+                        />
+                    </footer>
+                </section>
+                <div class={Stack { gap: Gap::Md }}>
+                    <section class={Card {}}>
+                        <header class={CardHeader {}}><h2>"Selling limit"</h2></header>
+                        <div class={CardContent {}}>
+                            <Field
+                                id={LimitId}
+                                label="Sold this month"
+                                hint={html! { {t.money(Minor(sold), USD)}" of "{t.money(Minor(LIMIT_CENTS), USD)}". It resets on the 1st." }}
+                                error=""
+                            >
+                                // Lower is better: under two thirds of the limit is good, near it is a warning.
+                                <meter
+                                    class={Meter {}}
+                                    id={LimitId}
+                                    aria-describedby={FieldHintId(&LimitId)}
+                                    min="0"
+                                    max={LIMIT_CENTS}
+                                    low="10000"
+                                    high="13500"
+                                    optimum="0"
+                                    value={sold}
+                                >
+                                    {t.money(Minor(sold), USD)}
+                                </meter>
+                            </Field>
+                        </div>
+                    </section>
+                    <section class={Card {}}>
+                        <header class={CardHeader {}}><h2>"Next payout"</h2></header>
+                        <div class={CardContent {}}>
+                            // The shape the payout's live region shows before its first value.
+                            <div class={Payout} aria-busy="true">
+                                <span class={Hidden}>"Working out your next payout."</span>
+                                <Skeleton shape={SkeletonShape::Circle} />
+                                <div class={Lines}>
+                                    <Skeleton shape={SkeletonShape::Line} />
+                                    <Skeleton shape={SkeletonShape::Line} />
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </section>
-                <section class={Card {}}>
-                    <header class={CardHeader {}}><h2>"Shipping"</h2></header>
-                    <div class={CardContent {}}>
-                        <form class={Stack { gap: Gap::Lg }} method="post" action={url::Settings}>
-                            <Field id={WarehouseId} label="Ship from" hint="" error="">
-                                <select class={Select {}} id={WarehouseId} name={f.warehouse}>
-                                    for warehouse in Warehouse::ALL {
-                                        <option value={warehouse} selected={warehouse == Warehouse::Portland}>
-                                            {warehouse.label()}
-                                        </option>
-                                    }
-                                </select>
-                            </Field>
-                            <Field id={HandlingId} label="Handling time (business days)" hint="From 1 to 5." error="">
-                                <input
-                                    class={Slider {}}
-                                    id={HandlingId}
-                                    aria-describedby={FieldHintId(&HandlingId)}
-                                    type="range"
-                                    name={f.handling}
-                                    min="1"
-                                    max="5"
-                                    value="2"
-                                >
-                            </Field>
-                            <Separator orientation={Orientation::Horizontal} />
-                            <Switch label="Email me when an order ships">
-                                <input type="checkbox" role="switch" name={f.notify} checked>
-                            </Switch>
-                            <Field id={NoteId} label="Note to buyers" hint="Printed on each packing slip." error="">
-                                <textarea
-                                    class={Textarea {}}
-                                    id={NoteId}
-                                    aria-describedby={FieldHintId(&NoteId)}
-                                    name={f.note}
-                                    rows="3"
-                                >
-                                    "Thanks for your order!"
-                                </textarea>
-                            </Field>
-                            <div>
-                                <button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>
-                                    "Save settings"
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </section>
-                <section class={Card {}}>
-                    <header class={CardHeader {}}><h2>"Questions"</h2></header>
-                    <div class={CardContent {}}>
-                        <Accordion>
-                            <details name="faq" open>
-                                <summary>"When do payouts go out?"</summary>
-                                <p>"Every Friday, for the orders shipped by Wednesday."</p>
-                            </details>
-                            <details name="faq">
-                                <summary>"What if an order ships late?"</summary>
-                                <p>"The buyer may cancel it after three days, and the sale is refunded."</p>
-                            </details>
-                            <details name="faq">
-                                <summary>"Can I change the note later?"</summary>
-                                <p>"Yes: each packing slip prints the note as it is when you ship."</p>
-                            </details>
-                        </Accordion>
-                    </div>
-                </section>
+                    </section>
+                    <section class={Card {}}>
+                        <header class={CardHeader {}}><h2>"Shipping"</h2></header>
+                        <div class={CardContent {}}>
+                            <form class={Stack { gap: Gap::Lg }} method="post" action={url::Settings}>
+                                <Field id={WarehouseId} label="Ship from" hint="" error="">
+                                    <select class={Select {}} id={WarehouseId} name={f.warehouse}>
+                                        for warehouse in Warehouse::ALL {
+                                            <option value={warehouse} selected={warehouse == Warehouse::Portland}>
+                                                {warehouse.label()}
+                                            </option>
+                                        }
+                                    </select>
+                                </Field>
+                                <Field id={HandlingId} label="Handling time (business days)" hint="From 1 to 5." error="">
+                                    <input
+                                        class={Slider {}}
+                                        id={HandlingId}
+                                        aria-describedby={FieldHintId(&HandlingId)}
+                                        type="range"
+                                        name={f.handling}
+                                        min="1"
+                                        max="5"
+                                        value="2"
+                                    >
+                                </Field>
+                                <Separator orientation={Orientation::Horizontal} />
+                                <Switch label="Email me when an order ships">
+                                    <input type="checkbox" role="switch" name={f.notify} checked>
+                                </Switch>
+                                <Field id={NoteId} label="Note to buyers" hint="Printed on each packing slip." error="">
+                                    <textarea
+                                        class={Textarea {}}
+                                        id={NoteId}
+                                        aria-describedby={FieldHintId(&NoteId)}
+                                        name={f.note}
+                                        rows="3"
+                                    >
+                                        "Thanks for your order!"
+                                    </textarea>
+                                </Field>
+                                <div>
+                                    <button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>
+                                        "Save settings"
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+                    <section class={Card {}}>
+                        <header class={CardHeader {}}><h2>"Questions"</h2></header>
+                        <div class={CardContent {}}>
+                            <Accordion>
+                                <details name="faq" open>
+                                    <summary>"When do payouts go out?"</summary>
+                                    <p>"Every Friday, for the orders shipped by Wednesday."</p>
+                                </details>
+                                <details name="faq">
+                                    <summary>"What if an order ships late?"</summary>
+                                    <p>"The buyer may cancel it after three days, and the sale is refunded."</p>
+                                </details>
+                                <details name="faq">
+                                    <summary>"Can I change the note later?"</summary>
+                                    <p>"Yes: each packing slip prints the note as it is when you ship."</p>
+                                </details>
+                            </Accordion>
+                        </div>
+                    </section>
+                </div>
             </div>
-        </div>
         </div>
     }
 }
