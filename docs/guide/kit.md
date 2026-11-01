@@ -60,7 +60,8 @@ and `--input` (a field's border) 3:1 on the page.
 An app whose `tokens!` theme has colors when it runs `corten ui init` keeps it, and the components
 read their tokens from it: `init` reads the theme's files and writes `src/ui.rs` with no tokens of
 the kit, and names the tokens the components read that the theme lacks. (A theme with no colors, a
-spacing scale alone, gets the kit's theme beside it, as an app with none does.) Declare each at the top of the app's token file, most as a reference to a token
+spacing scale alone, gets the kit's theme beside it, as an app with none does. With several
+`tokens!` themes, the first with colors that `init` finds is the one it reads.) Declare each at the top of the app's token file, most as a reference to a token
 the app has, so it follows the app's other themes (dark, a density) with nothing more:
 
 ```json

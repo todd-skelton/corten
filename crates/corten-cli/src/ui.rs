@@ -254,9 +254,11 @@ fn init(root: &Path, args: &[String]) -> Result<(), String> {
             if !taken.is_empty() {
                 let first = taken[0];
                 println!(
-                    "Your theme has a group named {}: give it a $root token, which is the group's own property\n\
+                    "Your theme has {} named {}: give {} a $root token, which is the group's own property\n\
                      (\"{first}\": {{ \"$root\": {{ \"$value\": \"{{..}}\" }}, .. }} declares --{first}).",
-                    names_of(&taken)
+                    if taken.len() == 1 { "a group" } else { "groups" },
+                    names_of(&taken),
+                    if taken.len() == 1 { "it" } else { "each" }
                 );
             }
             println!("To take the kit's theme instead, beside yours: corten ui init --kit-theme.");
@@ -277,7 +279,7 @@ fn role_tokens() -> Vec<String> {
 }
 
 /// What an app's own theme declares, from the files its `tokens!` names (a resolver's sources too).
-#[derive(Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct Theme {
     /// Each custom property its tokens make, without the `--`: `radius-sm` for `radius.sm`, and
     /// `radius` for that group's `$root`.
@@ -292,10 +294,10 @@ struct Theme {
 /// The path in the first `tokens!(..)` call of `code` outside comments, as `styled_components`
 /// reads code: `tokens/app.tokens.json`.
 fn tokens_path(code: &str) -> Option<String> {
-    code.lines().map(|line| line.split("//").next().unwrap_or("")).find_map(|line| {
-        let at = line.find(TOKENS_CALL)? + TOKENS_CALL.len();
-        line[at..].trim_start().strip_prefix('"')?.split('"').next().map(str::to_string)
-    })
+    // Comments go first, line by line; the call itself may span lines (rustfmt wraps a long path).
+    let code: String = code.lines().map(|line| line.split("//").next().unwrap_or("")).collect::<Vec<_>>().join("\n");
+    let at = code.find(TOKENS_CALL)? + TOKENS_CALL.len();
+    code[at..].trim_start().strip_prefix('"')?.split('"').next().map(str::to_string)
 }
 
 /// The theme the `tokens!` call in `code` names, read as `tokens!` reads it: a token file, or
@@ -305,7 +307,7 @@ fn tokens_path(code: &str) -> Option<String> {
 /// has nothing where a pointer says, so nothing is guessed.
 fn own_theme(root: &Path, code: &str) -> Result<Option<Theme>, String> {
     let Some(path) = tokens_path(code) else { return Ok(None) };
-    let mut reader = ThemeReader { root, docs: Vec::new(), theme: Theme::default(), steps: 0 };
+    let mut reader = ThemeReader { root, docs: Vec::new(), theme: Theme::default(), steps: 0, open: Vec::new() };
     let file = root.join(&path);
     let doc = reader.load(&file)?;
     let is_resolver = matches!(&doc, crate::json::Value::Object(f) if f.iter().any(|(k, v)| k == "resolutionOrder" && matches!(v, crate::json::Value::Array(_))));
@@ -329,6 +331,8 @@ struct ThemeReader<'a> {
     theme: Theme,
     /// References followed: a loop is the macro's to report, so this only stops.
     steps: usize,
+    /// The sets being read, by (file, pointer): one that includes itself is read once.
+    open: Vec<(PathBuf, String)>,
 }
 
 impl ThemeReader<'_> {
@@ -372,12 +376,17 @@ impl ThemeReader<'_> {
         if self.steps > 10_000 {
             return Ok(());
         }
-        let (file, doc, value) = match field_of(entry, "$ref").and_then(|r| r.as_str()) {
+        let target = field_of(entry, "$ref").and_then(|r| r.as_str());
+        let (file, doc, value) = match target {
             Some(target) => self.follow(target, file, doc)?,
             None => (file.to_path_buf(), doc.clone(), entry.clone()),
         };
         if let Some(sources) = field_of(&value, "sources") {
-            self.sources(sources, &file, &doc)?;
+            let key = (file.clone(), target.and_then(|t| t.split_once('#')).map_or("", |(_, p)| p).to_string());
+            self.open.push(key);
+            let read = self.sources(sources, &file, &doc);
+            self.open.pop();
+            read?;
         }
         if let Some(crate::json::Value::Object(contexts)) = field_of(&value, "contexts") {
             for (_, sources) in contexts {
@@ -402,7 +411,16 @@ impl ThemeReader<'_> {
             let (file, doc, value) = self.follow(target, file, doc)?;
             // A set (its sources array) is read in its place; anything else is tokens.
             match field_of(&value, "sources") {
-                Some(sources @ crate::json::Value::Array(_)) => self.sources(sources, &file, &doc)?,
+                Some(sources @ crate::json::Value::Array(_)) => {
+                    let key = (file.clone(), target.split_once('#').map_or("", |(_, p)| p).to_string());
+                    if self.open.contains(&key) {
+                        continue;
+                    }
+                    self.open.push(key);
+                    let read = self.sources(sources, &file, &doc);
+                    self.open.pop();
+                    read?;
+                }
                 _ => tokens(&value, &mut Vec::new(), &mut self.theme),
             }
         }
@@ -1380,7 +1398,18 @@ mod tests {
         let file = own_theme(&dir, "tokens!(\"tokens/contexts.json\");").unwrap().unwrap();
         assert!(file.colors && file.properties == ["contexts-ink"], "{file:?}");
         let commented = "//! Use `tokens!(\"tokens/missing.json\")`.\ncorten::style::tokens!(\"tokens/contexts.json\");";
-        assert_eq!(own_theme(&dir, commented).unwrap(), Some(file), "a comment is not the call");
+        assert_eq!(own_theme(&dir, commented).unwrap(), Some(file.clone()), "a comment is not the call");
+        let wrapped = "corten::style::tokens!(\n    // the theme\n    \"tokens/contexts.json\"\n);";
+        assert_eq!(own_theme(&dir, wrapped).unwrap(), Some(file), "rustfmt puts a long path on its own line");
+        // A set that includes itself is the macro's to report: it is read once, not followed forever.
+        std::fs::write(
+            dir.join("tokens/loop.resolver.json"),
+            r##"{ "sets": { "base": { "sources": [{ "$ref": "space.tokens.json" }, { "$ref": "#/sets/base" }] } },
+                "resolutionOrder": [{ "$ref": "#/sets/base" }] }"##,
+        )
+        .unwrap();
+        let looped = own_theme(&dir, "tokens!(\"tokens/loop.resolver.json\");").unwrap().unwrap();
+        assert_eq!(looped.groups, ["space"], "{looped:?}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
