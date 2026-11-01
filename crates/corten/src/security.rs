@@ -1173,7 +1173,8 @@ impl FormCheck {
         // `/` wherever it is.
         let page = text(&self.referer)
             .and_then(address)
-            .filter(|page| own.as_ref().is_some_and(|own| own.is(page.scheme.as_deref(), &page.at)))
+            // A test that names no host may still say the page.
+            .filter(|page| own.as_ref().is_none_or(|own| own.is(page.scheme.as_deref(), &page.at)))
             .map(|page| page.path)
             .filter(|path| self.forms.whole || path != "/");
         let sources = match page {
@@ -1250,6 +1251,11 @@ impl FormTargets {
         if self.own.as_ref().is_some_and(|own| own.is(to.scheme.as_deref(), &to.at)) {
             return true;
         }
+        // `https:done` on an https page is a path; on another scheme, `http:evil.example` is a host.
+        let page = self.own.as_ref().and_then(|own| own.scheme.as_deref());
+        if to.bare && page.is_none_or(|page| Some(page) == to.scheme.as_deref()) {
+            return true;
+        }
         let bare = without_default_port(to.scheme.as_deref(), &to.at);
         let named = |name: &String| match name.strip_prefix('.') {
             Some(domain) => bare == domain || bare.strip_suffix(name.as_str()).is_some_and(|sub| !sub.is_empty()),
@@ -1258,7 +1264,6 @@ impl FormTargets {
         if to.scheme.as_deref().is_none_or(|scheme| matches!(scheme, "http" | "https")) && self.names.iter().any(named) {
             return true;
         }
-        let page = self.own.as_ref().and_then(|own| own.scheme.as_deref());
         let (host, port) = split_port(&to.at);
         self.sources.iter().any(|source| source_allows(&source.to_ascii_lowercase(), to.scheme.as_deref(), page, host, port))
     }
@@ -1286,6 +1291,8 @@ struct Address {
     at: String,
     /// Its path, `/` when it has none.
     path: String,
+    /// Written `http:host`, with no slashes: a page on the same scheme reads it as a path.
+    bare: bool,
 }
 
 /// Whether `to` (a `Location`) is an address with a host, which a form's page may not allow.
@@ -1309,7 +1316,7 @@ fn address(to: &str) -> Option<Address> {
             }
             let scheme = scheme.to_ascii_lowercase();
             let rest = if matches!(scheme.as_str(), "http" | "https" | "ws" | "wss") {
-                rest.starts_with(slash).then(|| rest.trim_start_matches(slash))?
+                rest.trim_start_matches(slash)
             } else {
                 rest.strip_prefix("//")?
             };
@@ -1321,7 +1328,8 @@ fn address(to: &str) -> Option<Address> {
     let at = at.rsplit_once('@').map_or(at, |(_, at)| at).to_ascii_lowercase();
     let path = after.split(['?', '#']).next().unwrap_or("").replace('\\', "/");
     let path = if path.is_empty() { "/".to_owned() } else { path };
-    (!at.is_empty()).then_some(Address { scheme, at, path })
+    let bare = scheme.is_some() && !to.split_once(':').is_some_and(|(_, rest)| rest.starts_with(slash));
+    (!at.is_empty()).then_some(Address { scheme, at, path, bare })
 }
 
 #[cfg(debug_assertions)]
@@ -1743,6 +1751,9 @@ mod tests {
             (&[], "/\\evil.example/", false),
             (&[], "https:\\\\evil.example/", false),
             (&["https://pay.example"], "https://pay.example\\x", true),
+            // Without slashes, a scheme other than the page's names a host; the page's, a path.
+            (&[], "http:evil.example/x", false),
+            (&[], "https:done", true),
         ];
         for (sources, to, allowed) in cases {
             assert_eq!(targets(sources).allows(to.as_bytes()), *allowed, "{sources:?} {to}");

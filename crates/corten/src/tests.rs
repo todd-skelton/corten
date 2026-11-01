@@ -1374,7 +1374,10 @@ async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
             "/read",
             get(|req: Req| async move { req.redirect::<()>(&"https://else.example/".parse::<axum::http::Uri>().unwrap()) }),
         );
-    let policy = Policy::new().form_action("https://pay.example").form_action("https://*.shop.example");
+    let policy = Policy::new()
+        .form_action("https://pay.example")
+        .form_action("https://*.shop.example")
+        .allow_origin("https://idp.example");
     let router = App::new(Routes::from(routes))
         .policy(policy)
         .area(|area| checkout_url::area(area).policy(|p| p.form_action("http://localhost:9999")))
@@ -1434,6 +1437,15 @@ async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
     const FROM_AREA: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/checkout?step=2")];
     let (status, _) = send("/sibling", "POST", FROM_AREA).await;
     assert_eq!(status, StatusCode::SEE_OTHER, "the form's page, in the area, allows it");
+    // A post from another site's page (an identity provider's form_post) is that page's policy's.
+    const IDP: &[(&str, &str)] =
+        &[("host", "app.localhost"), ("origin", "https://idp.example"), ("sec-fetch-site", "cross-site")];
+    assert_eq!(send("/else", "POST", IDP).await.0, StatusCode::SEE_OTHER, "cross-site");
+    const IDP_OLD: &[(&str, &str)] = &[("host", "app.localhost"), ("origin", "https://idp.example")];
+    assert_eq!(send("/else", "POST", IDP_OLD).await.0, StatusCode::SEE_OTHER, "another origin, no Sec-Fetch-Site");
+    // A test that names no host and sends the form's page is held to that page's policy.
+    let (status, _) = send("/sibling", "POST", &[("referer", "http://app.localhost/")]).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the Referer alone says the page");
     const FROM_ROOT: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/")];
     let (status, _) = send("/sibling", "POST", FROM_ROOT).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the home page does not allow it");
