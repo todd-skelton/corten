@@ -2166,14 +2166,28 @@ Corten is pre-1.0, so any minor version may change the API.
     API's docs said. A relay of the old server's paths under an API's prefix moves into the API's
     module (`#[route("/api/v2/{*rest}", any = relay)]`), where it meets the API's settings
     ([#539 An API cannot sit inside another API's prefix, so a feature cannot own its JSON routes under a shared /api the way it owns its pages in an area](https://github.com/todd-skelton/corten/issues/539)).
-101. The kit's `Alert` takes its role from its variant, so a screen reader interrupts only for what
+101. A currency's symbol and fraction digits are found in the locale tables by a number, the
+    code's three bytes, which `Currency` already holds; `scripts/locale-data.mjs` writes it beside
+    each code. Before, `t.money`, `t.signed_money` and `Currency::parse` turned the table's code
+    text into that number on each probe of the binary search, and `t.parse_money` and a script's
+    money format compared text. What they write is the same: the generator still checks 1,902,560
+    values against Intl, and the i18n tests pass. Measured with callgrind (release, three rounds
+    each): card-market's item page from memory (in-process `oneshot`, the difference between 1,200
+    and 200 requests over 1,000) is 90,101 instructions a request here (89,166 to 90,101) against
+    92,366 on main at 3b197114 (91,439 to 92,414), 2.5% fewer; `t.money` alone, written with
+    `write!` into a reused `String` (so `std::fmt` is counted, unlike entry 98), is 780
+    instructions a value in `en` USD against 852, `fr` USD 848 against 931, `en` EUR 811 against
+    881 and `fr` JPY 951 against 1,036. Most of the page's rise in the issue is card-market writing
+    more prices, which stays
+    ([#545 The item page's user-mode instructions rose 14.8% between benchmark rounds r7 and r10 (95,949 to 110,172) while its CPU time per page fell](https://github.com/todd-skelton/corten/issues/545)).
+102. The kit's `Alert` takes its role from its variant, so a screen reader interrupts only for what
     needs the user now: `role="alert"` for `Warning` and `Destructive`, `role="status"` for
     `Success`, and none for `Neutral` and `Info`, which were all `role="alert"`. A copy made
     before keeps its role until `corten ui add --force alert`
     ([#552 Kit Badge and Alert have no success, warning or info tone, and every Alert is announced as role=alert](https://github.com/todd-skelton/corten/issues/552)).
-102. `corten ui init` in an app with a `tokens!` theme of its own keeps it: it writes `src/ui.rs`
+103. `corten ui init` in an app with a `tokens!` theme of its own keeps it: it writes `src/ui.rs`
     without the kit's tokens and names the tokens the components read, which the app declares, most
-    as references to its own, saying when a group of the theme has one of their names (`radius`). A
+    as references to its own, saying when a group of the theme has one of their names (`radius`, whose `$root` declares it). A
     theme it cannot read is reported and nothing is written; `corten ui init --kit-theme` writes the
     kit's theme beside the app's instead. It finds the crate's one `App::new(..)` in any file (`src/app.rs`),
     declares `pub mod ui;` in the crate root (`src/lib.rs`, else `src/main.rs`) and leaves a page

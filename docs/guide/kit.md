@@ -42,8 +42,9 @@ The token names are shadcn/ui's, so a theme made for it maps one variable to one
 `--info`, `--success` and `--warning` (each with a `-foreground`), which `Badge` and `Alert`
 use. They are tokens at the top of the file, so each is a custom property with no Rust enum, and
 none has a scale's name (`--color-accent`, `--radius-sm`), so the kit's theme and an app's can
-be on one page without one replacing the other's values; only a top-level token of the app's with
-one of these names (`--card`) would be the same property. Status tones have no `-soft` token: an
+be on one page without one replacing the other's values; only a token of the app's whose property has
+one of these names would be the same property: `card` at the top of a file, a `card` group's
+`$root`, or `muted.foreground` (`--muted-foreground`). Status tones have no `-soft` token: an
 alert's tinted background is the tone mixed into `--card` in its stylesheet (`color-mix`), as
 `destructive`'s is, so a theme sets one color per tone. To bring a theme over, write each of its
 colors into `ui.tokens.json` (`:root`'s) and `ui-dark.tokens.json` (`.dark`'s) as the [styles
@@ -59,7 +60,8 @@ and `--input` (a field's border) 3:1 on the page.
 An app whose `tokens!` theme has colors when it runs `corten ui init` keeps it, and the components
 read their tokens from it: `init` reads the theme's files and writes `src/ui.rs` with no tokens of
 the kit, and names the tokens the components read that the theme lacks. (A theme with no colors, a
-spacing scale alone, gets the kit's theme beside it, as an app with none does.) Declare each at the top of the app's token file, most as a reference to a token
+spacing scale alone, gets the kit's theme beside it, as an app with none does. With several
+`tokens!` themes, the first with colors that `init` finds is the one it reads.) Declare each at the top of the app's token file, most as a reference to a token
 the app has, so it follows the app's other themes (dark, a density) with nothing more:
 
 ```json
@@ -72,9 +74,10 @@ the app has, so it follows the app's other themes (dark, a density) with nothing
 The app does not start while a component reads a token no stylesheet declares, and the error names
 the stylesheet and the token, so a missing one is found at the first run.
 
-A name a group at the top of the file has (`radius`, for `--radius-sm`) cannot also be a token
-there; `init` says so when the theme has one. Rename the group, or declare that token in the page
-stylesheet (`:root { --radius: 0.5rem; }`). A theme `init` cannot read (a file its resolver names
+When a token the components read has the name of one of the theme's groups (a `radius` group for
+`--radius-sm`), `init` says so: the group's `$root` is the group's own property, so
+`"radius": { "$root": { "$value": "{radius.md}" }, "sm": .. }` declares `--radius` and keeps
+`--radius-sm`. A theme `init` cannot read (a file its resolver names
 is missing) is reported, and nothing is written; `--kit-theme` takes the kit's theme instead,
 beside the app's.
 
