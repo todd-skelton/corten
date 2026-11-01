@@ -2604,6 +2604,164 @@ fn a_query_set_reads_back_what_its_links_write() {
     assert_eq!(link.href(), "/shown-set?tab=a%20b");
 }
 
+/// A set whose value is a rule over what was sent (`FromQuery`): a listing only when every one
+/// sent agrees, and whether any option has a value.
+#[derive(Debug, Default, PartialEq)]
+pub struct Chosen {
+    pub listing: Option<String>,
+    pub options: Vec<(String, String)>,
+}
+
+impl Chosen {
+    /// Any option has a value: a rule across keys.
+    fn filtered(&self) -> bool {
+        self.options.iter().any(|(_, v)| !v.is_empty())
+    }
+}
+
+#[derive(crate::Route)]
+#[route(query)]
+pub struct ChosenLink<'a> {
+    pub listing: Option<&'a str>,
+    #[route(prefix = "dimension.")]
+    pub options: &'a [(String, String)],
+}
+
+#[derive(crate::Route)]
+#[route(query)]
+pub struct ChosenRead {
+    pub listing: Vec<String>,
+    #[route(prefix = "dimension.")]
+    pub options: Vec<(String, String)>,
+}
+
+impl crate::route::FromQuery for Chosen {
+    type Link<'a> = ChosenLink<'a>;
+    type Read = ChosenRead;
+
+    fn link(&self) -> ChosenLink<'_> {
+        ChosenLink { listing: self.listing.as_deref(), options: &self.options }
+    }
+
+    fn from_query(read: ChosenRead) -> Result<Self, crate::form::FormError> {
+        let mut listings = read.listing.into_iter().filter(|l| !l.is_empty());
+        let first = listings.next();
+        if first.as_deref() == Some("refuse") {
+            return Err(serde::de::Error::custom("listing: refused"));
+        }
+        let listing = if listings.all(|l| Some(&l) == first.as_ref()) { first } else { None };
+        Ok(Chosen { listing, options: read.options })
+    }
+}
+
+#[derive(crate::Route)]
+#[route("/chosen")]
+pub struct ChosenRoute {
+    pub q: Option<String>,
+    #[route(query)]
+    pub chosen: Chosen,
+}
+
+#[test]
+fn a_query_set_can_be_a_rule_over_what_was_sent() {
+    use crate::route::FromUrl;
+    let chosen = Chosen { listing: Some("l 1".into()), options: vec![("form".into(), "graded".into())] };
+    let href = ChosenRoute { q: Some("x".into()), chosen }.href();
+    assert_eq!(href, "/chosen?q=x&listing=l%201&dimension.form=graded");
+    let read = <ChosenRoute as FromUrl>::__read((), href.split_once('?').unwrap().1).unwrap();
+    assert_eq!(
+        (read.q.as_deref(), &read.chosen),
+        (Some("x"), &Chosen { listing: Some("l 1".into()), options: vec![("form".into(), "graded".into())] }),
+        "a link reads back as itself"
+    );
+    assert!(read.chosen.filtered());
+    let read = <ChosenRoute as FromUrl>::__read((), "listing=l1&listing=l1&zz=1").unwrap();
+    assert_eq!(read.chosen.listing.as_deref(), Some("l1"), "a value sent twice is the set's to judge");
+    let read = <ChosenRoute as FromUrl>::__read((), "listing=l1&listing=l2&dimension.form=").unwrap();
+    assert_eq!((read.chosen.listing.as_deref(), read.chosen.filtered()), (None, false), "two listings are no choice");
+    let err = <ChosenRoute as FromUrl>::__read((), "listing=refuse").err().expect("the set's failure refuses the page");
+    assert!(err.to_string().contains("refused"), "{err}");
+    assert!(<ChosenRoute as FromUrl>::__read((), "q=a&q=b").is_err(), "the route's own parameters are read as before");
+}
+
+/// A `FromQuery` set whose `Read` names its fields in another order than its `Link`, both
+/// including a derived set: the names, not their order, must match.
+#[derive(Debug, PartialEq)]
+pub struct Reordered {
+    pub listing: Option<String>,
+    pub page: Option<u32>,
+}
+
+#[derive(crate::Route)]
+#[route(query)]
+pub struct ReorderedLink<'a> {
+    pub listing: Option<&'a str>,
+    #[route(query)]
+    pub paging: ParamsPaging,
+}
+
+#[derive(crate::Route)]
+#[route(query)]
+pub struct ReorderedRead {
+    #[route(query)]
+    pub paging: ParamsPaging,
+    pub listing: Vec<String>,
+}
+
+impl crate::route::FromQuery for Reordered {
+    type Link<'a> = ReorderedLink<'a>;
+    type Read = ReorderedRead;
+
+    fn link(&self) -> ReorderedLink<'_> {
+        ReorderedLink { listing: self.listing.as_deref(), paging: ParamsPaging { page: self.page } }
+    }
+
+    fn from_query(read: ReorderedRead) -> Result<Self, crate::form::FormError> {
+        Ok(Reordered { listing: read.listing.into_iter().next(), page: read.paging.page })
+    }
+}
+
+#[derive(crate::Route)]
+#[route("/reordered")]
+pub struct ReorderedRoute {
+    #[route(query)]
+    pub set: Reordered,
+}
+
+#[test]
+fn a_query_set_that_is_a_rule_matches_names_not_their_order() {
+    use crate::route::FromUrl;
+    let set = Reordered { listing: Some("l1".into()), page: Some(3) };
+    let href = ReorderedRoute { set }.href();
+    assert_eq!(href, "/reordered?listing=l1&page=3");
+    let read = <ReorderedRoute as FromUrl>::__read((), href.split_once('?').unwrap().1).unwrap();
+    assert_eq!(read.set, Reordered { listing: Some("l1".into()), page: Some(3) });
+}
+
+/// A `FromQuery` set inside a derived one, beside the outer set's own names.
+#[derive(crate::Route)]
+#[route(query)]
+pub struct ChosenOuter {
+    pub sort: Option<String>,
+    #[route(query)]
+    pub chosen: Chosen,
+}
+
+#[derive(crate::Route)]
+#[route("/chosen-outer")]
+pub struct ChosenOuterRoute {
+    #[route(query)]
+    pub outer: ChosenOuter,
+}
+
+#[test]
+fn a_query_set_that_is_a_rule_reads_inside_another() {
+    use crate::route::FromUrl;
+    let read = <ChosenOuterRoute as FromUrl>::__read((), "sort=price&listing=l1&dimension.form=graded").unwrap();
+    assert_eq!(read.outer.sort.as_deref(), Some("price"));
+    assert_eq!(read.outer.chosen, Chosen { listing: Some("l1".into()), options: vec![("form".into(), "graded".into())] });
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, crate::UrlValue)]
 #[serde(rename_all = "snake_case")]
 pub enum Filter {

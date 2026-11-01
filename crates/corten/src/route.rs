@@ -885,8 +885,216 @@ pub trait QueryParams {
     const __KEYS: &'static [__private::Key];
 
     /// Writes each parameter as `?key=value` or `&key=value` (`&amp;` with `html`), `first`
-    /// saying which. Implemented by `#[derive(Route)] #[route(query)]`.
+    /// saying which. Implemented by `#[derive(Route)] #[route(query)]`, and for a [`FromQuery`]
+    /// set by its link.
     fn write_params(&self, first: &mut bool, html: bool, out: &mut String);
+}
+
+/// A `#[route(query)]` set whose value is a rule over what was sent, for a set the derive cannot
+/// read as the value itself: one that counts only when every value sent for a key agrees (a link
+/// edited by hand sends one twice, which a plain field refuses), or that looks across keys
+/// (`filtered` when any `dimension.*` has a value).
+///
+/// Two derived sets carry its names. Its [`Link`](FromQuery::Link) writes its links, as narrow as
+/// the value (one listing), so a link cannot write what the value cannot hold. Its
+/// [`Read`](FromQuery::Read) is what the derive reads back, every value sent (`Vec` fields), and
+/// [`from_query`](FromQuery::from_query) turns it into the value, so every handler gets the rule
+/// already applied. The two must have the same names, and a route that includes the set checks
+/// them against its own, when the crate compiles. `from_query` must give back the value `link`
+/// wrote, so a link and its handler agree: test that round trip through the app's router. A
+/// derived set reads itself, so implementing this for one does not compile.
+///
+/// ```
+/// use corten::{form::FormError, prelude::*, route::FromQuery};
+///
+/// /// What the buyer chose: a listing only when every `listing` sent names the same one.
+/// #[derive(Debug, Default, PartialEq)]
+/// pub struct Choice { pub listing: Option<String>, pub options: Vec<(String, String)> }
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct ChoiceLink<'a> {
+///     pub listing: Option<&'a str>,
+///     #[route(prefix = "dimension.")]
+///     pub options: &'a [(String, String)],
+/// }
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct ChoiceRead {
+///     pub listing: Vec<String>,
+///     #[route(prefix = "dimension.")]
+///     pub options: Vec<(String, String)>,
+/// }
+///
+/// impl FromQuery for Choice {
+///     type Link<'a> = ChoiceLink<'a>;
+///     type Read = ChoiceRead;
+///
+///     fn link(&self) -> ChoiceLink<'_> {
+///         ChoiceLink { listing: self.listing.as_deref(), options: &self.options }
+///     }
+///
+///     fn from_query(read: ChoiceRead) -> Result<Self, FormError> {
+///         let mut listings = read.listing.into_iter().filter(|l| !l.is_empty());
+///         let first = listings.next();
+///         let listing = if listings.all(|l| Some(&l) == first.as_ref()) { first } else { None };
+///         Ok(Choice { listing, options: read.options })
+///     }
+/// }
+///
+/// #[derive(Route)]
+/// #[route("/items/{slug}")]
+/// pub struct Item<'a> { pub slug: &'a str, #[route(query)] pub choice: Choice }
+///
+/// let choice = Choice { listing: Some("l1".into()), options: vec![("form".into(), "graded".into())] };
+/// assert_eq!(Item { slug: "pika", choice }.href(), "/items/pika?listing=l1&dimension.form=graded");
+///
+/// // A handler of the route reads it as its `Params` field, through `Read` and `from_query`:
+/// async fn item(Params(item): Params<Item<'_>>) -> String {
+///     format!("{} {:?}", item.slug, item.choice.listing)
+/// }
+/// # let _ = item;
+/// ```
+///
+/// A read set with a name its link does not write (or the other way) does not compile:
+///
+/// ```compile_fail,E0080
+/// use corten::{form::FormError, prelude::*, route::FromQuery};
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct ChoiceLink<'a> { pub listing: Option<&'a str> }
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct ChoiceRead { pub listng: Vec<String> }
+///
+/// pub struct Choice { pub listing: Option<String> }
+///
+/// impl FromQuery for Choice {
+///     type Link<'a> = ChoiceLink<'a>;
+///     type Read = ChoiceRead;
+///     fn link(&self) -> ChoiceLink<'_> { ChoiceLink { listing: self.listing.as_deref() } }
+///     fn from_query(read: ChoiceRead) -> Result<Self, FormError> {
+///         Ok(Choice { listing: read.listng.into_iter().next() })
+///     }
+/// }
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// pub struct Items { #[route(query)] pub choice: Choice }
+/// ```
+///
+/// Nor does one whose name is a prefix where the link's is a parameter:
+///
+/// ```compile_fail,E0080
+/// use corten::{form::FormError, prelude::*, route::FromQuery};
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct ChoiceLink<'a> { pub listing: Option<&'a str> }
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct ChoiceRead { #[route(prefix = "listing")] pub listing: Vec<(String, String)> }
+///
+/// pub struct Choice { pub listing: Option<String> }
+///
+/// impl FromQuery for Choice {
+///     type Link<'a> = ChoiceLink<'a>;
+///     type Read = ChoiceRead;
+///     fn link(&self) -> ChoiceLink<'_> { ChoiceLink { listing: self.listing.as_deref() } }
+///     fn from_query(read: ChoiceRead) -> Result<Self, FormError> {
+///         Ok(Choice { listing: read.listing.into_iter().next().map(|(_, v)| v) })
+///     }
+/// }
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// pub struct Items { #[route(query)] pub choice: Choice }
+/// ```
+///
+/// The route checks its own names against the set's, so a route that writes `listing` itself
+/// beside it does not compile:
+///
+/// ```compile_fail,E0080
+/// use corten::{form::FormError, prelude::*, route::FromQuery};
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct ChoiceLink<'a> { pub listing: Option<&'a str> }
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct ChoiceRead { pub listing: Vec<String> }
+///
+/// pub struct Choice { pub listing: Option<String> }
+///
+/// impl FromQuery for Choice {
+///     type Link<'a> = ChoiceLink<'a>;
+///     type Read = ChoiceRead;
+///     fn link(&self) -> ChoiceLink<'_> { ChoiceLink { listing: self.listing.as_deref() } }
+///     fn from_query(read: ChoiceRead) -> Result<Self, FormError> {
+///         Ok(Choice { listing: read.listing.into_iter().next() })
+///     }
+/// }
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// pub struct Items { pub listing: Option<String>, #[route(query)] pub choice: Choice }
+/// ```
+///
+/// A derived set, which writes and reads itself, cannot implement it too (a borrowed one
+/// included):
+///
+/// ```compile_fail,E0119
+/// use corten::{form::FormError, prelude::*, route::FromQuery};
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct Paging<'a> { pub page: Option<&'a str> }
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct PagingRead { pub page: Vec<String> }
+///
+/// impl FromQuery for Paging<'static> {
+///     type Link<'a> = Paging<'a>;
+///     type Read = PagingRead;
+///     fn link(&self) -> Paging<'_> { Paging { page: self.page } }
+///     fn from_query(_: PagingRead) -> Result<Self, FormError> { Ok(Paging { page: None }) }
+/// }
+/// ```
+pub trait FromQuery: Sized + 'static {
+    /// The derived `#[route(query)]` set that writes its links.
+    type Link<'a>: QueryParams
+    where
+        Self: 'a;
+
+    /// The derived, owned `#[route(query)]` set read back from the request, with the link's
+    /// names: every value sent, for [`from_query`](FromQuery::from_query) to judge.
+    type Read: QueryParams;
+
+    /// The link's set for this value.
+    fn link(&self) -> Self::Link<'_>;
+
+    /// The value, from what the request sent. A failure refuses the page with a 400, as a
+    /// parameter that does not read does; make one with `serde::de::Error::custom`, its message
+    /// starting with the parameter's name as a field's does (`"listing: two different listings"`).
+    fn from_query(read: Self::Read) -> Result<Self, crate::form::FormError>;
+}
+
+impl<T: FromQuery> QueryParams for T {
+    const __KEYS: &'static [__private::Key] = {
+        __private::same_keys(<T::Link<'static> as QueryParams>::__KEYS, <T::Read as QueryParams>::__KEYS);
+        <T::Link<'static> as QueryParams>::__KEYS
+    };
+
+    #[inline]
+    fn write_params(&self, first: &mut bool, html: bool, out: &mut String) {
+        self.link().write_params(first, html, out)
+    }
 }
 
 /// Query parameters whose names are data: a filter per attribute, an option per product
@@ -2751,6 +2959,33 @@ pub mod __private {
         true
     }
 
+    /// Fails to compile a `FromQuery` set whose link and read sets do not have the same names.
+    pub const fn same_keys(link: &[Key], read: &[Key]) {
+        const fn has(keys: &[Key], prefix: bool, text: &str) -> bool {
+            let mut i = 0;
+            while let Some((p, t)) = nth(keys, i) {
+                if p == prefix && t.len() == text.len() && starts_with(t, text) {
+                    return true;
+                }
+                i += 1;
+            }
+            false
+        }
+        let total = count(link);
+        let mut same = total == count(read);
+        let mut i = 0;
+        while same && i < total {
+            let (Some((lp, lt)), Some((rp, rt))) = (nth(link, i), nth(read, i)) else { unreachable!() };
+            same = has(read, lp, lt) && has(link, rp, rt);
+            i += 1;
+        }
+        if !same {
+            panic!(
+                "a FromQuery set's Link and Read write different names: give the two sets the same fields' names and prefixes"
+            );
+        }
+    }
+
     /// Fails to compile a route whose parameters, its own and its sets', could be read back as
     /// each other's: two with one name, or a prefix another's name starts with.
     pub const fn check_keys(keys: &[Key]) {
@@ -2812,10 +3047,20 @@ pub mod __private {
     /// `Params` is used, not where the set is declared.
     #[diagnostic::on_unimplemented(
         message = "`Params` cannot read this #[route(query)] set back: `{Self}`",
-        note = "a set Params reads is `#[derive(Route)] #[route(query)]` with no lifetime parameters: its fields own their values (String, not &'a str)"
+        note = "a set Params reads is `#[derive(Route)] #[route(query)]` with no lifetime parameters, its fields owning their values (String, not &'a str), or one that implements corten::route::FromQuery with such a set as its Read"
     )]
     pub trait ReadQuery<'c>: Sized {
         fn read_query(pairs: &[Pair<'_>]) -> Result<Self, FormError>;
+    }
+
+    impl<'c, T: super::FromQuery> ReadQuery<'c> for T
+    where
+        T::Read: ReadQuery<'c>,
+    {
+        #[inline]
+        fn read_query(pairs: &[Pair<'_>]) -> Result<Self, FormError> {
+            T::from_query(T::Read::read_query(pairs)?)
+        }
     }
 
     /// A `#[route(prefix = "dim.")]` field: a `BTreeMap` or a `Vec` of pairs.

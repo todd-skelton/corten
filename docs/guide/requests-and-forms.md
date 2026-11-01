@@ -209,6 +209,41 @@ reads its own (a list, a prefix field and a set inside the set included; the set
 whose own parameters and its sets' could be read back as each other's: one name written twice, or
 a prefix another name starts with.
 
+A set's plain field refuses the page when its key is sent twice (a link edited by hand, an old
+one), and a list field reads every value. When the value is a rule over what was sent (a listing
+that counts only when every `listing` sent names the same one, `filtered` when any `dimension.*`
+has a value), make it a plain struct that implements `corten::route::FromQuery` (its error is a
+`corten::form::FormError`) with two derived sets of the same names: `Link`, which writes its
+links as narrow as the value, and `Read`, which reads every value sent for `from_query` to judge:
+
+```rust,ignore
+#[derive(Route)] #[route(query)]
+pub struct ChoiceLink<'a> { pub listing: Option<&'a str>, #[route(prefix = "dimension.")] pub options: &'a [(String, String)] }
+
+#[derive(Route)] #[route(query)]
+pub struct ChoiceRead { pub listing: Vec<String>, #[route(prefix = "dimension.")] pub options: Vec<(String, String)> }
+
+pub struct Choice { pub listing: Option<String>, pub options: Vec<(String, String)> }
+
+impl FromQuery for Choice {
+    type Link<'a> = ChoiceLink<'a>;
+    type Read = ChoiceRead;
+    fn link(&self) -> ChoiceLink<'_> { ChoiceLink { listing: self.listing.as_deref(), options: &self.options } }
+    fn from_query(read: ChoiceRead) -> Result<Self, FormError> { /* the rule */ }
+}
+
+#[derive(Route)] #[route("/items/{slug}")]
+pub struct Item<'a> { pub slug: &'a str, #[route(query)] pub choice: Choice }
+```
+
+The route reads it back as its `Params` field (`Read`, then `from_query`), so every handler gets the
+rule already applied, and no parameter name is written as a string. A `Read` and a `Link` with
+different names do not compile, and the route checks the set's names against its own. `from_query`
+must give back the value `link` wrote, or a link and its handler disagree: test the round trip
+through the app's router (a link's `href()` requested, and the page shows the value). Its error
+refuses the page with a 400, as a parameter that does not read does (`serde::de::Error::custom`
+makes one; start its message with the parameter's name). A derived set cannot implement `FromQuery` too. A set of plain fields stays derived.
+
 A parameter is named as serde reads its field, so `#[serde(rename_all = "camelCase")]` or a
 field's `#[serde(rename = "priceMin")]` renames it in links as well: addresses that are already
 shared or indexed keep working, and the link and the handler cannot disagree. A path parameter
