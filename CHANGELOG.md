@@ -1252,6 +1252,33 @@ Corten is pre-1.0, so any minor version may change the API.
     screenshots are served at the sizes it says and that the shortcut opens a page. A manifest image's
     `type` comes from the static directory's own table (a GIF was written `image/png`)
     ([#515 pwa::Manifest cannot set the manifest's other members (orientation, categories, id, screenshots, shortcuts)](https://github.com/todd-skelton/corten/issues/515)).
+158. A route parameter may be followed by plain text in its segment, a file's extension:
+    `#[route("/sitemap/{kind}/{page}.xml")]` with `page: u32` links to `/sitemap/items/3.xml`, and
+    `Params` reads `page` as `3`. A segment that does not end in the text, or is only the text, is
+    a 404 before the handler runs, whatever its method (the router matches the segment whole, so
+    the route takes every path of its shape, and Corten checks the text), and a value that is not
+    the type is a 400 as for any parameter. Two routes of a module that differ only in that text
+    (`{name}.rss`, `{name}.atom`) do not compile, nor do two with a parameter where the other has
+    its catch-all (`/{name}.txt` or `/{name}` beside `/{*page}`), which the router cannot hold
+    and would refuse naming `/{name}`; in different modules, areas or APIs a route with text
+    beside a catch-all stops the app at startup naming both as written. `Req::serves` agrees
+    with the router. A field after which text comes needs only `Display` for a link, as any field, and two routes
+    anywhere in the app (modules, areas, APIs) that differ only in that text stop it at startup.
+    A route without such text generates the code it did (the expanded card-market is identical).
+    Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
+    requests over 1,000, median of three and the range of the nine pairs): `/file/37.xml` with
+    `{page}.xml` runs 20,991 instructions a request (20,970 to 21,169), against 21,083 (21,073 to
+    21,203) for the workaround (the segment as text, the handler stripping `.xml` and parsing)
+    and 18,529 (18,488 to 18,781) for `/plain/37` with a plain `{page}`. `Req::serves`, which
+    now picks a route by its segments' shape and then checks the text, costs 5,350 instructions a
+    call (5,344 to 5,364) against 5,210 (5,209 to 5,210) on main, for an app of 12 routes. The
+    startup check compares only routes with such text against the others, path by path in place
+    (and looks for a catch-all only when one of the two has one): at `App::router`, 400 routes
+    with none take 27 microseconds (26 to 27), and 449 (436 to 511) when 10 of them have text,
+    against 375 (314 to 706) without the catch-all check; an area adding the same 400 routes one
+    by one 56 and 539 (493 to 606) against 435 (394 to 748) (release build, the check's
+    functions timed alone, median and range of nine runs of 50)
+    ([#514 A route parameter cannot be followed by fixed text in its segment, so /sitemap/{kind}/{page}.xml has no typed route](https://github.com/todd-skelton/corten/issues/514)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
