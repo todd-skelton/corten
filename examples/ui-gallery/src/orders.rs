@@ -9,11 +9,11 @@ use crate::ui::{
     accordion::Accordion,
     alert::{Alert, AlertVariant},
     avatar::Avatar,
-    badge::{Badge, BadgeVariant},
+    badge::{Badge, BadgeEmphasis, BadgeTone},
     breadcrumb::{Breadcrumb, Crumb},
     button::{Button, ButtonSize, ButtonVariant},
     card::{Card, CardContent, CardFooter, CardHeader},
-    field::Field,
+    field::{Field, FieldHintId},
     pagination::Pagination,
     popover::Popover,
     select::Select,
@@ -44,13 +44,14 @@ impl Status {
         }
     }
 
-    const fn look(self) -> BadgeVariant {
-        match self {
-            Status::Paid => BadgeVariant::Success,
-            Status::Shipped => BadgeVariant::Secondary,
-            Status::Late => BadgeVariant::Destructive,
-            Status::Refunded => BadgeVariant::Outline,
-        }
+    const fn look(self) -> Badge {
+        let (tone, emphasis) = match self {
+            Status::Paid => (BadgeTone::Success, BadgeEmphasis::Soft),
+            Status::Shipped => (BadgeTone::Neutral, BadgeEmphasis::Solid),
+            Status::Late => (BadgeTone::Destructive, BadgeEmphasis::Solid),
+            Status::Refunded => (BadgeTone::Neutral, BadgeEmphasis::Outline),
+        };
+        Badge { tone, emphasis }
     }
 }
 
@@ -126,6 +127,14 @@ pub struct SettingsForm {
 #[derive(Id)]
 struct ShareId;
 
+/// The shipping form's controls, each named by its field's label.
+#[derive(Id)]
+struct WarehouseId;
+#[derive(Id)]
+struct HandlingId;
+#[derive(Id)]
+struct NoteId;
+
 /// The orders page: `page` counts from 1, and `photo` is the picture of a buyer who has one.
 #[component(css)]
 pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
@@ -139,21 +148,25 @@ pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
         />
         <div class={Heading}>
             <h1>"Orders"</h1>
-            <Badge variant={BadgeVariant::Secondary}>{ORDERS.len()}" this month"</Badge>
+            <span class={Badge { tone: BadgeTone::Neutral, emphasis: BadgeEmphasis::Solid }}>{ORDERS.len()}" this month"</span>
         </div>
         <Alert variant={AlertVariant::Warning}>
             <strong>"One order is past its ship-by date"</strong>
             <p>"Ada Lovelace's Ashen Drake was due to ship yesterday. Ship it today or message the buyer."</p>
         </Alert>
         <div class={Grid}>
-            <Card>
-                <CardHeader>
+            <section class={Card {}}>
+                <header class={CardHeader {}}>
                     <div class={Toolbar}>
                         <h2>"Recent orders"</h2>
                         <Separator orientation={Orientation::Vertical} />
-                        <Button variant={ButtonVariant::Outline} size={ButtonSize::Sm}>
-                            <button type="button" popovertarget={ShareId}>"Share the shop"</button>
-                        </Button>
+                        <button
+                            class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Sm }}
+                            type="button"
+                            popovertarget={ShareId}
+                        >
+                            "Share the shop"
+                        </button>
                         <Popover>
                             <div id={ShareId} popover>
                                 <p><strong>"Your shop's address"</strong></p>
@@ -161,8 +174,8 @@ pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
                             </div>
                         </Popover>
                     </div>
-                </CardHeader>
-                <CardContent>
+                </header>
+                <div class={CardContent {}}>
                     <Table>
                         <table>
                             <caption>"Page "{page}" of "{PAGES}</caption>
@@ -184,15 +197,15 @@ pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
                                             </span>
                                         </td>
                                         <td>{o.card}</td>
-                                        <td><Badge variant={o.status.look()}>{o.status.label()}</Badge></td>
+                                        <td><span class={o.status.look()}>{o.status.label()}</span></td>
                                         <td>{t.money(Minor(o.cents), USD)}</td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
                     </Table>
-                </CardContent>
-                <CardFooter>
+                </div>
+                <footer class={CardFooter {}}>
                     <Pagination
                         label="Pages"
                         previous_label="Previous"
@@ -201,12 +214,12 @@ pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
                         current={page}
                         link={&|page| Box::new(url::Orders { page: Some(page).filter(|p| *p > 1) })}
                     />
-                </CardFooter>
-            </Card>
+                </footer>
+            </section>
             <div class={Aside}>
-                <Card>
-                    <CardHeader><h2>"Next payout"</h2></CardHeader>
-                    <CardContent>
+                <section class={Card {}}>
+                    <header class={CardHeader {}}><h2>"Next payout"</h2></header>
+                    <div class={CardContent {}}>
                         // The shape the payout's live region shows before its first value.
                         <div class={Payout} aria-busy="true">
                             <span class={Hidden}>"Working out your next payout."</span>
@@ -216,46 +229,42 @@ pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
                                 <Skeleton shape={SkeletonShape::Line} />
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><h2>"Shipping"</h2></CardHeader>
-                    <CardContent>
+                    </div>
+                </section>
+                <section class={Card {}}>
+                    <header class={CardHeader {}}><h2>"Shipping"</h2></header>
+                    <div class={CardContent {}}>
                         <form class={Settings} method="post" action={url::Settings}>
-                            <Field id="warehouse" label="Ship from" note="">
-                                <Select>
-                                    <select id="warehouse" name={f.warehouse}>
-                                        for warehouse in Warehouse::ALL {
-                                            <option value={warehouse} selected={warehouse == Warehouse::Portland}>
-                                                {warehouse.label()}
-                                            </option>
-                                        }
-                                    </select>
-                                </Select>
+                            <Field id={WarehouseId} label="Ship from" hint="" error="">
+                                <select class={Select {}} id={WarehouseId} name={f.warehouse}>
+                                    for warehouse in Warehouse::ALL {
+                                        <option value={warehouse} selected={warehouse == Warehouse::Portland}>
+                                            {warehouse.label()}
+                                        </option>
+                                    }
+                                </select>
                             </Field>
-                            <Field id="handling" label="Handling time (business days)" note="From 1 to 5.">
-                                <Slider><input id="handling" type="range" name={f.handling} min="1" max="5" value="2"></Slider>
+                            <Field id={HandlingId} label="Handling time (business days)" hint="From 1 to 5." error="">
+                                <input class={Slider {}} id={HandlingId} aria-describedby={FieldHintId(&HandlingId)} type="range" name={f.handling} min="1" max="5" value="2">
                             </Field>
                             <Separator orientation={Orientation::Horizontal} />
                             <Switch label="Email me when an order ships">
                                 <input type="checkbox" role="switch" name={f.notify} checked>
                             </Switch>
-                            <Field id="note" label="Note to buyers" note="Printed on each packing slip.">
-                                <Textarea>
-                                    <textarea id="note" name={f.note} rows="3">"Thanks for your order!"</textarea>
-                                </Textarea>
+                            <Field id={NoteId} label="Note to buyers" hint="Printed on each packing slip." error="">
+                                <textarea class={Textarea {}} id={NoteId} aria-describedby={FieldHintId(&NoteId)} name={f.note} rows="3">"Thanks for your order!"</textarea>
                             </Field>
                             <div>
-                                <Button variant={ButtonVariant::Primary} size={ButtonSize::Md}>
-                                    <button>"Save settings"</button>
-                                </Button>
+                                <button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>
+                                    "Save settings"
+                                </button>
                             </div>
                         </form>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><h2>"Questions"</h2></CardHeader>
-                    <CardContent>
+                    </div>
+                </section>
+                <section class={Card {}}>
+                    <header class={CardHeader {}}><h2>"Questions"</h2></header>
+                    <div class={CardContent {}}>
                         <Accordion>
                             <details name="faq" open>
                                 <summary>"When do payouts go out?"</summary>
@@ -270,8 +279,8 @@ pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
                                 <p>"Yes: each packing slip prints the note as it is when you ship."</p>
                             </details>
                         </Accordion>
-                    </CardContent>
-                </Card>
+                    </div>
+                </section>
             </div>
         </div>
     }

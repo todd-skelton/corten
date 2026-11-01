@@ -405,10 +405,13 @@ mod tests {
             open.contains(r#"<dialog data-scope="sale-sheet" open aria-label="Last sale" data-on="connect:ui.dialog.modalClosedBy($t,@close,$s)">"#),
             "{open}"
         );
-        assert!(open.contains(r#"<a data-ref="close" href="/">Close</a>"#), "{open}");
+        assert!(
+            open.contains(r#"<a class="button__button button__outline button__md" data-ref="close" href="/">Close</a>"#),
+            "{open}"
+        );
         let home = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(!home.contains("Last sale\""), "drawn only when the address names it: {home}");
-        assert!(home.contains(r#"<a href="/?sale=last">Last sale</a>"#), "{home}");
+        assert!(home.contains(r#"<a class="button__button button__link button__sm" href="/?sale=last">Last sale</a>"#), "{home}");
     }
 
     #[tokio::test]

@@ -11,21 +11,22 @@ use corten::prelude::*;
 /// rules hide. A frame sandboxed without `allow-modals` still shows it, and a click there opens
 /// nothing.
 ///
-/// Parts: the `button`.
+/// Parts: the `button`, which has the classes `class` gives it (`()` for none): a look of the
+/// app's, a kit `Button`.
 ///
 /// ```
 /// use corten::prelude::*;
 /// use corten_ui::PrintButton;
 ///
-/// let html = html! { <PrintButton label="Print slips" /> }.to_html();
+/// let html = html! { <PrintButton label="Print slips" class={()} /> }.to_html();
 /// assert_eq!(
 ///     html,
 ///     r#"<button type="button" hidden data-on="connect:ui.print_button.connect($t) click:ui.print_button.print()">Print slips</button>"#
 /// );
 /// ```
 #[component(js)]
-pub fn PrintButton<L: Render>(label: L) -> impl Render {
+pub fn PrintButton<L: Render, C: ClassList>(label: L, class: C) -> impl Render {
     html! {
-        <button type="button" hidden on:connect={js::connect(target)} on:click={js::print()}>{label}</button>
+        <button type="button" class={class} hidden on:connect={js::connect(target)} on:click={js::print()}>{label}</button>
     }
 }

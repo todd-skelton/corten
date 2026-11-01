@@ -328,7 +328,7 @@ pub fn DeckBuilder<'a>(
                 <details class={Export}>
                     <summary>"Deck list"</summary>
                     <textarea ref={list} id={DeckListId} readonly rows="8" aria-label="Deck list">{text}</textarea>
-                    <CopyButton text={DeckListId} label="Copy" copied="Copied" />
+                    <CopyButton text={DeckListId} label="Copy" copied="Copied" class={()} />
                 </details>
             </section>
             <p id={MoveHelpId} hidden>

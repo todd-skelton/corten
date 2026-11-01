@@ -130,6 +130,20 @@ pub enum Period {
 #[derive(Id)]
 struct PeriodId;
 
+/// The sell form's controls, each named by its field's label.
+#[derive(Id)]
+struct QtyId;
+#[derive(Id)]
+struct PriceId;
+#[derive(Id)]
+struct WeightId;
+#[derive(Id)]
+struct ConditionId;
+#[derive(Id)]
+struct FloorId;
+#[derive(Id)]
+struct DraftNameId;
+
 /// The `sale` query value that opens the last sale's sheet.
 #[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -153,13 +167,14 @@ pub fn Gallery<'a>(
         min: Some(1.0),
         max: Some(10.0),
         required: true,
-        ..Number::new("qty", f.qty, "Fewer", "More")
+        ..Number::new(QtyId::NAME, f.qty, "Fewer", "More")
     };
     // A measure with decimals; the price is money, a text input read by `t.parse_money`.
-    let weight = Number { value: Some(0.5), min: Some(0.1), step: 0.1, ..Number::new("weight", f.weight, "Lighter", "Heavier") };
+    let weight =
+        Number { value: Some(0.5), min: Some(0.1), step: 0.1, ..Number::new(WeightId::NAME, f.weight, "Lighter", "Heavier") };
     let condition = Picker {
         required: true,
-        ..Picker::new("condition", f.condition, "Choose a condition", "No matching condition", &CONDITIONS)
+        ..Picker::new(ConditionId::NAME, f.condition, "Choose a condition", "No matching condition", &CONDITIONS)
     };
     // Each control's links keep the other's choice: a tab's link the period, a period's the tab.
     let shown_tab = Some(tab).filter(|t| *t != MarketTab::Listings);
@@ -178,25 +193,25 @@ pub fn Gallery<'a>(
             </p>
         </div>
         <div class={Grid}>
-            <Card>
-                <CardHeader><h2>"List for sale"</h2></CardHeader>
-                <CardContent>
+            <section class={Card {}}>
+                <header class={CardHeader {}}><h2>"List for sale"</h2></header>
+                <div class={CardContent {}}>
                     <form class={Order} method="post" action={url::Sell} data-patch>
                         <div class={Row}>
-                            <Field id="qty" label="Quantity" note="">
+                            <Field id={QtyId} label="Quantity" hint="" error="">
                                 <span class={Stepper}><NumberField field={&qty} /></span>
                             </Field>
-                            <Field id="price" label="Price (USD)" note="">
-                                <Input><input id="price" name={f.price} inputmode="decimal" value="12.50" required></Input>
+                            <Field id={PriceId} label="Price (USD)" hint="" error="">
+                                <input class={Input {}} id={PriceId} name={f.price} inputmode="decimal" value="12.50" required>
                             </Field>
-                            <Field id="weight" label="Shipping weight" note="">
+                            <Field id={WeightId} label="Shipping weight" hint="" error="">
                                 <span class={Stepper}>
                                     <span class={Unit}>"oz"</span>
                                     <NumberField field={&weight} />
                                 </span>
                             </Field>
                         </div>
-                        <Field id="condition" label="Condition" note="">
+                        <Field id={ConditionId} label="Condition" hint="" error="">
                             <Combobox><ComboBox field={&condition} /></Combobox>
                         </Field>
                         <div class={Choices}>
@@ -216,25 +231,25 @@ pub fn Gallery<'a>(
                         </RadioGroup>
                         <div class={Floor}>
                             <RequiredWhen control={f.pricing} values={&[Pricing::Offers]}>
-                                <Field id="floor" label="Lowest offer" note="">
-                                    <Input><input id="floor" name={f.floor} inputmode="decimal"></Input>
+                                <Field id={FloorId} label="Lowest offer" hint="" error="">
+                                    <input class={Input {}} id={FloorId} name={f.floor} inputmode="decimal">
                                 </Field>
                             </RequiredWhen>
                         </div>
                         <div>
-                            <Button variant={ButtonVariant::Primary} size={ButtonSize::Md}>
-                                <button>"List for sale"</button>
-                            </Button>
+                            <button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>
+                                "List for sale"
+                            </button>
                         </div>
                     </form>
                     <OrderResult text={result} />
-                </CardContent>
-            </Card>
+                </div>
+            </section>
             <div class={Aside}>
                 // Built in the markup, so the panels' views live until the group has rendered them.
-                <Card>
-                    <CardHeader><h2>"Market"</h2></CardHeader>
-                    <CardContent>
+                <section class={Card {}}>
+                    <header class={CardHeader {}}><h2>"Market"</h2></header>
+                    <div class={CardContent {}}>
                         <Tabs>
                             <TabGroup
                                 id="book"
@@ -255,11 +270,11 @@ pub fn Gallery<'a>(
                                 <p>"Average $11.95 this month."</p>
                             </ShownFor>
                         </div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><h2>"Sales"</h2></CardHeader>
-                    <CardContent>
+                    </div>
+                </section>
+                <section class={Card {}}>
+                    <header class={CardHeader {}}><h2>"Sales"</h2></header>
+                    <div class={CardContent {}}>
                         <div class={Periods}>
                             <ChoiceGroup
                                 choice={&period}
@@ -274,11 +289,11 @@ pub fn Gallery<'a>(
                             <ShownFor choice={&period} values={&[Period::Week]}><p>"Sold 3 this week."</p></ShownFor>
                             <ShownFor choice={&period} values={&[Period::Month]}><p>"Sold 14 this month."</p></ShownFor>
                         </div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><h2>"Activity"</h2></CardHeader>
-                    <CardContent>
+                    </div>
+                </section>
+                <section class={Card {}}>
+                    <header class={CardHeader {}}><h2>"Activity"</h2></header>
+                    <div class={CardContent {}}>
                         <div class={Facts}>
                             <p>
                                 "Listed "
@@ -295,20 +310,25 @@ pub fn Gallery<'a>(
                                 />
                             </p>
                         </div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><h2>"Draft"</h2></CardHeader>
-                    <CardContent>
+                    </div>
+                </section>
+                <section class={Card {}}>
+                    <header class={CardHeader {}}><h2>"Draft"</h2></header>
+                    <div class={CardContent {}}>
                         <div class={Buttons}>
                             <form method="post" action={url::Save} data-patch>
-                                <Button variant={ButtonVariant::Secondary} size={ButtonSize::Md}>
-                                    <button>"Save draft"</button>
-                                </Button>
+                                <button class={Button { variant: ButtonVariant::Secondary, size: ButtonSize::Md }}>
+                                    "Save draft"
+                                </button>
                             </form>
-                            <Button variant={ButtonVariant::Outline} size={ButtonSize::Md}>
-                                <button type="button" command="show-modal" commandfor={RenameId}>"Rename draft"</button>
-                            </Button>
+                            <button
+                                class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Md }}
+                                type="button"
+                                command="show-modal"
+                                commandfor={RenameId}
+                            >
+                                "Rename draft"
+                            </button>
                             <DropdownMenu>
                                 <MenuButton id="actions" label="More actions">
                                     <a role="menuitem" href={url::Help}>"Help"</a>
@@ -326,27 +346,34 @@ pub fn Gallery<'a>(
                             </DropdownMenu>
                         </div>
                         <MenuResult text="" />
-                    </CardContent>
-                    <CardFooter>
-                        <Button variant={ButtonVariant::Link} size={ButtonSize::Sm}>
-                            <a href={url::Home { tab: None, sale: Some(Sale::Last), period: None }}>"Last sale"</a>
-                        </Button>
-                        <Button variant={ButtonVariant::Link} size={ButtonSize::Sm}>
-                            <a href={url::Orders { page: None }}>"Orders"</a>
-                        </Button>
-                    </CardFooter>
-                </Card>
-                <Card>
-                    <CardHeader><h2>"Stock"</h2></CardHeader>
-                    <CardContent>
+                    </div>
+                    <footer class={CardFooter {}}>
+                        <a
+                            class={Button { variant: ButtonVariant::Link, size: ButtonSize::Sm }}
+                            href={url::Home { tab: None, sale: Some(Sale::Last), period: None }}
+                        >
+                            "Last sale"
+                        </a>
+                        <a
+                            class={Button { variant: ButtonVariant::Link, size: ButtonSize::Sm }}
+                            href={url::Orders { page: None }}
+                        >
+                            "Orders"
+                        </a>
+                    </footer>
+                </section>
+                <section class={Card {}}>
+                    <header class={CardHeader {}}><h2>"Stock"</h2></header>
+                    <div class={CardContent {}}>
                         <Sku sku="ASH-DRAKE-NM" />
                         <div>
-                            <Button variant={ButtonVariant::Outline} size={ButtonSize::Sm}>
-                                <PrintButton label="Print label" />
-                            </Button>
+                            <PrintButton
+                                label="Print label"
+                                class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Sm }}
+                            />
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </section>
             </div>
         </div>
         <Dialog>{rename}</Dialog>
@@ -397,9 +424,12 @@ pub fn Sku<'a>(sku: &'a str) -> impl Render {
             "SKU "
             <code id={SkuId}>{sku}</code>
             " "
-            <Button variant={ButtonVariant::Outline} size={ButtonSize::Sm}>
-                <CopyButton text={SkuId} label="Copy" copied="Copied" />
-            </Button>
+            <CopyButton
+                text={SkuId}
+                label="Copy"
+                copied="Copied"
+                class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Sm }}
+            />
             " "
             <span ref={copied} hidden>"Copies: "<output ref={copies} aria-label="Copies">"0"</output></span>
         </p>
@@ -416,9 +446,13 @@ pub fn SaleSheet() -> impl Render {
         <dialog open aria-label="Last sale" on:connect={dialog::modalClosedBy(target, close, signal)}>
             <h2>"Last sale"</h2>
             <p>"A Near Mint copy sold for $12.00 on May 3."</p>
-            <Button variant={ButtonVariant::Outline} size={ButtonSize::Md}>
-                <a ref={close} href={url::Home { tab: None, sale: None, period: None }}>"Close"</a>
-            </Button>
+            <a
+                class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Md }}
+                ref={close}
+                href={url::Home { tab: None, sale: None, period: None }}
+            >
+                "Close"
+            </a>
         </dialog>
     }
 }
@@ -438,14 +472,19 @@ pub fn RenameDialog<'a>(name: &'a str, errors: &'a Errors) -> impl Patch {
         <dialog id={RenameId} open={!errors.is_empty()} aria-label="Rename the draft" on:connect={dialog::modal(target)}>
             <h2>"Rename the draft"</h2>
             <form class={Rename} method="post" action={url::Rename} data-patch>
-                <Field id="draft-name" label="Name" note={e.message(f.name)}>
-                    <Input><input id="draft-name" name={f.name} value={name} {..e.aria(f.name)}></Input>
+                <Field id={DraftNameId} label="Name" hint="" error={e.message(f.name)}>
+                    <input class={Input {}} id={DraftNameId} name={f.name} value={name} {..e.aria(f.name)}>
                 </Field>
                 <DialogFooter>
-                    <Button variant={ButtonVariant::Ghost} size={ButtonSize::Md}>
-                        <button type="button" command="close" commandfor={RenameId}>"Cancel"</button>
-                    </Button>
-                    <Button variant={ButtonVariant::Primary} size={ButtonSize::Md}><button>"Rename"</button></Button>
+                    <button
+                        class={Button { variant: ButtonVariant::Ghost, size: ButtonSize::Md }}
+                        type="button"
+                        command="close"
+                        commandfor={RenameId}
+                    >
+                        "Cancel"
+                    </button>
+                    <button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>"Rename"</button>
                 </DialogFooter>
             </form>
         </dialog>

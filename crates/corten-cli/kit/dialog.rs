@@ -4,18 +4,14 @@
 //! it:
 //!
 //! ```rust,ignore
-//! <Button variant={ButtonVariant::Outline} size={ButtonSize::Md}>
-//!     <button type="button" command="show-modal" commandfor={RenameId}>"Rename"</button>
-//! </Button>
+//! <button class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Md }} type="button" command="show-modal" commandfor={RenameId}>"Rename"</button>
 //! <Dialog>
 //!     <dialog id={RenameId} closedby="any" open={!errors.is_empty()} on:connect={dialog::modal(target)}>
 //!         <h2>"Rename the deck"</h2>
 //!         <p>"The new name shows everywhere the deck does."</p>
 //!         <form method="post" action={url::Rename} data-patch>..</form>
 //!         <DialogFooter>
-//!             <Button variant={ButtonVariant::Ghost} size={ButtonSize::Md}>
-//!                 <button type="button" command="close" commandfor={RenameId}>"Cancel"</button>
-//!             </Button>
+//!             <button class={Button { variant: ButtonVariant::Ghost, size: ButtonSize::Md }} type="button" command="close" commandfor={RenameId}>"Cancel"</button>
 //!         </DialogFooter>
 //!     </dialog>
 //! </Dialog>

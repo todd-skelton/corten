@@ -4,9 +4,7 @@
 //! with `commandfor`) with no script. A click outside or Escape closes it.
 //!
 //! ```rust,ignore
-//! <Button variant={ButtonVariant::Outline} size={ButtonSize::Md}>
-//!     <button type="button" popovertarget={ShareId}>"Share"</button>
-//! </Button>
+//! <button class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Md }} type="button" popovertarget={ShareId}>"Share"</button>
 //! <Popover><div id={ShareId} popover>..</div></Popover>
 //! ```
 //!

@@ -770,13 +770,23 @@ async function run(browser) {
   check("Alert: a warning is role=alert", alertRole === "alert", String(alertRole));
   // Badge's tones: the paid order's text and its background meet WCAG AA (4.5:1), as drawn.
   const paid = await orders.locator("td > span", { hasText: /^Paid$/ }).first().evaluate((el) => {
-    const rgb = (/** @type {string} */ c) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+    // `rgb(r, g, b)`, or `color(srgb r g b)` (0 to 1) for a color-mix in sRGB.
+    const rgb = (/** @type {string} */ c) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map((v) => (c.startsWith("color(srgb") ? Number(v) * 255 : Number(v)));
     const lum = (/** @type {number[]} */ c) => c.map((v) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
     const style = getComputedStyle(el);
     const [a, b] = [lum(rgb(style.color)), lum(rgb(style.backgroundColor))].sort((x, y) => y - x);
     return { ratio: (a + 0.05) / (b + 0.05), color: style.color, background: style.backgroundColor };
   });
-  check("Badge: a success badge's text meets 4.5:1", paid.ratio >= 4.5, JSON.stringify(paid));
+  check("Badge: a soft success badge's text meets 4.5:1", paid.ratio >= 4.5, JSON.stringify(paid));
+  // A look is classes on the app's own element: the badge is the cell's child, a button's parent is
+  // the app's, and no element of the kit's takes no box around one.
+  const looks = await orders.evaluate(() => ({
+    badge: document.querySelector("td > [class*='badge__badge']")?.tagName ?? "missing",
+    wrappers: [...document.querySelectorAll(["button", "input", "select", "textarea", "slider", "badge", "card"].map((n) => `[class*='${n}__']`).join())]
+      .filter((e) => getComputedStyle(e).display === "contents").length,
+    button: document.querySelector("[class*='button__button']")?.parentElement?.className.includes("button__") ?? "missing",
+  }));
+  check("Looks: the kit's classes are on the app's elements, with none of its own around them", looks.badge === "SPAN" && looks.wrappers === 0 && looks.button === false, JSON.stringify(looks));
   await orders.getByRole("button", { name: "Share the shop" }).click();
   check("Popover: its button opens it", await orders.locator("#share").evaluate((p) => p.matches(":popover-open")));
   await orders.keyboard.press("Escape");

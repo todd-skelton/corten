@@ -95,26 +95,31 @@ on the token file's root, as the [styles guide](styles.md#design-tokens) places 
 
 ## Components
 
-A component styles the element the app writes inside it when the element takes attributes the
-app chooses, so `html!` checks them as it checks any element (`type`, `disabled`,
-`href={url::Home}`, `name={f.email}`, `on:click`, `commandfor`), and the wrapper is
-`display: contents`, adding no box. A component that is only a surface renders its own element.
+A component that only styles an element is a look ([styles guide](styles.md#looks)): its classes go
+on the element the app writes, `<button class={Button { .. }}>`, so `html!` checks the element's
+attributes as it checks any (`type`, `disabled`, `href={url::Home}`, `name={f.email}`,
+`on:click`, `commandfor`), the element can be the one the page needs (a card as a `<section>`,
+an `<li>` or a patch target, a badge with a `title`), and the page has no element of the kit's
+around it, so a script's `parentElement` and a `:first-child` rule see the page as written. A
+component that draws structure (a field's label and hint, a checkbox's label) or semantics (an
+alert's role) renders its elements. A corten-ui widget whose button is its own takes the look as
+its `class` (`<CopyButton .. class={Button { .. }} />`).
 
 ```rust,ignore
 use crate::ui::{button::*, card::*, field::*, input::*};
 
-<Card>
-    <CardHeader><h2>"Sign in"</h2><p>"Use the email you registered with."</p></CardHeader>
-    <CardContent>
-        <Field id="email" label="Email" note={e.message(f.email)}>
-            <Input><input id="email" type="email" name={f.email} required {..e.aria(f.email)}></Input>
+<section class={Card {}}>
+    <header class={CardHeader {}}><h2>"Sign in"</h2><p>"Use the email you registered with."</p></header>
+    <div class={CardContent {}}>
+        <Field id={EmailId} label="Email" hint="" error={e.message(f.email)}>
+            <input class={Input {}} id={EmailId} type="email" name={f.email} required {..e.aria(f.email)}>
         </Field>
-    </CardContent>
-    <CardFooter>
-        <Button variant={ButtonVariant::Primary} size={ButtonSize::Md}><button>"Sign in"</button></Button>
-        <Button variant={ButtonVariant::Link} size={ButtonSize::Md}><a href={url::Reset}>"Forgot it?"</a></Button>
-    </CardFooter>
-</Card>
+    </div>
+    <footer class={CardFooter {}}>
+        <button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>"Sign in"</button>
+        <a class={Button { variant: ButtonVariant::Link, size: ButtonSize::Md }} href={url::Reset}>"Forgot it?"</a>
+    </footer>
+</section>
 ```
 
 Each component's keyframes start with its own name (`dialog-in`), as an `@page` name does, since
@@ -122,12 +127,12 @@ they are the whole page's.
 
 | Component | Renders | Variants |
 |---|---|---|
-| `Button` | the look of the `<button>` or `<a>` inside it | `ButtonVariant`: `Primary`, `Secondary`, `Outline`, `Ghost`, `Destructive`, `Link`; `ButtonSize`: `Sm`, `Md`, `Lg`, `Icon` |
-| `Badge` | a `<span>` label | `BadgeVariant`: `Primary`, `Secondary`, `Outline`, `Info`, `Success`, `Warning`, `Destructive` |
-| `Card`, `CardHeader`, `CardContent`, `CardFooter` | a surface and its parts; the heading and description in the header are the app's (`<h2>` or `<h3>`, as the page's outline needs, then `<p>`) | |
+| `Button` | a look: the classes of the app's `<button>` or `<a>` (`class={Button { variant, size }}`) | `ButtonVariant`: `Primary`, `Secondary`, `Outline`, `Ghost`, `Destructive`, `Link`; `ButtonSize`: `Sm`, `Md`, `Lg`, `Icon` |
+| `Badge` | a look: the classes of the app's label element (`<span class={Badge { tone, emphasis }} title={..}>`); each tone and emphasis meets WCAG AA in both themes, which the kit's test checks | `BadgeTone`: `Neutral`, `Primary`, `Info`, `Success`, `Warning`, `Destructive`; `BadgeEmphasis`: `Solid`, `Soft`, `Outline` |
+| `Card`, `CardHeader`, `CardContent`, `CardFooter` | looks: a surface and its parts, on the app's elements (`<section class={Card {}}>`, `<header class={CardHeader {}}>`); the heading and description in the header are the app's (`<h2>` or `<h3>`, as the page's outline needs, then `<p>`) | |
 | `Alert` | a box whose role follows its variant, so a screen reader interrupts only for what needs the user now: `role="alert"` for `Warning` and `Destructive` (read at once when a patch brings it in), `role="status"` for `Success` (read politely; one brought in with its text is not read by every screen reader, so the result of an action is a toast, corten-ui's `Toaster`), none for `Neutral` and `Info` (read in the page's order) | `AlertVariant`: `Neutral`, `Info`, `Success`, `Warning`, `Destructive` |
-| `Field` | a `<label for={id}>`, the control (a kit control or a corten-ui widget, its parts in one row), then a note: a hint in text, or the server's message for the field (`note={e.message(f.email)}`), drawn destructive | |
-| `Input`, `Textarea`, `Select`, `Slider` | the look of the `<input>`, `<textarea>`, `<select>` or `<input type="range">` inside it, with the destructive border once the user has edited an invalid value (`:user-invalid`) or the server marked it (`aria-invalid`, which `e.aria(field)` writes); `Select` styles the open list where the browser has `appearance: base-select` | |
+| `Field` | a `<label for={id}>` naming the control by its `#[derive(Id)]` type (a corten-ui widget takes `QtyId::NAME`), the control (a kit control or a corten-ui widget, its parts in one row), the hint (its id `FieldHintId(&id)`, for the control's `aria-describedby` or `e.aria(..).hint(..)`), then the server's message for the field (`error={e.message(f.email)}`), drawn destructive; `""` draws none | |
+| `Input`, `Textarea`, `Select`, `Slider` | looks: the classes of the app's `<input>`, `<textarea>`, `<select>` or `<input type="range">` (`class={Input {}}`), with the destructive border once the user has edited an invalid value (`:user-invalid`) or the server marked it (`aria-invalid`, which `e.aria(field)` writes); `Select` styles the open list where the browser has `appearance: base-select` | |
 | `Checkbox`, `Switch` | a `<label>` with the `<input type="checkbox">` inside and its text after; a switch is `role="switch"` on the checkbox, so it posts as one | |
 | `RadioGroup`, `Radio` | a `<fieldset>` with its `<legend>`, and each `<input type="radio">` with its text | |
 | `Separator` | an `<hr>` | `Orientation`: `Horizontal`, `Vertical` |
@@ -143,7 +148,7 @@ they are the whole page's.
 | `Tabs`, `DropdownMenu`, `Combobox`, `Toasts` | the look of corten-ui's `TabGroup`, `MenuButton`, `ComboBox` and `Toaster` inside them, by role and state (`[role="tab"][aria-selected="true"]`, `[role="menu"]:popover-open`, `[role="option"][data-highlighted]`); `Toasts` places the toaster at the bottom right. `corten ui add` makes the app depend on `corten-ui` and list `corten_ui::COMPONENTS` | |
 
 Variants are Rust enums matched to the stylesheet's classes, so a variant without a rule does
-not compile, and every prop is written where the component is used, as for any component
+not compile, and every prop is written where the component or look is used, as for any component
 ([views](views.md)). The classes are static text chosen by a `match`: a page pays for joining two
 or three of them, not for any lookup. No component has a script: each works without
 JavaScript and under the CSP, with no `style=`, and the labels they show (Previous, Next, a

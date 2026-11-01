@@ -138,6 +138,56 @@
 //! # fn main() {}
 //! ```
 //!
+//! A look (`-> impl ClassList`) is classes the caller puts on its own element, alone or with its own:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn BadgeList(hot: bool) -> impl ClassList {
+//!     (List, hot.then_some(Hot))
+//! }
+//!
+//! let html = html! { <li class={(BadgeList { hot: true }, "mine")}>"Foil"</li> }.to_html();
+//! assert_eq!(html, r#"<li class="badge-list__list badge-list__hot mine">Foil</li>"#);
+//! ```
+//!
+//! It has no markup, so it is not an element:
+//!
+//! ```compile_fail,E0277
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn BadgeList() -> impl ClassList {
+//!     List
+//! }
+//!
+//! let _ = html! { <ul><BadgeList /></ul> };
+//! ```
+//!
+//! nor has refs or a scope for a script:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn BadgeList() -> impl ClassList {
+//!     let row = refs();
+//!     List
+//! }
+//! ```
+//!
+//! and its classes are a stylesheet's:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component]
+//! fn BadgeList() -> impl ClassList {
+//!     "list"
+//! }
+//! ```
+//!
 //! A class the stylesheet does not have does not compile:
 //!
 //! ```compile_fail
@@ -609,6 +659,12 @@ impl ClassList for Class {
         out.push(' ');
         out.push_str(self.0);
     }
+}
+
+/// No classes: for a component that takes a `class` (corten-ui's `PrintButton`) and is given none.
+impl ClassList for () {
+    #[inline]
+    fn write_classes(&self, _: &mut String) {}
 }
 
 impl<const N: usize> ClassList for Classes<N> {
