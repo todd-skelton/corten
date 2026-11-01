@@ -322,14 +322,31 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
                                 </select>
                             </Field>
                             <Field id={HandlingId} label="Handling time (business days)" hint="From 1 to 5." error="">
-                                <input class={Slider {}} id={HandlingId} aria-describedby={FieldHintId(&HandlingId)} type="range" name={f.handling} min="1" max="5" value="2">
+                                <input
+                                    class={Slider {}}
+                                    id={HandlingId}
+                                    aria-describedby={FieldHintId(&HandlingId)}
+                                    type="range"
+                                    name={f.handling}
+                                    min="1"
+                                    max="5"
+                                    value="2"
+                                >
                             </Field>
                             <Separator orientation={Orientation::Horizontal} />
                             <Switch label="Email me when an order ships">
                                 <input type="checkbox" role="switch" name={f.notify} checked>
                             </Switch>
                             <Field id={NoteId} label="Note to buyers" hint="Printed on each packing slip." error="">
-                                <textarea class={Textarea {}} id={NoteId} aria-describedby={FieldHintId(&NoteId)} name={f.note} rows="3">"Thanks for your order!"</textarea>
+                                <textarea
+                                    class={Textarea {}}
+                                    id={NoteId}
+                                    aria-describedby={FieldHintId(&NoteId)}
+                                    name={f.note}
+                                    rows="3"
+                                >
+                                    "Thanks for your order!"
+                                </textarea>
                             </Field>
                             <div>
                                 <button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>
