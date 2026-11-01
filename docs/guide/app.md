@@ -685,8 +685,9 @@ Three failures never reach `NoStore` and get the default: a request refused befo
 runs (a path that does not parse), a handler that panics, and one past its deadline. A
 `Cache-Control` written by hand counts on any of its lines, for what it plainly says: a
 `private` or `no-store` with a value (`private="set-cookie"`, which lets a shared cache keep the
-rest) or inside a quoted one does not count. A `no-store` after the first line goes out as
-`no-store` alone, which a cache that reads only the first line sees too. A handler cannot mark an
+rest) or inside a quoted one does not count. A `no-store` among several lines goes out as
+`no-store` alone, and a `private` counts only on the first line, so a cache that reads only the
+first line is told the same. A handler cannot mark an
 answer public any other way: a response it builds by hand is not an answer a route can name, and if anything
 read a caller the answer is private whatever its header says.
 
@@ -1263,7 +1264,7 @@ The error page keeps the headers the failed response had (a request id, `Retry-A
 failure still reaches the client. The ones that described the old body (`Content-*`, `ETag`,
 `Last-Modified`) and `Cache-Control` are the error page's own, and a header the error page sets
 wins, except a `Cache-Control` with `no-store` (`NoStore`, or one written by hand): the
-failure said nothing may keep it, so the error page goes out with that `Cache-Control`.
+failure said nothing may keep it, so the error page goes out `no-store`.
 
 The error page is an async function of the `Failure` and then extractors, as a handler's
 arguments are, with the state they read given beside it (`()` for none). A layout that shows

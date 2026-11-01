@@ -2535,8 +2535,9 @@ Corten is pre-1.0, so any minor version may change the API.
     A `Cache-Control` written by hand now counts on every line when Corten decides whether an
     answer may be shared, for what it plainly says: `private="set-cookie"`, `no-store=1` and a
     directive inside a quoted value no longer stand for `private` or `no-store`, so an answer
-    that sets a cookie or read a caller with only those is sent `private, no-cache`, and a
-    `no-store` after the first line is sent as `no-store` alone.
+    that sets a cookie or read a caller with only those is sent `private, no-cache`, a
+    `no-store` among several lines is sent as `no-store` alone, and a `private` counts only on
+    the first line, so a cache that reads only the first line is told the same.
     Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
     requests over 1,000, median of three and the range of the nine pairs, against main at
     a83452c9): a `NoStore` failure as an HTML error page runs 31,990 instructions a request
