@@ -109,7 +109,7 @@ impl Cache {
     fn header(self) -> HeaderValue {
         let (max_age, shared, stale) = match self.kind {
             Kind::Public { max_age, shared, stale } => (max_age, shared, stale),
-            Kind::NoStore => return HeaderValue::from_static("no-store"),
+            Kind::NoStore => return NO_STORE,
             Kind::Immutable => return crate::assets::IMMUTABLE,
         };
         let mut text = Vec::with_capacity(80);
@@ -209,21 +209,33 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
             // a header written by hand has one). Only a plain `private` makes the answer private:
             // `private="set-cookie"` still lets a shared cache keep the rest. A cache that reads
             // only one of several lines, or that reads a quoted value another way, must see the
-            // same: a `no-store` on several lines or beside a quoted value goes out as `no-store`
-            // alone, and such a `private` is not trusted (an answer that sets a cookie or read a
-            // caller still goes out `private, no-cache` below).
-            let (mut no_store, mut private, mut lines, mut quoted) = (false, false, 0, false);
+            // same: a `no-store` on several lines goes out on one, as `no-store` alone beside a
+            // quoted value, and such a `private` is not trusted (an answer that sets a cookie or
+            // read a caller still goes out `private, no-cache` below). A `no-store` with
+            // `must-understand` is one a cache may ignore (RFC 9111 5.2.2.3), so it does not count.
+            let (mut no_store, mut private, mut must_understand, mut lines, mut quoted) = (false, false, false, 0, false);
             for line in entry.iter() {
-                let (store, shared) = says(line.as_bytes());
-                no_store |= store;
-                private |= shared;
+                let says = says(line.as_bytes());
+                no_store |= says.no_store;
+                private |= says.private;
+                must_understand |= says.must_understand;
                 lines += 1;
                 quoted |= line.as_bytes().contains(&b'"');
             }
+            let no_store = no_store && !must_understand;
             let plain = lines == 1 && !quoted;
             if no_store {
-                if !plain {
+                if quoted {
                     entry.insert(NO_STORE);
+                } else if lines > 1 {
+                    let mut joined = Vec::new();
+                    for line in entry.iter() {
+                        if !joined.is_empty() {
+                            joined.extend_from_slice(b", ");
+                        }
+                        joined.extend_from_slice(line.as_bytes());
+                    }
+                    entry.insert(HeaderValue::from_bytes(&joined).unwrap_or(NO_STORE));
                 }
                 return;
             }
@@ -276,14 +288,30 @@ pub(crate) const NO_STORE: HeaderValue = HeaderValue::from_static("no-store");
 /// Whether a `Cache-Control` line says `no-store` and `private`, each as a directive without a
 /// value (`no-store=1` is not one, and `private="set-cookie"` still lets a shared cache keep the
 /// rest). Bytes, not text: the whitespace HTTP allows around a directive is ASCII.
-pub(crate) fn says(line: &[u8]) -> (bool, bool) {
-    let (mut no_store, mut private) = (false, false);
+pub(crate) fn says(line: &[u8]) -> Says {
+    let mut says = Says::default();
     for d in directives(line) {
         let d = d.trim_ascii();
-        no_store |= d.eq_ignore_ascii_case(b"no-store");
-        private |= d.eq_ignore_ascii_case(b"private");
+        says.no_store |= d.eq_ignore_ascii_case(b"no-store");
+        says.private |= d.eq_ignore_ascii_case(b"private");
+        says.must_understand |= d.eq_ignore_ascii_case(b"must-understand");
     }
-    (no_store, private)
+    says
+}
+
+/// What a `Cache-Control` line plainly says, of what decides whether an answer may be kept.
+#[derive(Default)]
+pub(crate) struct Says {
+    pub(crate) no_store: bool,
+    pub(crate) private: bool,
+    pub(crate) must_understand: bool,
+}
+
+/// Whether `headers`' `Cache-Control` lines say nothing may keep the answer: a plain `no-store`
+/// on one of them and no `must-understand` (which lets a cache that knows the status ignore it).
+pub(crate) fn stores_nothing(headers: &axum::http::HeaderMap) -> bool {
+    let lines = || headers.get_all(header::CACHE_CONTROL).iter().map(|line| says(line.as_bytes()));
+    lines().any(|says| says.no_store) && !lines().any(|says| says.must_understand)
 }
 
 /// A `Cache-Control` line's directives, split at the commas outside a quoted value

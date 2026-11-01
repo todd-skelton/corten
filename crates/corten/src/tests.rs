@@ -3177,9 +3177,10 @@ async fn a_failure_under_no_store_is_not_stored() {
 
 /// A `Cache-Control` whose `private` or `no-store` is not a plain directive (in a quoted value, a
 /// line that is not text, `no-store=1`) is not taken as one: an answer that sets a cookie or read a
-/// caller goes out `private, no-cache`. A `no-store` on several lines or beside a quoted value
-/// goes out as `no-store` alone, and such a `private` is not trusted, so a cache that reads only
-/// one line, or a quoted value another way, is told the same.
+/// caller goes out `private, no-cache`, as does one whose `no-store` comes with `must-understand`.
+/// A `no-store` on several lines goes out on one, as `no-store` alone beside a quoted value, and
+/// such a `private` is not trusted, so a cache that reads only one line, or a quoted value another
+/// way, is told the same.
 #[tokio::test]
 async fn a_cache_control_counts_only_for_what_it_plainly_says() {
     let router = Router::new()
@@ -3279,6 +3280,27 @@ async fn a_cache_control_counts_only_for_what_it_plainly_says() {
             }),
         )
         .route(
+            "/must-understand",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "must-understand, no-store"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "kept by a cache that knows a 200")
+            }),
+        )
+        .route(
+            "/unquoted-limited",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "public, max-age=600, private=set-cookie"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "limited")
+            }),
+        )
+        .route(
+            "/no-transform",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "no-transform"), (header::CACHE_CONTROL, "no-store")];
+                (axum::response::AppendHeaders(lines), "both")
+            }),
+        )
+        .route(
             "/limited-first",
             get(|| async {
                 let lines = [(header::CACHE_CONTROL, "private=\"set-cookie\", max-age=600"), (header::SET_COOKIE, "seen=1")];
@@ -3291,9 +3313,12 @@ async fn a_cache_control_counts_only_for_what_it_plainly_says() {
         ("/quoted", "private, no-cache"),
         ("/quoted-failure", "private, no-cache"),
         ("/valued", "private, no-cache"),
-        ("/second-line", "no-store"),
+        ("/second-line", "public, max-age=600, no-store"),
         ("/escaped", "private, no-cache"),
-        ("/private-then-no-store", "no-store"),
+        ("/private-then-no-store", "private, max-age=600, no-store"),
+        ("/must-understand", "private, no-cache"),
+        ("/unquoted-limited", "private, no-cache"),
+        ("/no-transform", "no-transform, no-store"),
         ("/later-private", "private, no-cache"),
         ("/private-then-public", "private, no-cache"),
         ("/no-store-and-more", "no-store"),

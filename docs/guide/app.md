@@ -685,9 +685,10 @@ Three failures never reach `NoStore` and get the default: a request refused befo
 runs (a path that does not parse), a handler that panics, and one past its deadline. A
 `Cache-Control` written by hand counts for what it plainly says, on any of its lines: a
 `private` or `no-store` with a value (`private="set-cookie"`, which lets a shared cache keep the
-rest) or inside a quoted one does not count. A `no-store` on several lines or beside a quoted
-value goes out as `no-store` alone, and such a `private` is not trusted, so a cache that reads
-only one line, or a quoted value another way, is told the same. A handler cannot mark an
+rest) or inside a quoted one does not count, nor does a `no-store` with `must-understand` (a
+cache that knows the status may ignore it). A `no-store` on several lines goes out on one, as
+`no-store` alone beside a quoted value, and such a `private` is not trusted, so a cache that
+reads only one line, or a quoted value another way, is told the same. A handler cannot mark an
 answer public any other way: a response it builds by hand is not an answer a route can name, and if anything
 read a caller the answer is private whatever its header says.
 
