@@ -1,7 +1,8 @@
 /* corten ui {{version}}: stack */
 .stack { display: flex; flex-direction: column; align-items: stretch; }
 .cluster { display: flex; flex-wrap: wrap; align-items: center; }
-/* No specificity: it drops the browser's default margins, and any rule of the app's still wins. */
+/* No specificity: it drops the browser's default margins, and an app's rule that names the
+   element or a class still wins. */
 :where(.stack, .cluster) > * { margin-block: 0; }
 .xs { gap: .25rem; }
 .sm { gap: .5rem; }

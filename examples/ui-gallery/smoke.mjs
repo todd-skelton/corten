@@ -825,6 +825,7 @@ async function run(browser) {
       const [drawn, past] = [at(0.4), at(0.95)];
       // Each token's color, as the canvas paints it.
       const paint = (/** @type {string} */ c) => {
+        g.clearRect(0, 0, 1, 1);
         g.fillStyle = c;
         g.fillRect(0, 0, 1, 1);
         return [...g.getImageData(0, 0, 1, 1).data].slice(0, 3);

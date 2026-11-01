@@ -1554,7 +1554,9 @@ mod tests {
     }
 
     /// A stack's children take its width whatever the app's element rules say (a new app's
-    /// `form { align-items: end }`), and a figure is the same surface as a card.
+    /// `form { align-items: end }`): `.stack` is one class, which beats an element. Its margin rule
+    /// has no specificity, so the app's own margin rules win. And a figure is the same surface as a
+    /// card.
     #[test]
     fn a_stack_stretches_and_a_figure_is_a_card() {
         let block = |css: &'static str, start: &str| {
@@ -1562,7 +1564,9 @@ mod tests {
             let rest = &css[at + start.len()..];
             rest[..rest.find('}').unwrap()].to_string()
         };
-        assert!(block(include_str!("../kit/stack.css"), ".stack {").contains("align-items: stretch;"));
+        let stack = include_str!("../kit/stack.css");
+        assert!(stack.lines().any(|l| l.starts_with(".stack {") && l.contains("align-items: stretch;")));
+        assert!(stack.lines().any(|l| l == ":where(.stack, .cluster) > * { margin-block: 0; }"));
         let (stat, card) =
             (block(include_str!("../kit/stats.css"), ".stat {"), block(include_str!("../kit/card.css"), ".card {"));
         let declarations =

@@ -9,10 +9,12 @@
 //!
 //! Each child takes the stack's width, a button too: put one in a `Cluster` to keep it its own
 //! size. The browser's default block margins on the children (a paragraph's, a heading's) are
-//! dropped, so the gap is the space between them; a rule of the app's own that sets a child's margin
-//! still applies (the rule has no specificity). The gaps are the values the kit's components space their own parts with. An app
-//! styled from its own token utilities spaces a screen with its `gap` utility instead (the styles
-//! guide), so its screens follow its scale.
+//! dropped, so the gap is the space between them. The rule has no specificity: an app's rule that
+//! names the element or a class (`static/style.css`'s `form { margin: .. }`) still sets its margin,
+//! and only one with none (`*`, `:where(..)`) ties and loses to the kit's, linked after it. The gaps
+//! are the values the kit's components space their own parts with. An app styled from its own token
+//! utilities spaces a screen with its `gap` utility instead (the styles guide), so its screens
+//! follow its scale.
 use corten::prelude::*;
 
 /// The space between the children. Each is a class in `stack.css`, so one without a rule does
