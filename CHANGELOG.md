@@ -2003,6 +2003,20 @@ Corten is pre-1.0, so any minor version may change the API.
     to 10,697 gzipped. Nothing a request does changes: the stripped text is what `include_str!`
     held before
     ([#513 Explore removing comments from component scripts as they are served, if it cuts bytes shipped enough to matter](https://github.com/todd-skelton/corten/issues/513)).
+98. `t.money` and `t.number` write a value in about two thirds of the instructions: a currency
+    looks up its fraction digits once, when it is made (at compile time for a `const` one), not for
+    each amount; digits are made two per division; and a one-byte separator or symbol is pushed as
+    a character, an empty piece of a template skipped. What they write is the same, byte for byte,
+    in every locale and every currency its data has (compared on 68 MB of values before and after).
+    Measured with callgrind (release, the difference between 1,200 and 200 values over 1,000, one run):
+    `t.money` in en 754 to 500 instructions a value, `t.number` 406 to 247; card-market's item
+    page from memory, which writes a price for each listing and offer (in-process `oneshot`, the
+    difference between 1,200 and 200 requests over 1,000, three runs each, against main at
+    756ee0ea), 105,190 to 105,336 instructions a request on main and 93,529 to 94,016 here
+    (-11%), its JSON route unchanged at about 57,300. The page had grown from about 78,900 when it
+    began writing prices in the reader's locale (ce04961b), which is what benchmark round r7 to r8
+    saw. `Currency`'s `Debug` is now its code (`Currency("USD")`, was its bytes)
+    ([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
