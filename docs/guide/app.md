@@ -683,11 +683,11 @@ stay public for clients without credentials. A cache in front of the app must ke
 the error page for an expired code or someone else's statement goes out `no-store` too.
 Three failures never reach `NoStore` and get the default: a request refused before the handler
 runs (a path that does not parse), a handler that panics, and one past its deadline. A
-`Cache-Control` written by hand counts on any of its lines, for what it plainly says: a
+`Cache-Control` written by hand counts for what it plainly says, on any of its lines: a
 `private` or `no-store` with a value (`private="set-cookie"`, which lets a shared cache keep the
-rest) or inside a quoted one does not count. A `no-store` among several lines goes out as
-`no-store` alone, and a `private` counts only on the first line, so a cache that reads only the
-first line is told the same. A handler cannot mark an
+rest) or inside a quoted one does not count. A `no-store` on several lines or beside a quoted
+value goes out as `no-store` alone, and such a `private` is not trusted, so a cache that reads
+only one line, or a quoted value another way, is told the same. A handler cannot mark an
 answer public any other way: a response it builds by hand is not an answer a route can name, and if anything
 read a caller the answer is private whatever its header says.
 

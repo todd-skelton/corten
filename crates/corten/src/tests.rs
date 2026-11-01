@@ -3177,9 +3177,9 @@ async fn a_failure_under_no_store_is_not_stored() {
 
 /// A `Cache-Control` whose `private` or `no-store` is not a plain directive (in a quoted value, a
 /// line that is not text, `no-store=1`) is not taken as one: an answer that sets a cookie or read a
-/// caller goes out `private, no-cache`. A `no-store` among several lines goes out `no-store`
-/// alone and a `private` counts only on the first line, so a cache that reads only the first line
-/// is told the same.
+/// caller goes out `private, no-cache`. A `no-store` on several lines or beside a quoted value
+/// goes out as `no-store` alone, and such a `private` is not trusted, so a cache that reads only
+/// one line, or a quoted value another way, is told the same.
 #[tokio::test]
 async fn a_cache_control_counts_only_for_what_it_plainly_says() {
     let router = Router::new()
@@ -3253,6 +3253,32 @@ async fn a_cache_control_counts_only_for_what_it_plainly_says() {
             }),
         )
         .route(
+            "/private-then-public",
+            get(|| async {
+                let lines = [
+                    (header::CACHE_CONTROL, "private, max-age=600"),
+                    (header::CACHE_CONTROL, "public, s-maxage=600"),
+                    (header::SET_COOKIE, "seen=1"),
+                ];
+                (axum::response::AppendHeaders(lines), "both")
+            }),
+        )
+        .route(
+            "/no-store-and-more",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "public, s-maxage=600, x=\"\\\"\", no-store")];
+                (axum::response::AppendHeaders(line), "more")
+            }),
+        )
+        .route(
+            "/private-and-quoted",
+            get(|| async {
+                let lines =
+                    [(header::CACHE_CONTROL, "public, s-maxage=600, x=\"\\\"\", private"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "quoted")
+            }),
+        )
+        .route(
             "/limited-first",
             get(|| async {
                 let lines = [(header::CACHE_CONTROL, "private=\"set-cookie\", max-age=600"), (header::SET_COOKIE, "seen=1")];
@@ -3269,6 +3295,9 @@ async fn a_cache_control_counts_only_for_what_it_plainly_says() {
         ("/escaped", "private, no-cache"),
         ("/private-then-no-store", "no-store"),
         ("/later-private", "private, no-cache"),
+        ("/private-then-public", "private, no-cache"),
+        ("/no-store-and-more", "no-store"),
+        ("/private-and-quoted", "private, no-cache"),
         ("/limited-first", "private, no-cache"),
     ] {
         let req = Request::get(path).header("accept", "text/html").header("cookie", "s=1");

@@ -2530,14 +2530,16 @@ Corten is pre-1.0, so any minor version may change the API.
     page that replaces the failed answer kept the default, `private, no-cache`, which let the
     browser keep an expired code's page or someone else's statement's 404 and restore it from its
     back/forward cache. A failure whose `Cache-Control` says `no-store` (`NoStore`'s, or one
-    written by hand) now gets an error page sent `no-store` (a JSON failure already kept it). A request refused
-    before the handler runs, a panic and a deadline never reach `NoStore` and keep the default.
-    A `Cache-Control` written by hand now counts on every line when Corten decides whether an
-    answer may be shared, for what it plainly says: `private="set-cookie"`, `no-store=1` and a
-    directive inside a quoted value no longer stand for `private` or `no-store`, so an answer
-    that sets a cookie or read a caller with only those is sent `private, no-cache`, a
-    `no-store` among several lines is sent as `no-store` alone, and a `private` counts only on
-    the first line, so a cache that reads only the first line is told the same.
+    written by hand) now gets an error page sent `no-store` (a JSON failure already kept it). A
+    request refused before the handler runs, a panic and a deadline never reach `NoStore` and
+    keep the default. When Corten decides whether an answer may be shared, a `Cache-Control`
+    written by hand now counts for what it plainly says, on any of its lines:
+    `private="set-cookie"`, `no-store=1` and a directive inside a quoted value no longer stand
+    for `private` or `no-store`, and neither does a first line with a byte outside ASCII (it
+    stood for `private`), so an answer that sets a cookie or read a caller with only those is
+    sent `private, no-cache`. A `no-store` on several lines or beside a quoted value is sent as
+    `no-store` alone, and such a `private` is not trusted, so a cache that reads only one line,
+    or a quoted value another way, is told the same.
     Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
     requests over 1,000, median of three and the range of the nine pairs, against main at
     a83452c9): a `NoStore` failure as an HTML error page runs 31,990 instructions a request

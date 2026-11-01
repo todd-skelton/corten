@@ -208,23 +208,26 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
             // The directives of every line count, as HTTP joins them (a second line is rare: only
             // a header written by hand has one). Only a plain `private` makes the answer private:
             // `private="set-cookie"` still lets a shared cache keep the rest. A cache that reads
-            // only the first line must see the same, so a `no-store` among several lines goes out
-            // alone, and a `private` counts only on the first line (a later one still leaves an
-            // answer that sets a cookie or read a caller `private, no-cache` below).
-            let (mut no_store, mut private, mut lines) = (false, false, 0);
+            // only one of several lines, or that reads a quoted value another way, must see the
+            // same: a `no-store` on several lines or beside a quoted value goes out as `no-store`
+            // alone, and such a `private` is not trusted (an answer that sets a cookie or read a
+            // caller still goes out `private, no-cache` below).
+            let (mut no_store, mut private, mut lines, mut quoted) = (false, false, 0, false);
             for line in entry.iter() {
                 let (store, shared) = says(line.as_bytes());
                 no_store |= store;
-                private |= shared && lines == 0;
+                private |= shared;
                 lines += 1;
+                quoted |= line.as_bytes().contains(&b'"');
             }
+            let plain = lines == 1 && !quoted;
             if no_store {
-                if lines > 1 {
+                if !plain {
                     entry.insert(NO_STORE);
                 }
                 return;
             }
-            if private {
+            if private && plain {
                 return;
             }
             entry.get().to_str().unwrap_or("").to_string()
