@@ -21,8 +21,8 @@
 //! </Field>
 //! ```
 //!
-//! A screen reader reads the value as a number; `aria-valuetext` gives it in words (an amount, not
-//! "12375").
+//! A screen reader reads the value as a number; `aria-valuetext` gives it as text the app formats
+//! (an amount, not "12375").
 //!
 //! With no `low` or `high` it is a plain measure, in the primary color. With them, its color is the
 //! state the browser works out from `low`, `high` and `optimum`: the success color in the good

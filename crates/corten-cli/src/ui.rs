@@ -1517,6 +1517,8 @@ mod tests {
         let rule =
             |start: &str| meter.lines().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("meter.css has no {start}"));
         assert!(rule(".meter::-webkit-meter-bar {").ends_with("background: var(--border); }"), "the track");
+        let block = &meter[meter.find(".meter {").unwrap()..];
+        assert!(block[..block.find('}').unwrap()].contains("background: var(--border);"), "the track Firefox draws");
         let states = [
             (".meter::-webkit-meter-optimum-value {", "primary"),
             (".meter:is([low], [high])::-webkit-meter-optimum-value {", "success"),
@@ -1548,6 +1550,26 @@ mod tests {
                 let r = (x.max(y) + 0.05) / (x.min(y) + 0.05);
                 assert!(r >= 3.0, "{file}: a {fill} meter on its track is {r:.2}:1, under 3:1");
             }
+        }
+    }
+
+    /// A stack's children take its width whatever the app's element rules say (a new app's
+    /// `form { align-items: end }`), and a figure is the same surface as a card.
+    #[test]
+    fn a_stack_stretches_and_a_figure_is_a_card() {
+        let block = |css: &'static str, start: &str| {
+            let at = css.find(start).unwrap_or_else(|| panic!("no {start}"));
+            let rest = &css[at + start.len()..];
+            rest[..rest.find('}').unwrap()].to_string()
+        };
+        assert!(block(include_str!("../kit/stack.css"), ".stack {").contains("align-items: stretch;"));
+        let (stat, card) =
+            (block(include_str!("../kit/stats.css"), ".stat {"), block(include_str!("../kit/card.css"), ".card {"));
+        let declarations =
+            |b: &str| -> Vec<String> { b.split(';').map(|d| d.trim().to_string()).filter(|d| !d.is_empty()).collect() };
+        for property in ["background:", "color:", "border:", "border-radius:", "box-shadow:"] {
+            let of = |b: &str| declarations(b).into_iter().find(|d| d.starts_with(property));
+            assert_eq!(of(&stat), of(&card), "a figure's {property} is a card's");
         }
     }
 

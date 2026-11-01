@@ -805,14 +805,14 @@ async function run(browser) {
   // The token as the page has it, read without writing a style (the CSP allows none). The
   // screenshot is a page of its own: WebKit's adds a stylesheet the CSP refuses, which is
   // Playwright's, not the page's, so it stays out of this page's console check.
-  const token = await orders.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--warning").trim());
+  const [token, track] = await orders.evaluate(() => ["--warning", "--border"].map((p) => getComputedStyle(document.documentElement).getPropertyValue(p).trim()));
   const probe = await (await browser.newContext()).newPage();
   await probe.goto(`${base}/orders`);
   const shot = (await probe.getByLabel("Sold this month").screenshot()).toString("base64");
   await probe.context().close();
   const blank = await orders.context().newPage();
-  const { drawn, want } = await blank.evaluate(
-    async ([png, color]) => {
+  const { drawn, want, past, empty } = await blank.evaluate(
+    async ([png, color, rest]) => {
       const img = new Image();
       img.src = `data:image/png;base64,${png}`;
       await img.decode();
@@ -820,19 +820,24 @@ async function run(browser) {
       [canvas.width, canvas.height] = [img.width, img.height];
       const g = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
       g.drawImage(img, 0, 0);
-      const drawn = [...g.getImageData(Math.round(img.width * 0.4), Math.floor(img.height / 2), 1, 1).data].slice(0, 3);
-      // The token's color, as the canvas paints it.
-      g.fillStyle = color;
-      g.fillRect(0, 0, 1, 1);
-      return { drawn, want: [...g.getImageData(0, 0, 1, 1).data].slice(0, 3) };
+      const at = (/** @type {number} */ x) => [...g.getImageData(Math.round(img.width * x), Math.floor(img.height / 2), 1, 1).data].slice(0, 3);
+      // Inside the fill, and past the value on the track (clear of its rounded end).
+      const [drawn, past] = [at(0.4), at(0.95)];
+      // Each token's color, as the canvas paints it.
+      const paint = (/** @type {string} */ c) => {
+        g.fillStyle = c;
+        g.fillRect(0, 0, 1, 1);
+        return [...g.getImageData(0, 0, 1, 1).data].slice(0, 3);
+      };
+      return { drawn, want: paint(color), past, empty: paint(rest) };
     },
-    [shot, token],
+    [shot, token, track],
   );
   await blank.close();
   check(
-    "Meter: drawn in the warning color between low and high",
-    drawn.every((c, i) => Math.abs(c - want[i]) <= 6),
-    JSON.stringify({ drawn, want, token }),
+    "Meter: drawn in the warning color between low and high, up to its value",
+    drawn.every((c, i) => Math.abs(c - want[i]) <= 6) && past.every((c, i) => Math.abs(c - empty[i]) <= 6),
+    JSON.stringify({ drawn, want, past, empty }),
   );
   // Stats: a term and its descriptions, as many to a row as fit and two on a phone.
   const stats = await orders.evaluate(() => {

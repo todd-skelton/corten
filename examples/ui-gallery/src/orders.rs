@@ -355,7 +355,7 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
                                     </textarea>
                                 </Field>
                                 <p>"Changes apply to orders placed after you save."</p>
-                                <div>
+                                <div class={Cluster { gap: Gap::Sm }}>
                                     <button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>
                                         "Save settings"
                                     </button>

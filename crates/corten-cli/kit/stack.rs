@@ -10,7 +10,7 @@
 //! Each child takes the stack's width, a button too: put one in a `Cluster` to keep it its own
 //! size. The browser's default block margins on the children (a paragraph's, a heading's) are
 //! dropped, so the gap is the space between them; a rule of the app's own that sets a child's margin
-//! still applies. The gaps are the values the kit's components space their own parts with. An app
+//! still applies (the rule has no specificity). The gaps are the values the kit's components space their own parts with. An app
 //! styled from its own token utilities spaces a screen with its `gap` utility instead (the styles
 //! guide), so its screens follow its scale.
 use corten::prelude::*;
