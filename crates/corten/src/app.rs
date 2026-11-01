@@ -1458,6 +1458,13 @@ impl<S: Steps> Layer<S> {
                 return res;
             }
         }
+        // A debug build holds a write's redirect to the page's `form-action`, as a browser does.
+        #[cfg(debug_assertions)]
+        if mount.is_none() {
+            if let Some(targets) = self.policy.form_targets(req.method(), csp, req.headers()) {
+                req.extensions_mut().insert(targets);
+            }
+        }
         // A page's nonce is made only if its HTML asks for one; an API route never has one.
         let nonce = mount.is_none().then(|| NonceSlot::new(shell));
         if let Some(nonce) = &nonce {

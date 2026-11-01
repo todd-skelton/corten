@@ -1341,6 +1341,85 @@ async fn a_page_with_a_refresh_header_is_an_error_in_debug_builds() {
     assert_eq!(call(app(api, None), "GET", None).await.0, StatusCode::OK, "only pages are checked");
 }
 
+/// A write redirected to an origin the form's page does not allow in `form-action` is an error in
+/// a debug build, as the browser stops it there; one the policy allows, a path, a page's own
+/// host and a `GET` are not, and an area's policy or the sending page's counts.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
+    use crate::security::Policy;
+    let to = |uri: &'static str| {
+        axum::routing::post(move |req: Req| async move {
+            let uri: axum::http::Uri = uri.parse().unwrap();
+            req.redirect::<()>(&uri)
+        })
+    };
+    let routes = Router::new()
+        .route("/sibling", to("http://localhost:9999/account"))
+        .route("/pay", to("https://pay.example/checkout?o=1"))
+        .route("/sub", to("https://id.shop.example/login"))
+        .route("/own", to("http://app.localhost/done"))
+        .route("/path", to("/done"))
+        .route(
+            "/read",
+            get(|req: Req| async move { req.redirect::<()>(&"https://else.example/".parse::<axum::http::Uri>().unwrap()) }),
+        );
+    let policy = Policy::new().form_action("https://pay.example").form_action("https://*.shop.example");
+    let router = App::new(Routes::from(routes))
+        .policy(policy)
+        .area(|area| checkout_url::area(area).policy(|p| p.form_action("http://localhost:9999")))
+        .router();
+    let send = |path: &'static str, method: &'static str, headers: &'static [(&'static str, &'static str)]| {
+        let router = router.clone();
+        async move {
+            let mut req = Request::builder().method(method).uri(path).header("accept", "text/html");
+            for (name, value) in headers {
+                req = req.header(*name, *value);
+            }
+            let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            (res.status(), ())
+        }
+    };
+    for mode in [&[][..], &[("corten", "action")][..]] {
+        let (status, _) = send("/sibling", "POST", mode).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{mode:?}");
+    }
+    for path in ["/pay", "/sub", "/path"] {
+        let (status, _) = send(path, "POST", &[]).await;
+        assert!(status == StatusCode::SEE_OTHER, "{path}: {status}");
+    }
+    let (status, _) = send("/own", "POST", &[("host", "app.localhost")]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "the request's own host is 'self'");
+    let (status, _) = send("/own", "POST", &[]).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "with no Host, an address is another origin");
+    let (status, _) = send("/read", "GET", &[]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "a GET is not held to form-action");
+    // An area's policy holds a write at its path, and the page the form was on counts too.
+    let (status, _) = send("/checkout/go", "POST", &[]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "the area allows it");
+    const FROM_AREA: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/checkout?step=2")];
+    let (status, _) = send("/sibling", "POST", FROM_AREA).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "the form's page, in the area, allows it");
+    const ELSEWHERE: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://other.localhost/checkout")];
+    let (status, _) = send("/sibling", "POST", ELSEWHERE).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "a page of another origin does not count");
+}
+
+#[cfg(debug_assertions)]
+#[crate::routes(area = Checkout)]
+mod checkout_url {
+    #[route("/checkout")]
+    pub struct Checkout;
+
+    #[route("/checkout/go", post = checkout_go)]
+    pub struct Go;
+}
+
+#[cfg(debug_assertions)]
+async fn checkout_go(req: Req) -> HtmlResult {
+    req.redirect(&"http://localhost:9999/paid".parse::<axum::http::Uri>().unwrap())
+}
+
 fn request_in(mode: Option<&str>) -> Request<Body> {
     let req = Request::builder().uri("/").header("accept", "text/html");
     match mode {
