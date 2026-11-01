@@ -207,13 +207,15 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
         header::Entry::Occupied(mut entry) => {
             // The directives of every line count, as HTTP joins them (a second line is rare: only
             // a header written by hand has one). Only a plain `private` makes the answer private:
-            // `private="set-cookie"` still lets a shared cache keep the rest. A cache that reads
-            // only one of several lines, or that reads a quoted value another way, must see the
-            // same: a `no-store` on several lines goes out on one, as `no-store` alone beside a
-            // quoted value, and such a `private` is not trusted (an answer that sets a cookie or
-            // read a caller still goes out `private, no-cache` below). A `no-store` with
-            // `must-understand` is one a cache may ignore (RFC 9111 5.2.2.3), so it does not count.
-            let (mut no_store, mut private, mut must_understand, mut lines, mut quoted) = (false, false, false, 0, false);
+            // `private="set-cookie"` still lets a shared cache keep the rest. The header is left
+            // as written only when every reader sees it alike: one line of plain text with no
+            // quoted value. Otherwise a `no-store` goes out as one line of plain text (the lines
+            // joined, or `no-store` alone beside a quoted value or a byte that is not text), and
+            // such a `private` is not trusted (an answer that sets a cookie or read a caller
+            // still goes out `private, no-cache` below). With `must-understand`, a cache that
+            // knows the status may ignore `no-store` (RFC 9111 5.2.2.3), so it goes out alone.
+            let (mut no_store, mut private, mut must_understand) = (false, false, false);
+            let (mut lines, mut quoted, mut text) = (0, false, true);
             for line in entry.iter() {
                 let says = says(line.as_bytes());
                 no_store |= says.no_store;
@@ -221,11 +223,11 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
                 must_understand |= says.must_understand;
                 lines += 1;
                 quoted |= line.as_bytes().contains(&b'"');
+                text &= line.to_str().is_ok();
             }
-            let no_store = no_store && !must_understand;
-            let plain = lines == 1 && !quoted;
+            let plain = lines == 1 && !quoted && text;
             if no_store {
-                if quoted {
+                if quoted || !text || must_understand {
                     entry.insert(NO_STORE);
                 } else if lines > 1 {
                     let mut joined = Vec::new();
@@ -305,13 +307,6 @@ pub(crate) struct Says {
     pub(crate) no_store: bool,
     pub(crate) private: bool,
     pub(crate) must_understand: bool,
-}
-
-/// Whether `headers`' `Cache-Control` lines say nothing may keep the answer: a plain `no-store`
-/// on one of them and no `must-understand` (which lets a cache that knows the status ignore it).
-pub(crate) fn stores_nothing(headers: &axum::http::HeaderMap) -> bool {
-    let lines = || headers.get_all(header::CACHE_CONTROL).iter().map(|line| says(line.as_bytes()));
-    lines().any(|says| says.no_store) && !lines().any(|says| says.must_understand)
 }
 
 /// A `Cache-Control` line's directives, split at the commas outside a quoted value

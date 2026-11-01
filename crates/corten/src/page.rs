@@ -1892,7 +1892,7 @@ fn carried(kept: HeaderMap, mut res: Response) -> Response {
     }
     use axum::http::header::Entry;
     let headers = res.headers_mut();
-    if crate::cache::stores_nothing(&kept) {
+    if kept.get_all(header::CACHE_CONTROL).iter().any(|line| crate::cache::says(line.as_bytes()).no_store) {
         headers.insert(header::CACHE_CONTROL, crate::cache::NO_STORE);
     }
     let mut kept_name = None;

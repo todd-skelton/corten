@@ -2537,10 +2537,11 @@ Corten is pre-1.0, so any minor version may change the API.
     `private="set-cookie"`, `no-store=1` and a directive inside a quoted value no longer stand
     for `private` or `no-store`, and neither does a first line with a byte outside ASCII (it
     stood for `private`), so an answer that sets a cookie or read a caller with only those is
-    sent `private, no-cache`, as is one whose `no-store` comes with `must-understand` (a cache
-    that knows the status may ignore it). A `no-store` on several lines is sent on one, as
-    `no-store` alone beside a quoted value, and such a `private` is not trusted, so a cache that
-    reads only one line, or a quoted value another way, is told the same.
+    sent `private, no-cache`. A header is left as written only when it is one line of plain text
+    with no quoted value; otherwise a `private` is not trusted, and a `no-store` is sent on one
+    line (several joined, or `no-store` alone beside a quoted value, a byte that is not text or
+    `must-understand`, with which a cache that knows the status may ignore it), so a cache that
+    reads only one line, or a value another way, is told the same.
     Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
     requests over 1,000, median of three and the range of the nine pairs, against main at
     a83452c9): a `NoStore` failure as an HTML error page runs 31,990 instructions a request
