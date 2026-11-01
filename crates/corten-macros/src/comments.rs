@@ -43,6 +43,7 @@ const BEFORE_REGEX: &[&str] = &[
     "else",
     "yield",
     "await",
+    "extends",
 ];
 
 /// `source` without its comments: a line comment is removed to its line's end, a block comment
@@ -60,6 +61,9 @@ pub fn strip(source: &str) -> String {
     let mut condition = false;
     // Whether the last token was `.`.
     let mut dot = false;
+    // Whether the last token was `const`, `let` or `var`, so a word after it is the name it
+    // declares (`for (const of of /re/)`).
+    let mut declares = false;
     // Whether the last token was a block's `}` or a `++`/`--`, after which a `/` may divide or
     // start a regular expression and only a parser could say which: the script is then served as
     // it is.
@@ -87,7 +91,7 @@ pub fn strip(source: &str) -> String {
             continue;
         }
         // What this token leaves for the next `(`, word and `/`; most tokens clear them.
-        let (mut next_condition, mut next_dot, mut next_unsure) = (false, false, false);
+        let (mut next_condition, mut next_dot, mut next_unsure, mut next_declares) = (false, false, false, false);
         match b {
             // JavaScript's whitespace includes the vertical tab, which Rust's ASCII whitespace does not.
             _ if b.is_ascii_whitespace() || b == 0x0b => {
@@ -214,7 +218,8 @@ pub fn strip(source: &str) -> String {
                 next_condition = keyword && (matches!(word, "if" | "while" | "for" | "with") || (word == "await" && condition));
                 // In `for (x of /re/)`, `of` after a binding is the operator; anywhere else it is
                 // a name, which may be divided.
-                let of = word == "of" && before == Before::Value && opens.last() == Some(&Open::Condition);
+                let of = word == "of" && !declares && before == Before::Value && opens.last() == Some(&Open::Condition);
+                next_declares = keyword && matches!(word, "const" | "let" | "var");
                 before = if keyword && (of || BEFORE_REGEX.contains(&word)) { Before::Operator } else { Before::Value };
                 at = end;
             }
@@ -229,6 +234,7 @@ pub fn strip(source: &str) -> String {
         condition = next_condition;
         dot = next_dot;
         unsure = next_unsure;
+        declares = next_declares;
         new_line = false;
     }
     out.push_str(&source[copied..]);
@@ -433,9 +439,46 @@ mod tests {
             ("for (const { a: { b } } of /\"/.exec(s)) g(b); // c", "for (const { a: { b } } of /\"/.exec(s)) g(b);"),
             ("for await (const {a} of /\"/.exec(s)) g(a); // c", "for await (const {a} of /\"/.exec(s)) g(a);"),
             ("f(() => {}, /\"/); const u = \"//kept\"; // c", "f(() => {}, /\"/); const u = \"//kept\";"),
+            (
+                "for (const of of /\"/.exec(s)) g(of); const u = \"//kept\"; // c",
+                "for (const of of /\"/.exec(s)) g(of); const u = \"//kept\";",
+            ),
+            ("for (let of of /\"/.exec(s)) g(of); // c", "for (let of of /\"/.exec(s)) g(of);"),
+            (
+                "class A extends /\"/.constructor {} const s = \"//kept\"; // c",
+                "class A extends /\"/.constructor {} const s = \"//kept\";",
+            ),
         ] {
             assert_eq!(strip(source), out, "{source:?}");
         }
+    }
+
+    /// Every component script the repo ships loses its comments: none is served as written by the
+    /// fallback for a `/` only a parser could read. (Skipped outside the repository.)
+    #[test]
+    fn the_repos_component_scripts_are_stripped() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut seen = 0;
+        let mut dirs =
+            vec![root.join("crates/corten-ui/src"), root.join("crates/corten-cli/template/src"), root.join("examples")];
+        while let Some(dir) = dirs.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if !path.ends_with("node_modules") && !path.ends_with("target") {
+                        dirs.push(path);
+                    }
+                } else if path.extension().is_some_and(|e| e == "js") && path.components().any(|c| c.as_os_str() == "src") {
+                    let source = std::fs::read_to_string(&path).unwrap();
+                    if source.contains("//") || source.contains("/*") {
+                        seen += 1;
+                        assert_ne!(strip(&source), source, "{} is served with its comments", path.display());
+                    }
+                }
+            }
+        }
+        assert!(seen == 0 || seen > 10, "found {seen} scripts");
     }
 
     #[test]

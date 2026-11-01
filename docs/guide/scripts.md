@@ -74,10 +74,9 @@ pages that render them and imported when markup that names them joins later. The
 without their comments, each line where it was, so DevTools and a stack trace show the line you
 wrote; JSDoc costs the browser nothing, so document a handler as fully as it needs (a licence
 comment, `/*! .. */`, `//! ..` or one with `@license`, stays, and so does `//# sourceMappingURL=`).
-A script with a `/` right after a block's `}`, after `++`, or starting a line after a value keeps
-its comments: only a parser could tell whether that `/` divides (`docs/design.md`, Limits).
-List each component once,
-`App::new(routes).components(&[OfferList])`.
+A script with a `/` right after a statement-level `}`, after `++` or `--`, or starting a line after
+a value keeps its comments: only a parser could tell whether that `/` divides (`docs/design.md`,
+Limits). List each component once, `App::new(routes).components(&[OfferList])`.
 
 ## Server or browser
 

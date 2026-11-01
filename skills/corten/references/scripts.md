@@ -47,10 +47,10 @@ export function showAll(rows, rest, button) {
 
 Write JSDoc and comments freely: the browser gets the script without them (each line stays
 where it was, so stack traces match), and a licence comment (`/*! .. */`, `//! ..`) stays, as does
-`//# sourceMappingURL=`. Never start a statement with a regular expression right after a block's
-`}` or at the start of a line, and never put a `/` after `++` or at the start of a continued line:
-the script is then served with its comments, since only a parser could tell that `/` from a
-division.
+`//# sourceMappingURL=`. A `/` right after a statement-level `}`, after `++` or `--`, or
+starting a line that follows a value (an unfinished expression, or a statement ended without `;`)
+makes the script go out with its comments, since only a parser could tell that `/` from a
+division: end statements with `;` and keep a division on the line it continues.
 
 1. `let (a, b) = refs();` declares refs. A ref's element type comes from the tag it is on; a
    parameter typed `HTMLX[]` gets every element with that ref.
