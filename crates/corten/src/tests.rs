@@ -3155,31 +3155,47 @@ async fn a_failure_under_no_store_is_not_stored() {
     let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store", "an action");
-    // A header written by hand counts on any of its lines, and goes out as written.
+    // A header written by hand counts on any of its lines; the error page is `no-store` alone,
+    // since the failure's other directives described its own answer.
     let res =
         router.clone().oneshot(Request::get("/lines").header("accept", "text/html").body(Body::empty()).unwrap()).await.unwrap();
     let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
-    assert_eq!(lines, ["max-age=60", "no-store"]);
-    // Also when the error page read a caller, which would make a shared answer private.
+    assert_eq!(lines, ["no-store"]);
+    // Also when the error page read a caller.
     let res = app(cached_routes(), Some("ann"))
         .oneshot(Request::get("/lines").header("accept", "text/html").header("cookie", "s=1").body(Body::empty()).unwrap())
         .await
         .unwrap();
     let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.to_str().unwrap().to_string()).collect();
-    assert_eq!(lines, ["max-age=60", "no-store"], "with a caller");
+    assert_eq!(lines, ["no-store"], "with a caller");
     // A line that is not text still counts.
     let res =
         router.clone().oneshot(Request::get("/odd").header("accept", "text/html").body(Body::empty()).unwrap()).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(res.headers()[header::CACHE_CONTROL].as_bytes(), b"no-store, x=\"\xE9\"");
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store");
 }
 
-/// A `Cache-Control` Corten cannot read (a line that is not text) or that names `no-store` only
-/// inside a quoted value is not taken as private or `no-store`: an answer that sets a cookie goes
-/// out `private, no-cache`.
+/// A `Cache-Control` whose `private` or `no-store` is not a plain directive (in a quoted value, a
+/// line that is not text, `no-store=1`) is not taken as one: an answer that sets a cookie or read a
+/// caller goes out `private, no-cache`. One that says `no-store` on a later line goes out
+/// `no-store` alone, which a cache that reads only the first line sees too.
 #[tokio::test]
-async fn an_unreadable_or_quoted_cache_control_is_not_shared() {
+async fn a_cache_control_counts_only_for_what_it_plainly_says() {
     let router = Router::new()
+        .route(
+            "/valued",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "public, max-age=600, no-store=1")];
+                (StatusCode::BAD_REQUEST, line, "")
+            }),
+        )
+        .route(
+            "/second-line",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "public, max-age=600"), (header::CACHE_CONTROL, "no-store")];
+                (axum::response::AppendHeaders(lines), "second")
+            }),
+        )
         .route(
             "/odd-line",
             get(|| async {
@@ -3208,11 +3224,17 @@ async fn an_unreadable_or_quoted_cache_control_is_not_shared() {
             }),
         );
     let router = app(router, Some("ann"));
-    for path in ["/odd-line", "/quoted", "/quoted-failure"] {
+    for (path, want) in [
+        ("/odd-line", "private, no-cache"),
+        ("/quoted", "private, no-cache"),
+        ("/quoted-failure", "private, no-cache"),
+        ("/valued", "private, no-cache"),
+        ("/second-line", "no-store"),
+    ] {
         let req = Request::get(path).header("accept", "text/html").header("cookie", "s=1");
         let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
         let lines: Vec<_> = res.headers().get_all(header::CACHE_CONTROL).iter().map(|v| v.as_bytes().to_vec()).collect();
-        assert_eq!(lines, [b"private, no-cache".to_vec()], "{path}");
+        assert_eq!(lines, [want.as_bytes().to_vec()], "{path}");
     }
 }
 

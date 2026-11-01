@@ -2529,14 +2529,14 @@ Corten is pre-1.0, so any minor version may change the API.
 91. A failure under `NoStore` is sent with `Cache-Control: no-store`, as its doc says: the error
     page that replaces the failed answer kept the default, `private, no-cache`, which let the
     browser keep an expired code's page or someone else's statement's 404 and restore it from its
-    back/forward cache. A failure's `Cache-Control` with `no-store` (`NoStore`'s, or one written
-    by hand) now goes out with the error page (a JSON failure already kept it). A request refused
+    back/forward cache. A failure whose `Cache-Control` says `no-store` (`NoStore`'s, or one
+    written by hand) now gets an error page sent `no-store` (a JSON failure already kept it). A request refused
     before the handler runs, a panic and a deadline never reach `NoStore` and keep the default.
     A `Cache-Control` written by hand now counts on every line when Corten decides whether an
-    answer may be shared, and `private="set-cookie"` no longer stands for `private`: an answer
-    that sets a cookie or read a caller with only that limited form is sent `private, no-cache`,
-    as is one with a line that is not text. A comma inside a quoted value
-    (`no-cache="a, no-store"`) no longer splits a directive.
+    answer may be shared, for what it plainly says: `private="set-cookie"`, `no-store=1` and a
+    directive inside a quoted value no longer stand for `private` or `no-store`, so an answer
+    that sets a cookie or read a caller with only those is sent `private, no-cache`, and a
+    `no-store` after the first line is sent as `no-store` alone.
     Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
     requests over 1,000, median of three and the range of the nine pairs, against main at
     a83452c9): a `NoStore` failure as an HTML error page runs 31,990 instructions a request

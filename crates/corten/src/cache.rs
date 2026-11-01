@@ -208,29 +208,19 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
             // The directives of every line count, as HTTP joins them (a second line is rare: only
             // a header written by hand has one). Only a plain `private` makes the answer private:
             // `private="set-cookie"` still lets a shared cache keep the rest.
-            let mut unreadable = false;
-            for line in entry.iter() {
-                let line = line.as_bytes();
-                // One pass over each directive: the name, and whether it has a value.
-                for d in directives(line) {
-                    let (name, value) = match d.iter().position(|&b| b == b'=') {
-                        Some(at) => (&d[..at], true),
-                        None => (d, false),
-                    };
-                    let name = name.trim_ascii();
-                    if name.eq_ignore_ascii_case(b"no-store") || (!value && name.eq_ignore_ascii_case(b"private")) {
-                        return;
-                    }
+            for (i, line) in entry.iter().enumerate() {
+                let (no_store, private) = says(line.as_bytes());
+                if no_store && i > 0 {
+                    // On a later line: a cache that reads only the first would not see it, so the
+                    // answer goes out with `no-store` alone.
+                    entry.insert(NO_STORE);
+                    return;
                 }
-                // `HeaderValue::to_str`'s test: visible ASCII, spaces and tabs.
-                unreadable |= line.iter().any(|&b| !(b == b'\t' || (0x20..0x7f).contains(&b)));
+                if no_store || private {
+                    return;
+                }
             }
-            // A line that is not text cannot be read, so the answer is not shared.
-            if unreadable {
-                entry.insert(PRIVATE);
-                return;
-            }
-            entry.get().to_str().unwrap_or("private").to_string()
+            entry.get().to_str().unwrap_or("").to_string()
         }
     };
     let typed = res.extensions().get::<Typed>().is_some();
@@ -270,10 +260,20 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     }
 }
 
-/// True when a `Cache-Control` line has `directive`, with or without a value. Bytes, not text: the
-/// whitespace HTTP allows around a directive (spaces and tabs) is ASCII.
-pub(crate) fn has(line: &[u8], directive: &[u8]) -> bool {
-    directives(line).any(|d| d.split(|&b| b == b'=').next().unwrap_or(d).trim_ascii().eq_ignore_ascii_case(directive))
+/// `Cache-Control: no-store`, as `NoStore` writes it.
+pub(crate) const NO_STORE: HeaderValue = HeaderValue::from_static("no-store");
+
+/// Whether a `Cache-Control` line says `no-store` and `private`, each as a directive without a
+/// value (`no-store=1` is not one, and `private="set-cookie"` still lets a shared cache keep the
+/// rest). Bytes, not text: the whitespace HTTP allows around a directive is ASCII.
+pub(crate) fn says(line: &[u8]) -> (bool, bool) {
+    let (mut no_store, mut private) = (false, false);
+    for d in directives(line) {
+        let d = d.trim_ascii();
+        no_store |= d.eq_ignore_ascii_case(b"no-store");
+        private |= d.eq_ignore_ascii_case(b"private");
+    }
+    (no_store, private)
 }
 
 /// A `Cache-Control` line's directives, split at the commas outside a quoted value
