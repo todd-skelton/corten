@@ -2212,10 +2212,11 @@ Corten is pre-1.0, so any minor version may change the API.
     `corten_ui::COMPONENTS` beside the kit's list wherever it is, and not again when a file has it
     ([#551 corten ui init on an app that already has tokens adds a second theme instead of mapping onto the app's](https://github.com/todd-skelton/corten/issues/551)).
 104. The kit's Button, Input, Textarea, Select, Slider, Badge, Card, CardHeader, CardContent,
-    CardFooter, Dialog, DialogFooter, Sheet and Popover are looks: `<button class={Button { variant: ButtonVariant::Primary, size:
-    ButtonSize::Md }}>` where it was `<Button ..><button>..</button></Button>`, and
+    CardFooter, Dialog, DialogFooter, Sheet, Popover and Accordion are looks:
+    `<button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>` where it was `<Button ..><button>..</button></Button>`, and
     `<section class={Card {}}>` (or an `<article>`, an `<li>`, a form, a patch target) where
-    `Card` drew a `<div>`, and `<dialog class={Dialog {}}>` where `Dialog` wrapped the `<dialog>`. Alert, Switch, Checkbox and Field still draw their element, for a
+    `Card` drew a `<div>`, and `<dialog class={Dialog {}}>` where `Dialog` wrapped the
+    `<dialog>`. Alert, Switch, Checkbox and Field still draw their element, for a
     role or a label. A copy made before is replaced with `corten ui add --force <name>`, and its
     uses change as shown
     ([#563 Kit Card and Alert render their own div, so a card cannot be the page's section, article or list item](https://github.com/todd-skelton/corten/issues/563),

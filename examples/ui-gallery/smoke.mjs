@@ -782,7 +782,7 @@ async function run(browser) {
   // the app's, and no element of the kit's takes no box around one.
   const looks = await orders.evaluate(() => ({
     badge: document.querySelector("td > [class*='badge__badge']")?.tagName ?? "missing",
-    wrappers: [...document.querySelectorAll(["button", "input", "select", "textarea", "slider", "badge", "card"].map((n) => `[class*='${n}__']`).join())]
+    wrappers: [...document.querySelectorAll(["button", "input", "select", "textarea", "slider", "badge", "card", "dialog", "sheet", "popover", "accordion"].map((n) => `[class*='${n}__']`).join())]
       .filter((e) => getComputedStyle(e).display === "contents").length,
     button: document.querySelector("[class*='button__button']")?.parentElement?.className.includes("button__") ?? "missing",
   }));

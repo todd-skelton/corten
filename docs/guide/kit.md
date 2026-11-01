@@ -147,7 +147,7 @@ they are the whole page's.
 | `Dialog`, `DialogFooter` | the look of a `<dialog>` (`<dialog class={Dialog {}}>`), its `::backdrop` and its actions (`<div class={DialogFooter {}}>`); a button opens it with `command="show-modal" commandfor={..}` and closes it with `command="close"`, with no script | |
 | `Sheet` | the same, sliding in from an edge of the window (`<dialog class={Sheet { side: Side::Right }}>`) | `Side`: `Top`, `Right`, `Bottom`, `Left` |
 | `Popover` | the look of a `popover` element (`<div class={Popover {}} popover>`), opened by `popovertarget`, under its button where the browser has anchor positioning | |
-| `Accordion` | the look of the `<details name>` inside it, which open one at a time, and find-in-page opens the one with the match | |
+| `Accordion` | the look of each `<details name>` (`<details class={Accordion {}} name="faq">`), which open one at a time, and find-in-page opens the one with the match | |
 | `Tabs`, `DropdownMenu`, `Combobox`, `Toasts` | the look of corten-ui's `TabGroup`, `MenuButton`, `ComboBox` and `Toaster` inside them, by role and state (`[role="tab"][aria-selected="true"]`, `[role="menu"]:popover-open`, `[role="option"][data-highlighted]`); `Toasts` places the toaster at the bottom right. `corten ui add` makes the app depend on `corten-ui` and list `corten_ui::COMPONENTS` | |
 
 Variants are Rust enums matched to the stylesheet's classes, so a variant without a rule does

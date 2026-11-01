@@ -141,7 +141,7 @@ framework's shape, and what it does not do yet.
    wrapper, and a wrapper's own element (a `<div>` card) cannot be the page's `<section>`, `<li>`
    or patch target. A look has no markup, so it has no script, refs or view; a component that
    draws structure or carries semantics (`Alert`'s role, a `<label>` around a control, `Table`'s
-   scrolling box, `Accordion`'s group of `<details>`) renders its element. A kit component that
+   scrolling box) renders its element. A kit component that
    styles a corten-ui widget (`Tabs` around `TabGroup`) wraps it, since the widget, not the app,
    writes the elements it styles; a widget whose one element the app styles takes a `class`
    instead (`CopyButton`).
