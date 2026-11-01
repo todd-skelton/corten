@@ -170,7 +170,9 @@ impl Policy {
     /// submission follows. Without it a form goes to this origin only. A form posted straight to
     /// another app also needs that app to accept posts from this origin (most frameworks refuse a
     /// cross-origin post as CSRF), so posting here and redirecting is usually simpler. Writes
-    /// coming in from another site are [`Policy::allow_origin`].
+    /// coming in from another site are [`Policy::allow_origin`]. A debug build answers a write
+    /// from one of the app's pages that redirects to an origin its page does not allow as an error
+    /// naming it, so a test sees what a browser would stop.
     pub fn form_action(mut self, source: &str) -> Self {
         self.sources = self.sources.form_action(source);
         self
@@ -850,32 +852,70 @@ impl Applied {
         self.areas.iter().find(|(prefix, ..)| crate::api::under(prefix, path)).map_or((&self.csp, 0), |(_, csp, key)| (csp, *key))
     }
 
-    /// What a debug build holds a redirect answering this request to, when it is a write a form on
-    /// one of the app's pages may have sent ([`FormTargets`]): `csp` is the policy at its path,
-    /// and the page it came from (`Referer`) counts too. A `GET` form cannot be told from a link,
-    /// and a form on another site's page (an identity provider's `form_post`) is held to that
-    /// page's policy, so neither is checked.
+    /// What a debug build holds a redirect answering this request to, when it is a submission a
+    /// form on one of the app's pages may have sent ([`FormTargets`]). A `GET` form cannot be told
+    /// from a link, a script's own `fetch` is held to `connect-src`, and a form on another site's
+    /// page (an identity provider's `form_post`) is held to that page's policy, so none is checked.
+    /// The form's page is the `Referer` when it says the page; otherwise a browser's submission
+    /// may go wherever any of the app's policies allows, and one with neither header (a test) is
+    /// held to the policy at its path, `csp`.
     #[cfg(debug_assertions)]
-    pub(crate) fn form_targets(&self, method: &Method, csp: &Csp, headers: &HeaderMap) -> Option<FormTargets> {
+    pub(crate) fn form_targets(
+        &self,
+        method: &Method,
+        uri: &axum::http::Uri,
+        csp: &Csp,
+        headers: &HeaderMap,
+    ) -> Option<FormTargets> {
         if matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) {
             return None;
         }
+        let bytes = |name: &str| headers.get(name).map(HeaderValue::as_bytes);
         let text = |name: HeaderName| headers.get(name).and_then(|v| v.to_str().ok());
-        let host = text(header::HOST).map(str::to_ascii_lowercase);
-        let ours = match headers.get("sec-fetch-site").map(HeaderValue::as_bytes) {
+        // The runtime's `data-patch` submission is a `fetch` too, and is checked: the same form
+        // without JavaScript is a submission the browser holds to `form-action`.
+        let scripted = bytes("sec-fetch-mode").is_some_and(|mode| mode != b"navigate");
+        let action = headers.get(crate::page::MODE_HEADER).is_some_and(|mode| mode.as_bytes() == b"action");
+        if scripted && !action {
+            return None;
+        }
+        let host = text(header::HOST)
+            .or_else(|| uri.authority().map(|at| at.as_str()))
+            .map(|at| at.rsplit_once('@').map_or(at, |(_, at)| at).to_ascii_lowercase());
+        let origin = text(header::ORIGIN).filter(|origin| *origin != "null").and_then(address);
+        let ours = match bytes("sec-fetch-site") {
             Some(site) => site == b"same-origin",
-            None => text(header::ORIGIN).is_none_or(|origin| host.as_deref().is_some_and(|host| authority(origin) == host)),
+            None => origin.as_ref().is_none_or(|origin| host.as_deref() == Some(origin.at.as_str())),
         };
         if !ours {
             return None;
         }
-        let mut sources = csp.form_action.clone();
-        let page = text(header::REFERER).filter(|referer| host.as_deref().is_some_and(|host| authority(referer) == host));
-        if let Some(page) = page.and_then(|referer| referer.split_once("://")).map(|(_, rest)| rest) {
-            let path = page.find('/').map_or("/", |at| page[at..].split(['?', '#']).next().unwrap_or("/"));
-            sources.extend(self.csp_for(path).0.form_action.iter().cloned());
-        }
-        Some(FormTargets { sources, host })
+        // The page's origin: `Origin`, which a browser sends with every submission and a proxy
+        // leaves as the visitor's, else the host the request names.
+        let own = match origin {
+            Some(origin) => Some(Own { scheme: origin.scheme, at: origin.at }),
+            None => host.map(|at| Own { scheme: None, at }),
+        };
+        let all = std::iter::once(&self.csp).chain(self.areas.iter().map(|(_, csp, _)| csp));
+        // A page under a referrer policy that sends only the origin to itself has a `Referer` of
+        // `/` wherever it is.
+        let whole = all.clone().all(|csp| csp.referrer.same == Part::Address);
+        let page = text(header::REFERER)
+            .and_then(address)
+            .filter(|page| own.as_ref().is_some_and(|own| own.is(page.scheme.as_deref(), &page.at)))
+            .map(|page| page.path)
+            .filter(|path| whole || path != "/");
+        let sources = match page {
+            Some(path) => self.csp_for(&path).0.form_action.clone(),
+            None if bytes("sec-fetch-site").is_some() || headers.contains_key(header::ORIGIN) => {
+                let mut sources: Vec<String> = all.flat_map(|csp| csp.form_action.iter().cloned()).collect();
+                sources.sort_unstable();
+                sources.dedup();
+                sources
+            }
+            None => csp.form_action.clone(),
+        };
+        Some(FormTargets { sources, own, action })
     }
 
     /// The 403 for a write another site sent, if this is one. `origins` are the extra origins
@@ -1075,43 +1115,102 @@ pub(crate) fn misdirected() -> Response {
 #[derive(Clone)]
 pub(crate) struct FormTargets {
     sources: Vec<String>,
-    /// The request's `Host`, lowercase: an address on it is `'self'`.
-    host: Option<String>,
+    /// The page's origin, `'self'`.
+    own: Option<Own>,
+    /// The runtime sent it (`data-patch`): the browser stops only the same form without
+    /// JavaScript.
+    pub(crate) action: bool,
+}
+
+/// An origin: its scheme when known, and its host and port, lowercase.
+#[cfg(debug_assertions)]
+#[derive(Clone)]
+struct Own {
+    scheme: Option<String>,
+    at: String,
+}
+
+#[cfg(debug_assertions)]
+impl Own {
+    /// Whether an address over `scheme` (`None`: the page's own) at `at` is this origin, as
+    /// CSP matches `'self'`: the same host and port, an `http` origin's `https` too.
+    fn is(&self, scheme: Option<&str>, at: &str) -> bool {
+        let scheme = scheme.or(self.scheme.as_deref());
+        let scheme_ok = match (self.scheme.as_deref(), scheme) {
+            (Some(ours), Some(theirs)) => ours == theirs || (ours == "http" && theirs == "https"),
+            (None, theirs) => theirs.is_none_or(|theirs| matches!(theirs, "http" | "https")),
+            (Some(_), None) => true,
+        };
+        scheme_ok && without_default_port(self.scheme.as_deref(), &self.at) == without_default_port(scheme, at)
+    }
+}
+
+/// `host:port` without the port when it is `scheme`'s default.
+#[cfg(debug_assertions)]
+fn without_default_port<'a>(scheme: Option<&str>, at: &'a str) -> &'a str {
+    match split_port(at) {
+        (host, Some(port)) if Some(port) == scheme.and_then(default_port) => host,
+        _ => at,
+    }
 }
 
 #[cfg(debug_assertions)]
 impl FormTargets {
     /// Whether the page's `form-action` lets a submission be redirected to `to` (a `Location`):
-    /// a path is `'self'`; another address must be on the request's host or match a source, as
+    /// a path is `'self'`; another address must be the page's origin or match a source, as
     /// CSP matches one after a redirect (its path left out). An address that is not a URL with a
     /// host is not checked.
     pub(crate) fn allows(&self, to: &[u8]) -> bool {
         let Ok(to) = std::str::from_utf8(to) else { return true };
-        let (scheme, rest) = match to.strip_prefix("//") {
-            Some(rest) => (None, rest),
-            None => match to.split_once("://") {
-                Some((scheme, rest)) if is_scheme(scheme) => (Some(scheme.to_ascii_lowercase()), rest),
-                _ => return true,
-            },
-        };
-        let at = authority(rest);
-        let (host, port) = split_port(&at);
-        // The request's own host, its scheme's default port written out or not.
-        let default = port.is_some() && port == scheme.as_deref().and_then(default_port);
-        let bare = if default { host } else { at.as_str() };
-        if at.is_empty() || self.host.as_deref().is_some_and(|ours| ours == at || ours == bare) {
+        let Some(to) = address(to) else { return true };
+        if self.own.as_ref().is_some_and(|own| own.is(to.scheme.as_deref(), &to.at)) {
             return true;
         }
-        self.sources.iter().any(|source| source_allows(&source.to_ascii_lowercase(), scheme.as_deref(), host, port))
+        let page = self.own.as_ref().and_then(|own| own.scheme.as_deref());
+        let (host, port) = split_port(&to.at);
+        self.sources.iter().any(|source| source_allows(&source.to_ascii_lowercase(), to.scheme.as_deref(), page, host, port))
     }
 }
 
-/// The host and port of a URL (`https://user@Host:8443/path` gives `host:8443`), lowercase.
+/// An address with a host, as a browser reads a `Location`.
 #[cfg(debug_assertions)]
-fn authority(url: &str) -> String {
-    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
-    let at = rest.split(['/', '?', '#']).next().unwrap_or("");
-    at.rsplit_once('@').map_or(at, |(_, at)| at).to_ascii_lowercase()
+struct Address {
+    /// `None` for one that starts `//`, which keeps the page's scheme.
+    scheme: Option<String>,
+    /// Its host and port, lowercase, without user info.
+    at: String,
+    /// Its path, `/` when it has none.
+    path: String,
+}
+
+/// `to` as an [`Address`], or `None` for a path, an address with no host (`mailto:`) or one
+/// the browser would read against the page (`https:done`). A backslash is a slash, as browsers
+/// read one in an `http` address.
+#[cfg(debug_assertions)]
+fn address(to: &str) -> Option<Address> {
+    let slash = |c: char| c == '/' || c == '\\';
+    let (scheme, rest) = match to.strip_prefix(slash).and_then(|rest| rest.strip_prefix(slash)) {
+        Some(rest) => (None, rest),
+        None => {
+            let (scheme, rest) = to.split_once(':')?;
+            if !is_scheme(scheme) {
+                return None;
+            }
+            let scheme = scheme.to_ascii_lowercase();
+            let rest = if matches!(scheme.as_str(), "http" | "https" | "ws" | "wss") {
+                rest.starts_with(slash).then(|| rest.trim_start_matches(slash))?
+            } else {
+                rest.strip_prefix("//")?
+            };
+            (Some(scheme), rest)
+        }
+    };
+    let end = rest.find(['/', '\\', '?', '#']).unwrap_or(rest.len());
+    let (at, after) = rest.split_at(end);
+    let at = at.rsplit_once('@').map_or(at, |(_, at)| at).to_ascii_lowercase();
+    let path = after.split(['?', '#']).next().unwrap_or("").replace('\\', "/");
+    let path = if path.is_empty() { "/".to_owned() } else { path };
+    (!at.is_empty()).then_some(Address { scheme, at, path })
 }
 
 #[cfg(debug_assertions)]
@@ -1141,18 +1240,20 @@ fn default_port(scheme: &str) -> Option<&'static str> {
 }
 
 /// Whether CSP source expression `source` (lowercase) matches a redirect to `host` and `port`
-/// over `scheme` (`None`: an address that starts `//`): a scheme (`https:`), `*`, or a host
-/// with a scheme, a `*.` wildcard and a port where it has them (CSP 3, 6.7.2.8; after a
-/// redirect a source's path is not matched). `http` also allows `https`, as browsers upgrade.
+/// over `scheme` (`None`: an address that starts `//`) from a page over `page` (`None`: not
+/// known): a scheme (`https:`), `*`, or a host with a scheme, a `*.` wildcard and a port where
+/// it has them (CSP 3, 6.7.2.8; after a redirect a source's path is not matched). `http` also
+/// allows `https`, as browsers upgrade, and a source without a scheme takes the page's.
 #[cfg(debug_assertions)]
-fn source_allows(source: &str, scheme: Option<&str>, host: &str, port: Option<&str>) -> bool {
+fn source_allows(source: &str, scheme: Option<&str>, page: Option<&str>, host: &str, port: Option<&str>) -> bool {
     let upgrades =
         |ours: &str, theirs: &str| ours == theirs || (ours == "http" && theirs == "https") || (ours == "ws" && theirs == "wss");
+    let scheme = scheme.or(page);
     if source.starts_with('\'') {
         return false;
     }
     if source == "*" {
-        return scheme.is_none_or(|scheme| matches!(scheme, "http" | "https" | "ws" | "wss"));
+        return scheme.is_none_or(|scheme| matches!(scheme, "http" | "https" | "ws" | "wss") || Some(scheme) == page);
     }
     if let Some(only) = source.strip_suffix(':').filter(|only| is_scheme(only)) {
         return scheme.is_none_or(|scheme| upgrades(only, scheme));
@@ -1161,7 +1262,7 @@ fn source_allows(source: &str, scheme: Option<&str>, host: &str, port: Option<&s
         Some((theirs, rest)) => (Some(theirs), rest),
         None => (None, source),
     };
-    let scheme_ok = match (theirs, scheme) {
+    let scheme_ok = match (theirs.or(page), scheme) {
         (Some(theirs), Some(scheme)) => upgrades(theirs, scheme),
         (None, Some(scheme)) => matches!(scheme, "http" | "https"),
         (_, None) => true,
@@ -1173,11 +1274,12 @@ fn source_allows(source: &str, scheme: Option<&str>, host: &str, port: Option<&s
         }
         None => source_host == "*" || source_host == host,
     };
+    // A URL's port, its scheme's default when it has none (which the URL parser leaves out).
     let effective = port.or_else(|| scheme.and_then(default_port));
     let port_ok = match source_port {
         Some("*") => true,
         Some(wanted) => effective == Some(wanted) || (wanted == "80" && effective == Some("443")),
-        None => port.is_none() || effective == theirs.or(scheme).and_then(default_port),
+        None => port.is_none() || effective == scheme.and_then(default_port),
     };
     scheme_ok && host_ok && port_ok
 }
@@ -1484,7 +1586,8 @@ mod tests {
     fn a_form_action_source_matches_as_a_browser_matches_it() {
         let targets = |sources: &[&str]| FormTargets {
             sources: sources.iter().map(|s| s.to_string()).collect(),
-            host: Some("app.example".into()),
+            own: Some(Own { scheme: Some("https".into()), at: "app.example".into() }),
+            action: false,
         };
         let cases: &[(&[&str], &str, bool)] = &[
             (&[], "/done", true),
@@ -1514,6 +1617,21 @@ mod tests {
             (&["https://pay.example"], "https://user@pay.example/", true),
             (&["http://localhost:9999"], "http://localhost:9999/account", true),
             (&["http://localhost:9999"], "http://localhost:9998/account", false),
+            // The host is the address's own, not one a query or fragment holds.
+            (&["https://pay.example"], "https://pay.example/go?next=https://other.example/", true),
+            (&[], "https://evil.example/?next=https://app.example/", false),
+            (&[], "https://evil.example#https://app.example/", false),
+            // The page is https: 'self' over http is another origin, and so is a source with no
+            // scheme over http.
+            (&[], "http://app.example/done", false),
+            (&["pay.example"], "http://pay.example/", false),
+            (&["http://pay.example"], "https://pay.example:443/", true),
+            (&["http://pay.example:80"], "https://pay.example/", true),
+            (&["*"], "ftp://anything.example/", false),
+            // A backslash is a slash in an http address.
+            (&[], "/\\evil.example/", false),
+            (&[], "https:\\\\evil.example/", false),
+            (&["https://pay.example"], "https://pay.example\\x", true),
         ];
         for (sources, to, allowed) in cases {
             assert_eq!(targets(sources).allows(to.as_bytes()), *allowed, "{sources:?} {to}");

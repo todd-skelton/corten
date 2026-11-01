@@ -1743,6 +1743,10 @@ fn refresh_header_is_an_error(res: Response) -> Response {
 #[cfg(debug_assertions)]
 fn redirect_outside_form_action(res: Response, targets: Option<&crate::security::FormTargets>) -> Response {
     let Some(targets) = targets else { return res };
+    // A relayed answer is passed on as it came, under the policy it came with.
+    if res.extensions().get::<crate::answer::Relayed>().is_some() {
+        return res;
+    }
     let to = match res.status() {
         status if status.is_redirection() => res.headers().get(header::LOCATION),
         StatusCode::NO_CONTENT => res.headers().get(LOCATION_HEADER),
@@ -1765,8 +1769,13 @@ fn outside_form_action(targets: &crate::security::FormTargets, to: &HeaderValue)
         let end = rest.find(['/', '?', '#']).map_or(to.len(), |at| scheme.len() + 3 + at);
         &to[..end]
     });
+    let stops = if targets.action {
+        "so without JavaScript a browser stops the same form there"
+    } else {
+        "so a browser stops the form there"
+    };
     Some(format!(
-        "corten: this write redirects to {origin}, which the form's page does not allow in its CSP's form-action, so a browser stops the form there with only a console error: allow it with Policy::form_action(\"{origin}\") (Sources::form_action for an area), or redirect to a page of the app"
+        "corten: this write redirects to {origin}, which the form's page does not allow in its CSP's form-action, {stops} with only a console error: allow it with Policy::form_action(\"{origin}\") (Sources::form_action for an area), or redirect to a page of the app"
     ))
 }
 
@@ -1860,7 +1869,9 @@ pub(crate) async fn render_errors<S: crate::app::Steps>(
         let Some(message) = sign_in_loops(asked.path(), &to) else {
             #[cfg(debug_assertions)]
             if let Some(message) = targets.as_ref().and_then(|targets| outside_form_action(targets, &to)) {
+                tracing::error!("{message}");
                 let failure = Failure::Failed { status: StatusCode::INTERNAL_SERVER_ERROR, detail: Some(Arc::from(message)) };
+                let failure = if shared.dev { failure } else { failure.without_detail() };
                 return carried(kept, error_page(shared, asked, failure).await);
             }
             return carried(kept, redirect(mode, to));

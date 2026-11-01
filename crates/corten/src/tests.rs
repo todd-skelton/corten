@@ -1360,6 +1360,15 @@ async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
         .route("/sub", to("https://id.shop.example/login"))
         .route("/own", to("http://app.localhost/done"))
         .route("/path", to("/done"))
+        .route("/public", to("https://app.localhost/done"))
+        .route(
+            "/relay",
+            axum::routing::post(|| async {
+                let mut headers = axum::http::HeaderMap::new();
+                headers.insert(axum::http::header::LOCATION, axum::http::HeaderValue::from_static("https://upstream.example/x"));
+                crate::Relay::new(StatusCode::FOUND, headers, Body::empty())
+            }),
+        )
         .route(
             "/read",
             get(|req: Req| async move { req.redirect::<()>(&"https://else.example/".parse::<axum::http::Uri>().unwrap()) }),
@@ -1377,13 +1386,34 @@ async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
                 req = req.header(*name, *value);
             }
             let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
-            (res.status(), ())
+            let status = res.status();
+            let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            (status, String::from_utf8(body.to_vec()).unwrap())
         }
     };
-    for mode in [&[][..], &[("corten", "action")][..]] {
+    for mode in [&[][..], &[("corten", "action")][..], &[("corten", "action"), ("sec-fetch-mode", "cors")][..]] {
         let (status, _) = send("/sibling", "POST", mode).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{mode:?}");
     }
+    // A script's own fetch is held to connect-src, not form-action.
+    let (status, _) = send("/sibling", "POST", &[("sec-fetch-mode", "cors"), ("sec-fetch-site", "same-origin")]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "a fetch");
+    // A relayed answer is passed on as it came.
+    let (status, _) = send("/relay", "POST", &[]).await;
+    assert_eq!(status, StatusCode::FOUND, "a relay");
+    // Behind a proxy that rewrites Host, the page's origin is the browser's Origin.
+    const PROXIED: &[(&str, &str)] =
+        &[("host", "127.0.0.1:3000"), ("origin", "https://app.localhost"), ("sec-fetch-site", "same-origin")];
+    let (status, _) = send("/public", "POST", PROXIED).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "the page's own origin");
+    const PLAIN: &[(&str, &str)] =
+        &[("host", "app.localhost"), ("origin", "http://app.localhost"), ("sec-fetch-site", "same-origin")];
+    let (status, _) = send("/public", "POST", PLAIN).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "an http page may go to its https origin");
+    const SECURE: &[(&str, &str)] =
+        &[("host", "app.localhost"), ("origin", "https://app.localhost"), ("sec-fetch-site", "same-origin")];
+    let (status, _) = send("/own", "POST", SECURE).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "an https page's form may not go to http");
     for path in ["/pay", "/sub", "/path"] {
         let (status, _) = send(path, "POST", &[]).await;
         assert!(status == StatusCode::SEE_OTHER, "{path}: {status}");
@@ -1403,6 +1433,63 @@ async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
     const ELSEWHERE: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://other.localhost/checkout")];
     let (status, _) = send("/sibling", "POST", ELSEWHERE).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "a page of another origin does not count");
+    // Only the form's page's policy counts, not the one at the path it posts to.
+    const FROM_HOME: &[(&str, &str)] = &[
+        ("host", "app.localhost"),
+        ("origin", "http://app.localhost"),
+        ("sec-fetch-site", "same-origin"),
+        ("referer", "http://app.localhost/"),
+    ];
+    let (status, _) = send("/checkout/go", "POST", FROM_HOME).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the home page does not allow it");
+    // A browser that sends no page (no-referrer) may be on any of the app's pages.
+    const NO_PAGE: &[(&str, &str)] =
+        &[("host", "app.localhost"), ("origin", "http://app.localhost"), ("sec-fetch-site", "same-origin")];
+    let (status, _) = send("/sibling", "POST", NO_PAGE).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "some page of the app allows it");
+    let (status, _) = send("/pay", "POST", NO_PAGE).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+}
+
+/// The 500 says which origin and what allows it, under `corten dev`; a sign-in on another origin
+/// is checked as a redirect is.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn a_redirect_outside_form_action_names_the_origin_and_a_sign_in_is_checked() {
+    let routes = Router::new()
+        .route(
+            "/go",
+            axum::routing::post(|req: Req| async move {
+                req.redirect::<()>(&"https://else.example/x?y=1".parse::<axum::http::Uri>().unwrap())
+            }),
+        )
+        .route("/account", axum::routing::post(|_: Caller<Elsewhere>| async { "saved" }));
+    let dev = App::new(Routes::from(routes.clone())).dev(true).router();
+    let (status, _, body) = call_with(dev.clone(), "POST", "/go", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(body.contains("https://else.example") && body.contains("Policy::form_action"), "{body}");
+    assert!(!body.contains("/x?y=1"), "the origin alone: {body}");
+    let (status, _, body) = call_with(dev, "POST", "/account", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+    assert!(body.contains("https://id.example") && body.contains("Policy::form_action"), "{body}");
+    let allowed = App::new(Routes::from(routes.clone())).policy(crate::security::Policy::new().form_action("https://id.example"));
+    let (status, ..) = call_with(allowed.router(), "POST", "/account", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "allowed, it is the sign-in redirect");
+    let (status, _, body) = call_with(App::new(Routes::from(routes)).router(), "POST", "/go", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(!body.contains("else.example"), "outside dev the page does not say: {body}");
+}
+
+/// Someone signed in on another origin's sign-in page.
+#[cfg(debug_assertions)]
+#[derive(Clone, Hash)]
+struct Elsewhere;
+
+#[cfg(debug_assertions)]
+impl<S: Sync> crate::Identify<S> for Elsewhere {
+    async fn identify(_: &axum::http::request::Parts, _: &S) -> std::result::Result<Self, crate::Refused> {
+        Err(crate::Refused::sign_in(&"https://id.example/sign-in".parse::<axum::http::Uri>().unwrap()))
+    }
 }
 
 #[cfg(debug_assertions)]

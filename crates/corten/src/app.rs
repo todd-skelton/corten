@@ -1461,7 +1461,7 @@ impl<S: Steps> Layer<S> {
         // A debug build holds a write's redirect to the page's `form-action`, as a browser does.
         #[cfg(debug_assertions)]
         if mount.is_none() {
-            if let Some(targets) = self.policy.form_targets(req.method(), csp, req.headers()) {
+            if let Some(targets) = self.policy.form_targets(req.method(), req.uri(), csp, req.headers()) {
                 req.extensions_mut().insert(targets);
             }
         }

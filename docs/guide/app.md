@@ -1196,6 +1196,22 @@ loads the current page again rather than swap it in: answer such a form with a p
 An area that adds only sources the app already has keeps the app's policy and shell key. A policy for a single route is an area of one page. An `App::api` keeps its
 own `default-src 'none'`.
 
+A form's handler that redirects to another origin (a hosted checkout, a sibling app, a return
+address the app does not serve) needs that origin in `form-action`: Chromium and WebKit hold the
+redirects a submission follows to the form's page's policy, and stop one it does not allow there,
+on the form's page, with only a console error. A test that runs the request in process sees the
+303 either way, so a debug build checks for the browser: a form's write from one of the app's
+pages (`Sec-Fetch-Site: same-origin`, or an `Origin` on its host, or neither header, as a test
+sends) whose redirect (`req.redirect`, or a sign-in redirect) goes to an origin outside the
+page's own (its `Origin`, else its host) and the page's `form-action` is answered as a 500 that
+names the origin and `Policy::form_action` (under `corten dev`; it is logged either way). The
+page is the one the `Referer` names; without one it may be any of the app's pages, and a test's
+request is held to the policy at the path it posts to. A `data-patch` form is checked too, since
+the same form without JavaScript is stopped. Not checked: a `GET` (a link is not held to
+`form-action`), a script's own `fetch` (held to `connect-src`), a write another site's page
+sent, a `Relay` answer, and a release build, which sends the redirect as written and does no
+work for the check.
+
 Every page is sent with `Cross-Origin-Opener-Policy: same-origin`, so a window another site
 opened, or one this page opens on another site, cannot reach it. Two things loosen it, for the
 whole app on `Policy` or, better, for the pages that need it on their area's `Sources`:
