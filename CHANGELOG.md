@@ -2976,6 +2976,16 @@ Corten is pre-1.0, so any minor version may change the API.
     before it starts rather than stopped midway, and `Refusal::Conflict` covers another request
     acting on the same thing now
     ([#537 The guide's one-at-a-time patterns (a schedule's loop, a shared Mutex) hold within one process, so a second instance during a blue/green release runs the work again, and a paid handler action has no pattern at all](https://github.com/todd-skelton/corten/issues/537)).
+43. The app guide (Numbers in JSON) and `ToJson` for floats say how numbers are written in a JSON
+    response, a feed's rows and an agent tool's output: as serde_json writes them (a whole float as
+    `2.0` where `JSON.stringify` writes `2`, and where each switches to an exponent), which readers
+    that type a number by its text read differently; a value a client should read as an integer is
+    an integer field, text that must match another service's byte for byte is `Raw`, and a shared
+    checksum is over canonical JSON (RFC 8785). Corten keeps one number format for these rather than
+    a second one for JavaScript parity, which would make a `ToJson` disagree with the `serde_json`
+    fields inside it, feeds and agent output, and would still not give canonical bytes (design.md,
+    Limits 16)
+    ([#540 Json writes a whole f64 as 2.0 where JSON.stringify writes 2, so a route ported from a Node service changes its numbers' text and how clients read them](https://github.com/todd-skelton/corten/issues/540)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

@@ -941,7 +941,7 @@ Under the prefix:
    pages keep refusing that site's writes. The site authenticates with a token: a write from it
    that carries the user's cookies is refused, and no `Access-Control-Allow-Credentials` is sent.
 6. `Json` in the prelude is `corten::Json` (feature `json`). It reads a request body into a
-   `FromJson` (item 7) with the value and the rejections axum's `Json` gives: Corten's reader takes
+   `FromJson` (item 8) with the value and the rejections axum's `Json` gives: Corten's reader takes
    an `application/json` body, and axum (`serde_json`) any other JSON content type and any body
    the reader gives up on. What it writes is a `ToJson`: derive it
    (`#[derive(ToJson)]`, also in the prelude) on the response type, next to `Serialize` if other
@@ -953,7 +953,9 @@ Under the prefix:
    attribute it cannot follow (`flatten` of a map or an enum, `serialize_with`) does not compile. A field whose type has only `Serialize` (an id or a
    date from another crate) is written by `serde_json`. `serde_json::Value` is a `ToJson`, as above.
    axum's `Json` works too, and writes any `Serialize` through `serde_json` and a `BytesMut`.
-7. To read JSON another service answers, derive `FromJson` (in the prelude) next to `Deserialize`
+7. Numbers are written as serde_json writes them, a whole float as `2.0`
+   ([Numbers in JSON](#numbers-in-json)).
+8. To read JSON another service answers, derive `FromJson` (in the prelude) next to `Deserialize`
    and read it with `corten::json::from_slice` or `from_str`. Corten's reader takes the fields the
    type declares and skips the rest; on anything it does not follow (an escaped key, a missing or
    duplicate field) `serde_json` reads the text instead, so the value and every error are
@@ -970,6 +972,51 @@ behavior).
 
 A screen that a native app or an agent reads is not an API route: it stays a page that answers
 with `req.screen`, so every surface shares one handler (see [Surfaces](../architecture.md)).
+
+### Numbers in JSON
+
+Numbers in a JSON response, a feed's rows and an agent tool's output are written as `serde_json`
+writes them, whether by a `ToJson` or by `serde_json` for a field it hands on: the shortest digits
+that read back as the same value, a whole float with its fraction (`2.0`, where JavaScript's
+`JSON.stringify` writes `2`; Python's `json.dumps` writes `2.0` too), an exponent (`1e+16`,
+`5e-6`) when the magnitude is at least `1e16` or nonzero and below `1e-5` for an `f64` (at least
+`1e13` or nonzero and below `1e-6` for an `f32`, whose digits are the `f32`'s), where
+`JSON.stringify` writes digits below `1e21` and down to `0.000001`, `-0.0` (where it writes `0`),
+and `null` for NaN and infinity.
+
+Both `2` and `2.0` are the number 2 in JSON's grammar, and RFC 8259 leaves how a reader types a
+number to the reader; one that types it by its text tells them apart: Python's `json` reads a
+float, `serde_json::Value` keeps them apart, and serde or Go reading into an integer field refuse
+`2.0`. Keeping the fraction is what lets those readers type a float field the same way for every
+value (with `JSON.stringify`'s form, `2` reads as an integer and `2.5` as a float). So:
+
+1. A value the API's contract calls an integer (a count) is an integer field (`u64`), converted
+   where the response is built, even when the app sums or scales it as an `f64`. `as u64` turns
+   NaN, negative values and minus infinity into 0, and plus infinity or a value from `u64::MAX as
+   f64` (2^64) up into `u64::MAX`, with no error, so check first:
+   `(0.0..9_007_199_254_740_992.0).contains(&total)` refuses all of those and keeps a JavaScript
+   client exact (past 2^53 a count is a string for one).
+2. A parity test against the service a route replaces reads both bodies into the route's response
+   type, or walks both `Value`s and compares numbers with `as_i64` or `as_u64` when both are
+   integers and `as_f64` on both otherwise, and flags a field the old service sent as an integer
+   that now arrives as a float: that field should be an integer type.
+3. Text that must match another service's byte for byte is written by the app and sent as `Raw`,
+   which is a `ToJson` and so can be one field of a derived response. `Raw` has no `Serialize`, so
+   a type that feeds or agent output also write holds `Box<serde_json::value::RawValue>`
+   (serde_json's `raw_value` feature, and schemars' `raw_value` feature for agent output or
+   generated types, whose schema is then any JSON value). JavaScript's number form comes from
+   `serde_json::Serializer::with_formatter` over a type that derives `Serialize`, with a
+   `Formatter` whose `write_f64` and `write_f32` write it (`-0.0` as `0`, digits below `1e21` and
+   down to `1e-6`, an exponent outside that), sent with `Raw::new`.
+4. A checksum shared with other services is taken over canonical JSON (RFC 8785, which writes
+   numbers the JavaScript way), not any serializer's output; Corten has no RFC 8785 writer, so that
+   is a crate of the app's.
+
+Handler arguments in markup are the exception: only the browser's `JSON.parse` reads them, so a
+float passed for a `number` parameter is written as Rust's `Display` writes it, with no fraction on
+a whole number and never an exponent (`JSON.parse` reads the digits as the same number), and NaN
+and infinity as `null`. A value passed whole (an `any` parameter, a generated type) is written by
+its `ToJson`, as above.
 
 ## WebSockets and relays
 
