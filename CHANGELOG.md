@@ -2754,6 +2754,13 @@ Corten is pre-1.0, so any minor version may change the API.
     189,197), the headers kept for the check
     ([#527 A form's redirect to another origin that the app's form-action does not allow passes every test and is blocked in the browser](https://github.com/todd-skelton/corten/issues/527)).
 
+94. An error in an expression in `html!` (an attribute's `{..}`, a child's) pointed the call or
+    expression it was in at the whole `html!`, so the headline could name another file: `row(2)`
+    with `row` a local that shadows a function said "call expression requires function" across
+    the macro, and the compiler headed the error with an unrelated `fn row` elsewhere. The
+    parentheses the macro puts around an expression now take the expression's span, so the error
+    points at `row(2)`. What `html!` generates is otherwise the same
+    ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

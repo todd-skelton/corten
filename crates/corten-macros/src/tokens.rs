@@ -36,7 +36,20 @@ fn subst(tokens: TokenStream, args: &[TokenStream]) -> TokenStream {
             }
             TokenTree::Group(group) => {
                 let mut copy = Group::new(group.delimiter(), subst(group.stream(), args));
-                copy.set_span(group.span());
+                // Parentheses around an argument alone (`&(__A0)`) take its first token's span. The
+                // compiler gives an expression in parentheses their span when it lies inside them, so
+                // the template's (the whole macro call) would be where an error in the argument
+                // points: `row(2)` with `row` a local would be "this call" across the whole `html!`.
+                let span = match group.stream().into_iter().collect::<Vec<_>>().as_slice() {
+                    [TokenTree::Ident(only)] => only
+                        .to_string()
+                        .strip_prefix("__A")
+                        .and_then(|n| n.parse::<usize>().ok())
+                        .and_then(|n| args[n].clone().into_iter().next())
+                        .map_or(group.span(), |first| first.span()),
+                    _ => group.span(),
+                };
+                copy.set_span(span);
                 out.extend([TokenTree::Group(copy)]);
             }
             other => out.extend([other]),
@@ -72,8 +85,16 @@ pub fn stream(tokens: impl IntoIterator<Item = TokenTree>) -> TokenStream {
 }
 
 /// Wraps tokens in parentheses, so an expression spliced into generated code stays one expression.
+/// `tokens` in parentheses, which take the first token's span: the compiler gives an expression
+/// in parentheses their span when it lies inside them, so the call site's (the whole macro call)
+/// would be where an error in the expression points (see `subst`).
 pub fn parens(tokens: TokenStream) -> TokenStream {
-    TokenTree::Group(Group::new(Delimiter::Parenthesis, tokens)).into()
+    let first = tokens.clone().into_iter().next().map(|t| t.span());
+    let mut group = Group::new(Delimiter::Parenthesis, tokens);
+    if let Some(span) = first {
+        group.set_span(span);
+    }
+    TokenTree::Group(group).into()
 }
 
 pub fn is_punct(token: Option<&TokenTree>, ch: char) -> bool {
