@@ -878,7 +878,8 @@ impl Applied {
     /// headers are kept; the page and its policy are worked out for a redirect to another address.
     #[cfg(debug_assertions)]
     pub(crate) fn form_check(&self, method: &Method, uri: &axum::http::Uri, headers: &HeaderMap) -> Option<FormCheck> {
-        if matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) {
+        // A report-only policy stops nothing: the browser reports the redirect and follows it.
+        if self.report_only || matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) {
             return None;
         }
         // The runtime's `data-patch` submission is a `fetch` too, and is checked: the same form
@@ -1124,10 +1125,11 @@ pub(crate) struct FormCheck {
 impl FormCheck {
     /// Where the form's page lets a submission go, when one of the app's pages sent it
     /// (`Sec-Fetch-Site: same-origin`, or an `Origin` on its host, or neither header, as a test
-    /// sends); a form on another site's page (an identity provider's `form_post`) is held to that
-    /// page's policy, so `None`. The form's page is the `Referer` when it says the page;
-    /// otherwise a browser's submission may go wherever any of the app's policies allows, and one
-    /// with neither header (a test) is held to the policy at the path it posts to.
+    /// or another client that is not a browser sends); a form on another site's page (an identity
+    /// provider's `form_post`) is held to that page's policy, so `None`. A browser that sends no
+    /// `Origin` (or `null`) does not say the page's origin, so it is not checked either. The
+    /// form's page is the `Referer` when it says the page; otherwise it may be any of the app's
+    /// pages, and the redirect may go wherever one of the app's policies allows.
     pub(crate) fn targets(&self) -> Option<FormTargets> {
         fn text(value: &Option<HeaderValue>) -> Option<&str> {
             value.as_ref().and_then(|v| v.to_str().ok())
@@ -1137,8 +1139,12 @@ impl FormCheck {
             .map(|at| at.rsplit_once('@').map_or(at, |(_, at)| at).to_ascii_lowercase());
         let origin = text(&self.origin).filter(|origin| *origin != "null").and_then(address);
         let ours = match &self.site {
-            Some(site) => site.as_bytes() == b"same-origin",
-            None => origin.as_ref().is_none_or(|origin| host.as_deref() == Some(origin.at.as_str())),
+            Some(site) => site.as_bytes() == b"same-origin" && origin.is_some(),
+            None => match (&origin, &self.origin) {
+                (Some(origin), _) => host.as_deref() == Some(origin.at.as_str()),
+                (None, None) => true,
+                (None, Some(_)) => false,
+            },
         };
         if !ours {
             return None;
@@ -1158,14 +1164,13 @@ impl FormCheck {
             .filter(|path| self.forms.whole || path != "/");
         let sources = match page {
             Some(path) => self.forms.at(&path).to_vec(),
-            None if self.site.is_some() || self.origin.is_some() => {
+            None => {
                 let all = std::iter::once(&self.forms.app).chain(self.forms.areas.iter().map(|(_, sources)| sources));
                 let mut sources: Vec<String> = all.flatten().cloned().collect();
                 sources.sort_unstable();
                 sources.dedup();
                 sources
             }
-            None => self.forms.at(self.uri.path()).to_vec(),
         };
         Some(FormTargets { sources, own })
     }
@@ -1207,8 +1212,10 @@ impl Own {
 /// `host:port` without the port when it is `scheme`'s default.
 #[cfg(debug_assertions)]
 fn without_default_port<'a>(scheme: Option<&str>, at: &'a str) -> &'a str {
-    match split_port(at) {
-        (host, Some(port)) if Some(port) == scheme.and_then(default_port) => host,
+    match (split_port(at), scheme) {
+        ((host, Some(port)), Some(scheme)) if Some(port) == default_port(scheme) => host,
+        // A host without a known scheme (`Host` alone): either web default.
+        ((host, Some("80" | "443")), None) => host,
         _ => at,
     }
 }

@@ -1361,6 +1361,7 @@ async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
         .route("/own", to("http://app.localhost/done"))
         .route("/path", to("/done"))
         .route("/public", to("https://app.localhost/done"))
+        .route("/else", to("https://else.example/x"))
         .route(
             "/relay",
             axum::routing::post(|| async {
@@ -1392,9 +1393,12 @@ async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
         }
     };
     for mode in [&[][..], &[("corten", "action")][..], &[("corten", "action"), ("sec-fetch-mode", "cors")][..]] {
-        let (status, _) = send("/sibling", "POST", mode).await;
+        let (status, _) = send("/else", "POST", mode).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{mode:?}");
     }
+    // Without a Referer the form may be on any of the app's pages: the checkout area allows this.
+    let (status, _) = send("/sibling", "POST", &[]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "some page of the app allows it");
     // A script's own fetch is held to connect-src, not form-action.
     let (status, _) = send("/sibling", "POST", &[("sec-fetch-mode", "cors"), ("sec-fetch-site", "same-origin")]).await;
     assert_eq!(status, StatusCode::SEE_OTHER, "a fetch");
@@ -1430,9 +1434,16 @@ async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
     const FROM_AREA: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/checkout?step=2")];
     let (status, _) = send("/sibling", "POST", FROM_AREA).await;
     assert_eq!(status, StatusCode::SEE_OTHER, "the form's page, in the area, allows it");
-    const ELSEWHERE: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://other.localhost/checkout")];
-    let (status, _) = send("/sibling", "POST", ELSEWHERE).await;
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "a page of another origin does not count");
+    const FROM_ROOT: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/")];
+    let (status, _) = send("/sibling", "POST", FROM_ROOT).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the home page does not allow it");
+    // A browser that does not say the page's origin is not checked.
+    const NULL: &[(&str, &str)] = &[("host", "127.0.0.1:3000"), ("origin", "null"), ("sec-fetch-site", "same-origin")];
+    let (status, _) = send("/else", "POST", NULL).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "Origin: null");
+    // A Host with its scheme's default port is the same host.
+    let (status, _) = send("/own", "POST", &[("host", "app.localhost:80")]).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "Host with :80");
     // Only the form's page's policy counts, not the one at the path it posts to.
     const FROM_HOME: &[(&str, &str)] = &[
         ("host", "app.localhost"),
@@ -1496,9 +1507,14 @@ async fn a_redirect_outside_form_action_names_the_origin_and_a_sign_in_is_checke
     let allowed = App::new(Routes::from(routes.clone())).policy(crate::security::Policy::new().form_action("https://id.example"));
     let (status, ..) = call_with(allowed.router(), "POST", "/account", None, Some("text/html")).await;
     assert_eq!(status, StatusCode::SEE_OTHER, "allowed, it is the sign-in redirect");
-    let (status, _, body) = call_with(App::new(Routes::from(routes)).router(), "POST", "/go", None, Some("text/html")).await;
+    let (status, _, body) =
+        call_with(App::new(Routes::from(routes.clone())).router(), "POST", "/go", None, Some("text/html")).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert!(!body.contains("else.example"), "outside dev the page does not say: {body}");
+    // A report-only policy stops nothing.
+    let watching = App::new(Routes::from(routes)).policy(crate::security::Policy::new().report_only());
+    let (status, ..) = call_with(watching.router(), "POST", "/go", None, Some("text/html")).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "report-only");
 }
 
 /// Someone signed in on another origin's sign-in page.

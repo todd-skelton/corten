@@ -1219,16 +1219,19 @@ address the app does not serve) needs that origin in `form-action`: Chromium and
 redirects a submission follows to the form's page's policy, and stop one it does not allow there,
 on the form's page, with only a console error. A test that runs the request in process sees the
 303 either way, so a debug build checks for the browser: a form's write from one of the app's
-pages (`Sec-Fetch-Site: same-origin`, or an `Origin` on its host, or neither header, as a test
-sends) whose redirect (`req.redirect`, or a sign-in redirect) goes to an origin outside the
-page's own (its `Origin`, else its host) and the page's `form-action` is answered as a 500 that
-names the origin and `Policy::form_action` (under `corten dev`; it is logged either way). The
-page is the one the `Referer` names; without one it may be any of the app's pages, and a test's
-request is held to the policy at the path it posts to. A `data-patch` form is checked too, since
-the same form without JavaScript is stopped. Not checked: a `GET` (a link is not held to
-`form-action`), a script's own `fetch` (held to `connect-src`), a write another site's page
-sent, a `Relay` answer, and a release build, which sends the redirect as written and does no
-work for the check. The browser holds every redirect the submission follows to the form's
+pages (`Sec-Fetch-Site: same-origin` with its `Origin`, an `Origin` on its host, or neither
+header, as a test or another client that is not a browser sends) whose redirect (`req.redirect`,
+or a sign-in redirect) goes to an origin outside the page's own (its `Origin`, else its host)
+and the page's `form-action` is answered as a 500 that names the origin and
+`Policy::form_action` (under `corten dev`; it is logged either way). The page is the one the
+`Referer` names; without one (a test sends none) it may be any of the app's pages, so the
+redirect passes if any of the app's policies allows it: a test that sends the form's page as
+`Referer` is held to that page's alone. A `data-patch` form is checked too, since the same form
+without JavaScript is stopped. Not checked: a `GET` (a link is not held to `form-action`), a
+script's own `fetch` (held to `connect-src`), a write another site's page sent, a browser's
+write that does not say its page's origin (`Origin: null`), a `Relay` answer, an app under
+`Policy::report_only` (the browser reports the redirect and follows it), and a release build,
+which sends the redirect as written and does no work for the check. The browser holds every redirect the submission follows to the form's
 page's `form-action`, not only the write's own: a write that redirects to `/`, where a
 signed-out `Caller` is sent to sign in on another origin, is stopped too. A later redirect
 answers a `GET` the server cannot tell from a link, so it is not checked; allow those origins
