@@ -129,6 +129,7 @@ impl Display for Decimal {
 
 impl Decimal {
     /// The ASCII digits before and after the point (at least one before).
+    #[inline(always)]
     fn digits<'a>(&self, buf: &'a mut [u8; 40]) -> (&'a [u8], &'a [u8]) {
         let mut end = buf.len();
         let scale = usize::from(self.scale);
@@ -140,11 +141,25 @@ impl Decimal {
             buf[end] = b'0' + (wide % 10) as u8;
             wide /= 10;
         }
+        // Two digits per division, then zeros up to the scale's.
         let mut n = wide as u64;
-        while n > 0 || buf.len() - end <= scale {
+        while n >= 100 {
+            let pair = (n % 100) as usize * 2;
+            n /= 100;
+            end -= 2;
+            buf[end..end + 2].copy_from_slice(&crate::ascii::PAIRS[pair..pair + 2]);
+        }
+        if n >= 10 {
+            let pair = n as usize * 2;
+            end -= 2;
+            buf[end..end + 2].copy_from_slice(&crate::ascii::PAIRS[pair..pair + 2]);
+        } else if n > 0 || end == buf.len() {
             end -= 1;
-            buf[end] = b'0' + (n % 10) as u8;
-            n /= 10;
+            buf[end] = b'0' + n as u8;
+        }
+        while buf.len() - end <= scale {
+            end -= 1;
+            buf[end] = b'0';
         }
         let digits = &buf[end..];
         digits.split_at(digits.len() - scale)
@@ -291,8 +306,46 @@ impl<T: Amount + ?Sized> Amount for &T {
 
 /// An ISO 4217 currency: `const USD: Currency = Currency::new("USD");`, or
 /// `Currency::parse(&order.currency)` for one an API sends.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Currency([u8; 3]);
+#[derive(Clone, Copy)]
+pub struct Currency {
+    code: [u8; 3],
+    /// The fraction digits it is shown with, looked up once when it is made rather than for each
+    /// amount written in it. It follows from `code`, so a currency compares, orders and hashes by
+    /// its code alone.
+    digits: u8,
+}
+
+impl PartialEq for Currency {
+    fn eq(&self, other: &Self) -> bool {
+        self.code == other.code
+    }
+}
+
+impl Eq for Currency {}
+
+impl PartialOrd for Currency {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Currency {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.code.cmp(&other.code)
+    }
+}
+
+impl std::hash::Hash for Currency {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.code.hash(state);
+    }
+}
+
+impl fmt::Debug for Currency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Currency").field(&self.code()).finish()
+    }
+}
 
 impl Currency {
     /// A code of three letters, `"USD"`. Anything else panics, which in a `const` fails the build.
@@ -309,32 +362,53 @@ impl Currency {
         if b.len() != 3 || !b[0].is_ascii_alphabetic() || !b[1].is_ascii_alphabetic() || !b[2].is_ascii_alphabetic() {
             return None;
         }
-        Some(Currency([b[0].to_ascii_uppercase(), b[1].to_ascii_uppercase(), b[2].to_ascii_uppercase()]))
+        let code = [b[0].to_ascii_uppercase(), b[1].to_ascii_uppercase(), b[2].to_ascii_uppercase()];
+        Some(Currency { code, digits: display_digits(u32::from_be_bytes([0, code[0], code[1], code[2]])) })
     }
 
     /// The code as a number that sorts as the code does, for the tables' binary searches.
-    fn key(&self) -> u32 {
-        u32::from_be_bytes([0, self.0[0], self.0[1], self.0[2]])
+    const fn key(&self) -> u32 {
+        u32::from_be_bytes([0, self.code[0], self.code[1], self.code[2]])
     }
 
     /// `"USD"`.
     pub fn code(&self) -> &str {
-        std::str::from_utf8(&self.0).unwrap_or("XXX")
+        std::str::from_utf8(&self.code).unwrap_or("XXX")
     }
 
     /// The fraction digits an amount is shown with: 2, 0 for JPY, 3 for KWD (as Intl shows them).
     pub fn digits(&self) -> u8 {
-        let key = self.key();
-        DISPLAY_DIGITS.binary_search_by(|(code, _)| code_key(code).cmp(&key)).map_or(2, |i| DISPLAY_DIGITS[i].1)
+        self.digits
     }
+}
+
+/// The fraction digits of the currency whose [`Currency::key`] is `key`: its entry in
+/// `DISPLAY_DIGITS`, else 2. A `const fn`, so a `const` currency has them at compile time.
+const fn display_digits(key: u32) -> u8 {
+    let (mut lo, mut hi) = (0, DISPLAY_DIGITS.len());
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let at = code_key(DISPLAY_DIGITS[mid].0);
+        if at == key {
+            return DISPLAY_DIGITS[mid].1;
+        }
+        if at < key {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    2
 }
 
 /// A three-letter code in a table as [`Currency::key`] numbers it; the tables hold only such codes
 /// (the generator writes them), and anything shorter sorts first.
-fn code_key(code: &str) -> u32 {
-    match *code.as_bytes() {
-        [a, b, c] => u32::from_be_bytes([0, a, b, c]),
-        _ => 0,
+const fn code_key(code: &str) -> u32 {
+    let b = code.as_bytes();
+    if b.len() == 3 {
+        u32::from_be_bytes([0, b[0], b[1], b[2]])
+    } else {
+        0
     }
 }
 
@@ -715,7 +789,7 @@ impl Formatted {
             let (int, frac) = self.value.digits(&mut buf);
             write_grouped(self.data, separators, int, out)?;
             if !frac.is_empty() {
-                out.write_str(separators.decimal)?;
+                write_piece(separators.decimal, out)?;
                 write_digits(self.data, frac, out)?;
             }
         }
@@ -736,15 +810,27 @@ fn signs(data: &__private::LocaleData) -> (&'static str, &'static str) {
 }
 
 /// A template's text, with `code` at each `\u{2}` when there is one.
+#[inline(always)]
 fn write_text<W: Write + ?Sized>(text: &str, code: Option<&str>, out: &mut W) -> fmt::Result {
-    let Some(code) = code else { return out.write_str(text) };
+    let Some(code) = code else { return write_piece(text, out) };
     let mut rest = text;
     while let Some(at) = rest.as_bytes().iter().position(|&b| b == 2) {
         out.write_str(&rest[..at])?;
         out.write_str(code)?;
         rest = &rest[at + 1..];
     }
-    out.write_str(rest)
+    write_piece(rest, out)
+}
+
+/// A piece of a template or a separator: nothing for an empty one, a character for one byte
+/// (which is ASCII, and for a `String` a push rather than a copy), else the text.
+#[inline(always)]
+fn write_piece<W: Write + ?Sized>(text: &str, out: &mut W) -> fmt::Result {
+    match text.as_bytes() {
+        [] => Ok(()),
+        [b] => out.write_char(char::from(*b)),
+        _ => out.write_str(text),
+    }
 }
 
 /// Money as a person types it in `data`'s locale, read back into the currency's minor units:
@@ -935,6 +1021,7 @@ fn digit(data: &__private::LocaleData, c: char) -> Option<u32> {
 
 /// ASCII digits in the locale's digits.
 /// Each is written as a character, which for a `String` is a push: no text to check.
+#[inline(always)]
 fn write_digits<W: Write + ?Sized>(data: &__private::LocaleData, digits: &[u8], out: &mut W) -> fmt::Result {
     if data.zero == '0' {
         for &d in digits {
@@ -971,11 +1058,11 @@ fn write_grouped<W: Write + ?Sized>(
     write_digits(data, &head[..first], out)?;
     let mut i = first;
     while i < head_len {
-        out.write_str(s.group)?;
+        write_piece(s.group, out)?;
         write_digits(data, &head[i..i + secondary], out)?;
         i += secondary;
     }
-    out.write_str(s.group)?;
+    write_piece(s.group, out)?;
     write_digits(data, last, out)
 }
 impl Render for Formatted {

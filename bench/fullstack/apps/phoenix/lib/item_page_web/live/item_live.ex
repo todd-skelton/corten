@@ -41,7 +41,7 @@ defmodule ItemPageWeb.ItemLive do
       </div>
       <section class="summary">
         <%= if s = @item.summary do %>
-          <span><strong>{s.lowest || "—"}</strong> lowest</span> <span>{s.count} listings</span> <span>{s.quantity} available</span>
+          <span><strong>{s.lowest || "—"}</strong> lowest</span> <span>{counted(s.count, "listing", "listings")}</span> <span>{counted(s.quantity, "available", "available")}</span>
         <% else %>
           <span>No listings yet</span>
         <% end %>
@@ -99,5 +99,21 @@ defmodule ItemPageWeb.ItemLive do
       </section>
     </article>
     """
+  end
+
+  # A count as an English page writes it: digits grouped, and the word singular for one.
+  defp counted(n, one, other) do
+    digits =
+      n
+      |> abs()
+      |> Integer.to_string()
+      |> String.reverse()
+      |> String.graphemes()
+      |> Enum.chunk_every(3)
+      |> Enum.map_join(",", &Enum.join/1)
+      |> String.reverse()
+
+    sign = if n < 0, do: "-", else: ""
+    "#{sign}#{digits} #{if n == 1, do: one, else: other}"
   end
 end

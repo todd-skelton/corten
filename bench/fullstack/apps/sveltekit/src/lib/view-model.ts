@@ -69,6 +69,13 @@ export function toItemView(a: Api): ItemView {
   };
 }
 
+const counts = new Intl.NumberFormat("en-US");
+
+// A count as an English page writes it: digits grouped, and the word singular for one.
+export function counted(n: number, one: string, other: string): string {
+  return `${counts.format(n)} ${n === 1 ? one : other}`;
+}
+
 export function sortListings(listings: Listing[], descending: boolean): Listing[] {
   const sorted = [...listings].sort((a, b) => a.price_value - b.price_value);
   return descending ? sorted.reverse() : sorted;

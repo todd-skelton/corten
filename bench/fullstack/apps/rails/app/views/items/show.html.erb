@@ -5,7 +5,7 @@
 <% if item["subtitle"] %><p class="subtitle"><%= item["subtitle"] %></p><% end %>
 <ul class="badges"><% item["badges"].each do |b| %><li><%= b %></li><% end %></ul>
 <div class="gallery"><% item["images"].each_with_index do |url, i| %><div class="img" role="img" aria-label="<%= item["title"] %> image <%= i + 1 %>" data-src="<%= url %>"></div><% end %></div>
-<section class="summary"><% if (s = item["summary"]) %><span><strong><%= s["lowest"] || "—" %></strong> lowest</span> <span><%= s["count"] %> listings</span> <span><%= s["quantity"] %> available</span><% else %><span>No listings yet</span><% end %></section>
+<section class="summary"><% if (s = item["summary"]) %><span><strong><%= s["lowest"] || "—" %></strong> lowest</span> <span><%= number_with_delimiter(s["count"]) %> <%= s["count"] == 1 ? "listing" : "listings" %></span> <span><%= number_with_delimiter(s["quantity"]) %> available</span><% else %><span>No listings yet</span><% end %></section>
 <section class="listings" data-controller="sort">
 <h2>Listings</h2>
 <button type="button" class="sort" data-sort-target="button" data-action="sort#toggle">Price: low to high</button>
