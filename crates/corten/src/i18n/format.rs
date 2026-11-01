@@ -363,12 +363,12 @@ impl Currency {
             return None;
         }
         let code = [b[0].to_ascii_uppercase(), b[1].to_ascii_uppercase(), b[2].to_ascii_uppercase()];
-        Some(Currency { code, digits: display_digits(u32::from_be_bytes([0, code[0], code[1], code[2]])) })
+        Some(Currency { code, digits: display_digits(key_of(code)) })
     }
 
     /// The code as a number that sorts as the code does, for the tables' binary searches.
-    const fn key(&self) -> u32 {
-        u32::from_be_bytes([0, self.code[0], self.code[1], self.code[2]])
+    pub(crate) const fn key(&self) -> u32 {
+        key_of(self.code)
     }
 
     /// `"USD"`.
@@ -382,13 +382,22 @@ impl Currency {
     }
 }
 
+/// `display_digits` searches `DISPLAY_DIGITS` by halves, so a table out of order does not build.
+const _: () = {
+    let mut i = 1;
+    while i < DISPLAY_DIGITS.len() {
+        assert!(DISPLAY_DIGITS[i - 1].0 < DISPLAY_DIGITS[i].0, "DISPLAY_DIGITS is in key order");
+        i += 1;
+    }
+};
+
 /// The fraction digits of the currency whose [`Currency::key`] is `key`: its entry in
 /// `DISPLAY_DIGITS`, else 2. A `const fn`, so a `const` currency has them at compile time.
 const fn display_digits(key: u32) -> u8 {
     let (mut lo, mut hi) = (0, DISPLAY_DIGITS.len());
     while lo < hi {
         let mid = lo + (hi - lo) / 2;
-        let at = code_key(DISPLAY_DIGITS[mid].0);
+        let at = DISPLAY_DIGITS[mid].0;
         if at == key {
             return DISPLAY_DIGITS[mid].1;
         }
@@ -401,15 +410,10 @@ const fn display_digits(key: u32) -> u8 {
     2
 }
 
-/// A three-letter code in a table as [`Currency::key`] numbers it; the tables hold only such codes
-/// (the generator writes them), and anything shorter sorts first.
-const fn code_key(code: &str) -> u32 {
-    let b = code.as_bytes();
-    if b.len() == 3 {
-        u32::from_be_bytes([0, b[0], b[1], b[2]])
-    } else {
-        0
-    }
+/// A code's three bytes as one number that sorts as the code does: [`Currency::key`], and what
+/// `scripts/locale-data.mjs` writes in the tables.
+const fn key_of(code: [u8; 3]) -> u32 {
+    u32::from_be_bytes([0, code[0], code[1], code[2]])
 }
 
 impl Display for Currency {
@@ -733,7 +737,7 @@ impl Formatted {
             Kind::Money(currency) => currency,
         };
         let key = currency.key();
-        match data.currencies.binary_search_by(|(c, ..)| code_key(c).cmp(&key)) {
+        match data.currencies.binary_search_by_key(&key, |(k, ..)| *k) {
             // The symbol is in the template: no locale's has a code to place (a test checks).
             Ok(i) => {
                 let template = if negative == 1 { data.currencies[i].2 } else { data.currencies[i].1 };
@@ -750,7 +754,7 @@ impl Formatted {
     fn write_signed<W: Write + ?Sized>(&self, currency: Currency, out: &mut W) -> fmt::Result {
         let data = self.data;
         let key = currency.key();
-        let ([plain, loss], code) = match data.currencies.binary_search_by(|(c, ..)| code_key(c).cmp(&key)) {
+        let ([plain, loss], code) = match data.currencies.binary_search_by_key(&key, |(k, ..)| *k) {
             Ok(i) => ([data.currencies[i].1, data.currencies[i].2], None),
             Err(_) => (data.money, Some(currency.code())),
         };
@@ -844,7 +848,7 @@ fn write_piece<W: Write + ?Sized>(text: &str, out: &mut W) -> fmt::Result {
 #[doc(hidden)]
 pub fn parse_money(data: &__private::LocaleData, text: &str, currency: Currency) -> Option<Minor<u64>> {
     let code = currency.code();
-    let template = match data.currencies.binary_search_by(|(c, ..)| (*c).cmp(code)) {
+    let template = match data.currencies.binary_search_by_key(&currency.key(), |(k, ..)| *k) {
         Ok(i) => data.currencies[i].1,
         Err(_) => data.money[0],
     };
@@ -1898,7 +1902,7 @@ impl crate::script::Arg<crate::script::ts::MoneyFormat> for MoneyFormat {
         let data = self.data;
         let code = self.currency.code();
         // The currency in place: its own templates, or the locale's for one written by its code.
-        let [pos, neg] = match data.currencies.binary_search_by(|(c, ..)| (*c).cmp(code)) {
+        let [pos, neg] = match data.currencies.binary_search_by_key(&self.currency.key(), |(k, ..)| *k) {
             Ok(i) => [data.currencies[i].1.to_string(), data.currencies[i].2.to_string()],
             Err(_) => data.money.map(|t| t.replace('\u{2}', code)),
         };
@@ -2000,8 +2004,9 @@ pub mod __private {
         pub percent: [&'static str; 3],
         /// An amount in a currency written by its code (`CHF 5.00`), positive and negative.
         pub money: [&'static str; 2],
-        /// Each currency written otherwise, by code: positive and negative, the symbol in place.
-        pub currencies: &'static [(&'static str, &'static str, &'static str)],
+        /// Each currency written otherwise, by its [`Currency::key`](super::Currency) (its code's
+        /// bytes), in order: positive and negative, the symbol in place.
+        pub currencies: &'static [(u32, &'static str, &'static str)],
         pub names: &'static [&'static str],
         /// Four dates, each with each time, two times (`DateStyle`, `TimeStyle` order), then the
         /// month and year (`MonthStyle`), then the month and day (`DayStyle`).
