@@ -1,0 +1,18 @@
+/* corten ui {{version}}: meter */
+/* The track, and the fill: the primary color for a plain measure; for one with low or high, the
+   state's color (success, warning, destructive). Each engine's parts are separate rules: a selector
+   one engine does not know drops the whole rule in it. */
+.meter {
+  appearance: none; display: block; width: 100%; height: .5rem; margin: 0;
+  border: 0; border-radius: 999px; background: var(--border); overflow: hidden;
+}
+.meter::-webkit-meter-inner-element { display: block; }
+.meter::-webkit-meter-bar { height: .5rem; border: 0; border-radius: 999px; background: var(--border); }
+.meter::-webkit-meter-optimum-value { border-radius: 999px; background: var(--primary); }
+.meter:is([low], [high])::-webkit-meter-optimum-value { background: var(--success); }
+.meter::-webkit-meter-suboptimum-value { border-radius: 999px; background: var(--warning); }
+.meter::-webkit-meter-even-less-good-value { border-radius: 999px; background: var(--destructive); }
+.meter::-moz-meter-bar { border-radius: 999px; background: var(--primary); }
+.meter:is([low], [high]):-moz-meter-optimum::-moz-meter-bar { background: var(--success); }
+.meter:-moz-meter-sub-optimum::-moz-meter-bar { background: var(--warning); }
+.meter:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--destructive); }

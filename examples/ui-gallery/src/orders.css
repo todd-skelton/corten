@@ -1,11 +1,9 @@
-/* The orders page: a heading with its count, the alert, then the orders beside a column of
-   cards (one column on a phone). The components' look is the kit's (src/ui.rs); this is the
-   layout and the parts the kit has no component for. */
-.heading { display: flex; align-items: center; gap: .75rem; margin-block: 1rem; }
-.grid { display: grid; gap: 1rem; align-items: start; margin-block-start: 1.5rem; }
+/* The orders page: a heading with the shop's status, the alert and the month's figures, then the
+   orders beside a column of cards (one column on a phone). The components' look and the space
+   between them are the kit's (src/ui.rs, Stack and Cluster); this is the two-column grid and the
+   parts the kit has no component for. */
+.grid { display: grid; gap: 1rem; align-items: start; }
 @media (min-width: 52rem) { .grid { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
-.aside { display: grid; gap: 1rem; }
-.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
 /* The card's heading, as the kit draws one alone in its header. */
 .toolbar h2 { margin: 0; font-size: 1rem; font-weight: 600; line-height: 1.25; }
 .toolbar [popover] p { margin: 0 0 .25rem; font-size: .875rem; }
@@ -14,4 +12,3 @@
 .lines { display: grid; flex: 1; gap: .5rem; }
 /* Read by a screen reader, not drawn. */
 .hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.settings { display: grid; gap: 1.25rem; margin: 0; }

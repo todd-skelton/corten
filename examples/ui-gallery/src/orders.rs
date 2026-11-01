@@ -14,12 +14,16 @@ use crate::ui::{
     button::{Button, ButtonSize, ButtonVariant},
     card::{Card, CardContent, CardFooter, CardHeader},
     field::{Field, FieldHintId},
+    meter::Meter,
     pagination::Pagination,
     popover::Popover,
     select::Select,
     separator::{Orientation, Separator},
     skeleton::{Skeleton, SkeletonShape},
     slider::Slider,
+    stack::{Cluster, Gap, Stack},
+    stats::{Stat, StatTone, Stats},
+    status_dot::{StatusDot, StatusTone},
     switch::Switch,
     table::{Sort, SortHeader, Table, TableNumeric},
     textarea::Textarea,
@@ -143,6 +147,13 @@ struct HandlingId;
 #[derive(Id)]
 struct NoteId;
 
+/// The selling limit's meter, which its field's label names.
+#[derive(Id)]
+struct LimitId;
+
+/// The most a seller may sell in a month, in cents, until they have 50 sales.
+const LIMIT_CENTS: u64 = 15_000;
+
 /// The orders page: `page` counts from 1, `sort` is the table's order, and `photo` is the
 /// picture of a buyer who has one.
 #[component(css)]
@@ -154,6 +165,10 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
         Some(OrderSort::TotalDown) => sorted.sort_by_key(|o| std::cmp::Reverse(o.cents)),
         None => {}
     }
+    // This month's figures: what sold (refunds taken out), what is to ship and what is late.
+    let sold: u64 = ORDERS.iter().filter(|o| o.status != Status::Refunded).map(|o| o.cents).sum();
+    let to_ship = ORDERS.iter().filter(|o| matches!(o.status, Status::Paid | Status::Late)).count();
+    let late = ORDERS.iter().filter(|o| o.status == Status::Late).count();
     let shown = sorted.into_iter().skip((page - 1) * PER_PAGE).take(PER_PAGE);
     // The total's header: sorted up on the first click, then down and up in turn.
     let (by_total, next) = match sort {
@@ -162,23 +177,33 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
         None => (None, OrderSort::TotalUp),
     };
     html! {
+        <div class={Stack { gap: Gap::Lg }}>
         <Breadcrumb
             label="Breadcrumb"
             crumbs={&[Crumb { label: "Draft listing", link: &url::Home { tab: None, sale: None, period: None } }]}
             current="Orders"
         />
-        <div class={Heading}>
+        <div class={Cluster { gap: Gap::Sm }}>
             <h1>"Orders"</h1>
-            <span class={Badge { tone: BadgeTone::Neutral, emphasis: BadgeEmphasis::Solid }}>{ORDERS.len()}" this month"</span>
+            <span class={Badge { tone: BadgeTone::Success, emphasis: BadgeEmphasis::Soft }}>
+                <StatusDot tone={StatusTone::Success} />
+                "Taking orders"
+            </span>
         </div>
         <Alert variant={AlertVariant::Warning}>
             <strong>"One order is past its ship-by date"</strong>
             <p>"Ada Lovelace's Ashen Drake was due to ship yesterday. Ship it today or message the buyer."</p>
         </Alert>
+        <dl class={Stats {}}>
+            <Stat label="Sales" value={t.money(Minor(sold), USD)} note="This month, refunds taken out" tone={StatTone::Neutral} />
+            <Stat label="Orders" value={ORDERS.len()} note="This month" tone={StatTone::Neutral} />
+            <Stat label="To ship" value={to_ship} note="Paid, not shipped yet" tone={StatTone::Neutral} />
+            <Stat label="Late" value={late} note="Past the ship-by date" tone={StatTone::Destructive} />
+        </dl>
         <div class={Grid}>
             <section class={Card {}}>
                 <header class={CardHeader {}}>
-                    <div class={Toolbar}>
+                    <div class={(Cluster { gap: Gap::Md }, Toolbar)}>
                         <h2>"Recent orders"</h2>
                         <Separator orientation={Orientation::Vertical} />
                         <button
@@ -242,7 +267,33 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
                     />
                 </footer>
             </section>
-            <div class={Aside}>
+            <div class={Stack { gap: Gap::Md }}>
+                <section class={Card {}}>
+                    <header class={CardHeader {}}><h2>"Selling limit"</h2></header>
+                    <div class={CardContent {}}>
+                        <Field
+                            id={LimitId}
+                            label="Sold this month"
+                            hint={html! { {t.money(Minor(sold), USD)}" of "{t.money(Minor(LIMIT_CENTS), USD)}". It resets on the 1st." }}
+                            error=""
+                        >
+                            // Lower is better: under two thirds of the limit is good, near it is a warning.
+                            <meter
+                                class={Meter {}}
+                                id={LimitId}
+                                aria-describedby={FieldHintId(&LimitId)}
+                                min="0"
+                                max={LIMIT_CENTS}
+                                low="10000"
+                                high="13500"
+                                optimum="0"
+                                value={sold}
+                            >
+                                {t.money(Minor(sold), USD)}
+                            </meter>
+                        </Field>
+                    </div>
+                </section>
                 <section class={Card {}}>
                     <header class={CardHeader {}}><h2>"Next payout"</h2></header>
                     <div class={CardContent {}}>
@@ -260,7 +311,7 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
                 <section class={Card {}}>
                     <header class={CardHeader {}}><h2>"Shipping"</h2></header>
                     <div class={CardContent {}}>
-                        <form class={Settings} method="post" action={url::Settings}>
+                        <form class={Stack { gap: Gap::Lg }} method="post" action={url::Settings}>
                             <Field id={WarehouseId} label="Ship from" hint="" error="">
                                 <select class={Select {}} id={WarehouseId} name={f.warehouse}>
                                     for warehouse in Warehouse::ALL {
@@ -308,6 +359,7 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
                     </div>
                 </section>
             </div>
+        </div>
         </div>
     }
 }

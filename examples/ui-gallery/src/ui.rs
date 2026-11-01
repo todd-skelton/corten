@@ -45,6 +45,9 @@ pub mod field;
 #[path = "../../../crates/corten-cli/kit/input.rs"]
 pub mod input;
 #[rustfmt::skip]
+#[path = "../../../crates/corten-cli/kit/meter.rs"]
+pub mod meter;
+#[rustfmt::skip]
 #[path = "../../../crates/corten-cli/kit/pagination.rs"]
 pub mod pagination;
 #[rustfmt::skip]
@@ -68,6 +71,15 @@ pub mod skeleton;
 #[rustfmt::skip]
 #[path = "../../../crates/corten-cli/kit/slider.rs"]
 pub mod slider;
+#[rustfmt::skip]
+#[path = "../../../crates/corten-cli/kit/stack.rs"]
+pub mod stack;
+#[rustfmt::skip]
+#[path = "../../../crates/corten-cli/kit/stats.rs"]
+pub mod stats;
+#[rustfmt::skip]
+#[path = "../../../crates/corten-cli/kit/status_dot.rs"]
+pub mod status_dot;
 #[rustfmt::skip]
 #[path = "../../../crates/corten-cli/kit/switch.rs"]
 pub mod switch;
@@ -102,6 +114,7 @@ pub const COMPONENTS: &[Component] = &[
     dropdown_menu::DropdownMenu,
     field::Field,
     input::Input,
+    meter::Meter,
     pagination::Pagination,
     popover::Popover,
     radio_group::RadioGroup,
@@ -110,6 +123,9 @@ pub const COMPONENTS: &[Component] = &[
     sheet::Sheet,
     skeleton::Skeleton,
     slider::Slider,
+    stack::Stack,
+    stats::Stats,
+    status_dot::StatusDot,
     switch::Switch,
     table::Table,
     tabs::Tabs,
@@ -152,5 +168,27 @@ mod tests {
                 None => assert!(!html.contains("role="), "{variant:?}: {html}"),
             }
         }
+    }
+
+    /// A figure is a term and its descriptions, so a screen reader reads the label with the value;
+    /// a tone is a class, and an empty note draws an element the stylesheet hides.
+    #[test]
+    fn a_stat_is_a_term_and_its_descriptions() {
+        use super::stats::{Stat, StatTone};
+        use corten::view::Render;
+        let html = Stat { label: "Late", value: 1, note: "Past the ship-by date", tone: StatTone::Destructive }.to_html();
+        assert!(html.starts_with(r#"<div class="stats__stat stats__destructive"><dt>Late</dt><dd class="stats__value">1</dd>"#), "{html}");
+        assert!(html.contains(r#"<dd class="stats__note">Past the ship-by date</dd>"#), "{html}");
+        let plain = Stat { label: "Orders", value: 10, note: "", tone: StatTone::Neutral }.to_html();
+        assert!(plain.starts_with(r#"<div class="stats__stat"><dt>"#), "{plain}");
+    }
+
+    /// The dot is drawn, not read: the status is in the text beside it.
+    #[test]
+    fn a_status_dot_is_not_read() {
+        use super::status_dot::{StatusDot, StatusTone};
+        use corten::view::Render;
+        let html = StatusDot { tone: StatusTone::Success }.to_html();
+        assert_eq!(html, r#"<span class="status-dot__dot status-dot__success" aria-hidden="true"></span>"#);
     }
 }

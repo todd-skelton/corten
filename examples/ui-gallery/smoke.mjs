@@ -787,6 +787,45 @@ async function run(browser) {
     button: document.querySelector("[class*='button__button']")?.parentElement?.className.includes("button__") ?? "missing",
   }));
   check("Looks: the kit's classes are on the app's elements, with none of its own around them", looks.badge === "SPAN" && looks.wrappers === 0 && looks.button === false, JSON.stringify(looks));
+  // Meter: the native element, named by its field's label, its fill in the state's color: the
+  // limit's value sits between low and high with optimum under low, one range off the good one.
+  // (By its label: Playwright names a meter from its fallback text, where browsers use the label.)
+  const meter = await orders.getByLabel("Sold this month").evaluate((m) => {
+    const el = /** @type {HTMLMeterElement} */ (m);
+    const box = el.getBoundingClientRect();
+    return { tag: el.tagName, value: el.value, max: el.max, width: Math.round(box.width), height: Math.round(box.height) };
+  });
+  check(
+    "Meter: a <meter> named by its label, drawn as a bar",
+    meter.tag === "METER" && meter.value === 12375 && meter.max === 15000 && meter.width > 100 && meter.height === 8,
+    JSON.stringify(meter),
+  );
+  // Stats: a term and its descriptions, as many to a row as fit and two on a phone.
+  const stats = await orders.evaluate(() => {
+    const dl = document.querySelector("dl[class*='stats__stats']");
+    const items = [...(dl?.children ?? [])];
+    return {
+      terms: items.map((i) => i.querySelector("dt")?.textContent).join(),
+      rows: new Set(items.map((i) => Math.round(i.getBoundingClientRect().top))).size,
+    };
+  });
+  check("Stats: labelled figures on one row", stats.terms === "Sales,Orders,To ship,Late" && stats.rows === 1, JSON.stringify(stats));
+  await orders.setViewportSize({ width: 390, height: 844 });
+  const phone = await orders.evaluate(() => [...document.querySelectorAll("dl[class*='stats__stats'] > div")].map((i) => Math.round(i.getBoundingClientRect().top)));
+  check("Stats: two to a row on a phone", new Set(phone).size === 2 && phone[0] === phone[1] && phone[2] === phone[3], JSON.stringify(phone));
+  await orders.setViewportSize({ width: 1280, height: 800 });
+  // StatusDot: drawn beside the words, not read; Stack and Cluster: the gap is the space.
+  const spacing = await orders.evaluate(() => {
+    const dot = document.querySelector("[class*='status-dot__dot']");
+    const stack = document.querySelector("form[class*='stack__stack']");
+    return {
+      dot: dot?.getAttribute("aria-hidden") === "true" && (dot.parentElement?.textContent ?? "").includes("Taking orders"),
+      // Gap::Lg, 1.5rem.
+      gap: stack ? parseFloat(getComputedStyle(stack).rowGap) / parseFloat(getComputedStyle(document.documentElement).fontSize) : "missing",
+      margins: stack ? [...stack.children].filter((c) => parseFloat(getComputedStyle(c).marginBlockStart) !== 0).length : -1,
+    };
+  });
+  check("StatusDot and Stack: the dot is not read, and a stack's gap is its only space", spacing.dot && spacing.gap === 1.5 && spacing.margins === 0, JSON.stringify(spacing));
   await orders.getByRole("button", { name: "Share the shop" }).click();
   check("Popover: its button opens it", await orders.locator("#share").evaluate((p) => p.matches(":popover-open")));
   await orders.keyboard.press("Escape");

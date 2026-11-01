@@ -1,0 +1,9 @@
+/* corten ui {{version}}: stack */
+.stack { display: flex; flex-direction: column; }
+.cluster { display: flex; flex-wrap: wrap; align-items: center; }
+.stack > *, .cluster > * { margin-block: 0; }
+.xs { gap: .25rem; }
+.sm { gap: .5rem; }
+.md { gap: 1rem; }
+.lg { gap: 1.5rem; }
+.xl { gap: 2rem; }
