@@ -765,6 +765,7 @@ async function apply(html, signal, sent, took) {
       // Focus in it goes to the nearest element around it that can take focus.
       const up = target?.contains(document.activeElement) && target.parentElement;
       navs ||= !!target && holdsNav(target);
+      if (target?.parentElement) changedIn(target.parentElement);
       target?.remove();
       if (up) focusNear(up);
     }
@@ -772,8 +773,10 @@ async function apply(html, signal, sent, took) {
     else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-append")) {
       put.push(...Array.from(el.content.children));
       serve(el.content);
+      changedIn(target);
       target.append(el.content);
     } else {
+      if (target.parentElement) changedIn(target.parentElement);
       replaceKeeping(target, el, sent, took);
       put.push(el);
     }
@@ -1006,6 +1009,8 @@ function opened(root, fresh) {
  * @param {Element} root @param {Element} fresh @param {Map<Element, string | undefined> | null} sent @param {boolean} [took]
  */
 function replaceKeeping(root, fresh, sent, took) {
+  // A layout element keeps its place in the layout a write's page is compared with.
+  if (drawn.has(root)) drawn.set(fresh, markupOf(fresh));
   serve(fresh);
   const reopen = opened(root, fresh);
   const focused = document.activeElement;
@@ -1092,14 +1097,17 @@ function focusNear(el, root, fresh) {
  * @param {boolean} [stay] keep the user's place: the scroll position (Chromium can reset it when
  *   <main> empties), what scrolls inside the page and the `<details>` open on screen
  * @param {Notice} [notice] the answer's, kept if the page has to load in full instead
+ * @param {{ apply: () => void } | null} [layout] what changes around `<main>`, drawn in the same
+ *   frame as the page ({@link swapDocument})
+ * @returns {Promise<boolean>} false when it loaded the page in full instead
  */
-async function swapPage(html, signal, stay, notice = null) {
+async function swapPage(html, signal, stay, notice = null, layout = null) {
   const content = parse(html);
   const [, styled] = await Promise.all([modulesOf(content), stylesOf(content)]);
   signal?.throwIfAborted();
   if (!styled) {
     reload(notice);
-    return;
+    return false;
   }
   const title = content.querySelector("title");
   if (title) {
@@ -1117,6 +1125,7 @@ async function swapPage(html, signal, stay, notice = null) {
   main.replaceChildren(content);
   // A page that sets no value skips the walk: a search of the text costs less than one of the DOM.
   if (html.includes("data-vars")) setVars(main);
+  layout?.apply();
   scrolledIn.clear();
   view?.();
   if (stay) scrollTo(x, y);
@@ -1124,6 +1133,137 @@ async function swapPage(html, signal, stay, notice = null) {
   markCurrent();
   readAgainLater();
   readPartsAgain(main);
+  return true;
+}
+
+/**
+ * An element's markup as the server drew it, comparable between this document and a page parsed
+ * with DOMParser: a `<noscript>`'s content and a nonce are dropped, as one or the other hides them,
+ * and `aria-current="page"`, which the runtime moves to the page's link after each navigation
+ * (`markCurrent`).
+ * @param {Element} el
+ */
+const markupOf = (el) =>
+  el.outerHTML
+    .replace(/<noscript\b([^>]*)>[\s\S]*?<\/noscript>/gi, "<noscript$1></noscript>")
+    .replace(/ nonce="[^"]*"/g, "")
+    .replace(/<a\b[^>]*>/g, (tag) => (tag.includes(" data-nav") ? tag.replace(' aria-current="page"', "") : tag));
+
+/**
+ * The elements the server drew beside `<main>` and beside each element around it, up to `<body>`,
+ * with their markup as it was sent: the layout a write's navigation compares ({@link swapDocument}).
+ * Anything a script put there (a toast region, a browser extension's markup) is not one, and is
+ * left as it is. An element a patch or a layout change puts in place of one takes its place here.
+ * @type {WeakMap<Element, string>}
+ */
+const drawn = new WeakMap();
+
+/**
+ * A patch changed what the server drew inside `el`: the layout element around it, if any, no longer
+ * has the markup it was drawn with, so the next write's page draws it again whatever that page has.
+ * @param {Element} el
+ */
+function changedIn(el) {
+  for (let up = /** @type {Element | null} */ (el); up; up = up.parentElement) {
+    if (drawn.has(up)) {
+      drawn.set(up, "");
+      return;
+    }
+  }
+}
+for (let el = document.querySelector("main"); el && el !== document.body; el = el.parentElement) {
+  for (const beside of Array.from(el.parentElement?.children ?? [])) if (beside !== el) drawn.set(beside, markupOf(beside));
+}
+
+/**
+ * What a write's page can change only by loading in full: the attributes of `<main>` and of each
+ * element around it (`lang`, a theme on `<html>`), and the layout's own head tags (not the page's
+ * head tags, its title, stylesheets or scripts).
+ * @param {Document} doc
+ */
+function frameOf(doc) {
+  const parts = [];
+  for (let el = doc.querySelector("main"); el; el = el.parentElement) {
+    parts.push(el.localName + Array.from(el.attributes, (a) => (a.name === "nonce" || a.name === "aria-busy" ? "" : ` ${a.name}="${a.value}"`)).join(""));
+  }
+  for (const el of Array.from(doc.head.children)) {
+    // The page's values (`style={..}`) are its own, set on what is swapped in (`setVars`).
+    if (el.localName === "style" && el.textContent?.startsWith("[data-vars=")) continue;
+    if (!el.matches('title, script, [data-corten-head], link[data-corten-style], link[rel="modulepreload"]')) parts.push(markupOf(el));
+  }
+  return parts.join("\n");
+}
+/** This document's, as the server sent it. */
+let frame = frameOf(document);
+
+/**
+ * What `doc`, a whole page, draws around `<main>` otherwise than the server drew it here: at each
+ * level up to `<body>`, the elements before and after the one `<main>` is in, compared with what
+ * the server sent for each. Each that changed is replaced, keeping what the user typed or opened,
+ * as a patch does. Null when only a full load draws the page as the server would: another element
+ * around `<main>`, more or fewer elements beside one, or another frame ({@link frameOf}).
+ * @param {Document} doc @returns {{ fresh: Element[], apply: () => void } | null}
+ */
+function layoutChanges(doc) {
+  if (frameOf(doc) !== frame) return null;
+  /** @type {[Element, Element][]} */
+  const changed = [];
+  let here = document.querySelector("main");
+  let there = doc.querySelector("main");
+  while (here && there && here !== document.body) {
+    const up = here.parentElement;
+    const upThere = there.parentElement;
+    if (!up || !upThere || up.localName !== upThere.localName) return null;
+    const mine = Array.from(up.children).filter((el) => el === here || drawn.has(el));
+    const theirs = Array.from(upThere.children);
+    if (mine.length !== theirs.length || mine.indexOf(here) !== theirs.indexOf(there)) return null;
+    for (let i = 0; i < mine.length; i++) {
+      if (mine[i] === here) continue;
+      if (mine[i].localName !== theirs[i].localName) return null;
+      if (drawn.get(mine[i]) !== markupOf(theirs[i])) changed.push([mine[i], theirs[i]]);
+    }
+    here = up;
+    there = upThere;
+  }
+  if (here !== document.body || there !== doc.body) return null;
+  return {
+    fresh: changed.map(([, el]) => el),
+    apply() {
+      for (const [old, el] of changed) {
+        // A patch may have replaced it meanwhile, by its id.
+        const here = old.isConnected ? old : old.id && document.getElementById(old.id);
+        if (!here) continue;
+        replaceKeeping(here, el, null);
+        setVars(el);
+      }
+    },
+  };
+}
+
+/**
+ * Swaps in the whole page a write sent the browser to: `<main>` and the page's head tags as a
+ * navigation's answer has them ({@link swapPage}), and each element around `<main>` the server
+ * now draws otherwise, so what the write changed there (a count in the header) is current, as it is
+ * after the full load a browser without JavaScript makes. A page whose frame or layout differs in
+ * shape loads in full. False when it did.
+ * @param {string} html @param {AbortSignal} signal @param {Notice} notice @returns {Promise<boolean>}
+ */
+async function swapDocument(html, signal, notice) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  // Parsed with scripting off, as `parse` does, so a `<noscript>`'s content would be live.
+  for (const noscript of Array.from(doc.querySelectorAll("noscript"))) noscript.replaceChildren();
+  const main = doc.querySelector("main");
+  const layout = main && layoutChanges(doc);
+  if (!main || !layout) {
+    reload(notice);
+    return false;
+  }
+  await Promise.all(layout.fresh.map(modulesOf));
+  signal.throwIfAborted();
+  // What a navigation's answer holds: the title, the page's head tags, the section stylesheets and
+  // the page.
+  const head = [doc.querySelector("title"), ...Array.from(doc.head.querySelectorAll("[data-corten-head], link[data-corten-style]"))];
+  return swapPage(head.map((el) => el?.outerHTML ?? "").join("") + main.innerHTML, signal, false, notice, layout);
 }
 
 /**
@@ -1349,10 +1489,11 @@ document.addEventListener("touchstart", (event) => prefetch(event.target), { pas
  * @param {ReturnType<typeof placeOf>} [place] where a `data-keep-place` navigation leaves the
  *   user, handed on when the server redirects
  * @param {Element | null} [source] the link or GET form that started it, marked busy with `main`
+ * @param {boolean} [written] sent by a write: the page is fetched whole and its layout drawn again
  */
-async function visit(url, signal, redirected, again, place, source) {
+async function visit(url, signal, redirected, again, place, source, written) {
   const key = pageKey(url);
-  const hit = again ? undefined : prefetched.get(key);
+  const hit = again || written ? undefined : prefetched.get(key);
   prefetched.delete(key);
   const fresh = hit && performance.now() - hit.at < PREFETCH_FRESH_MS;
   // A redirected visit has its answer already, so a prefetch of the same page goes unused.
@@ -1378,7 +1519,8 @@ async function visit(url, signal, redirected, again, place, source) {
         ? redirected
         : hit && fresh
           ? await hit.response.catch(() => fetch(url, { headers: { corten: "nav" }, signal }))
-          : await fetch(url, { headers: { corten: "nav" }, signal });
+          : // After a write, the whole document, as a full load reads it.
+            await fetch(url, written ? { signal } : { headers: { corten: "nav" }, signal });
     } catch (error) {
       if (signal.aborted) throw error;
       // Offline or the server is unreachable: load the URL as a normal navigation, which the
@@ -1395,7 +1537,7 @@ async function visit(url, signal, redirected, again, place, source) {
       navigation.navigate(to, { history: "replace", info: { [LOAD]: true, [KEEP_PLACE]: place, [SOURCE]: source } });
       return;
     }
-    if (!res.headers.has("corten-page") || shellChanged(res)) {
+    if (!res.headers.has(written ? "corten-shell" : "corten-page") || shellChanged(res)) {
       reload(notice);
       return;
     }
@@ -1405,7 +1547,7 @@ async function visit(url, signal, redirected, again, place, source) {
     if (res.redirected && !redirected) {
       const page = new Response(await res.text(), { headers: res.headers });
       signal.throwIfAborted();
-      navigation.navigate(res.url, { history: "replace", info: { [REDIRECTED]: page, [KEEP_PLACE]: place, [SOURCE]: source } });
+      navigation.navigate(res.url, { history: "replace", info: { [REDIRECTED]: page, [KEEP_PLACE]: place, [SOURCE]: source, [WRITTEN]: written } });
       return;
     }
     const html = await res.text();
@@ -1416,8 +1558,9 @@ async function visit(url, signal, redirected, again, place, source) {
       readAgainLater();
       return;
     }
-    await swapPage(html, signal, again || place !== undefined, notice);
-    announce(notice);
+    // A page loaded in full instead announces the notice once it has loaded.
+    const swappedIn = written ? await swapDocument(html, signal, notice) : await swapPage(html, signal, again || place !== undefined, notice);
+    if (swappedIn) announce(notice);
   } finally {
     signal.removeEventListener("abort", idle);
     idle();
@@ -1482,6 +1625,12 @@ const KEEP_PLACE = Symbol("corten.keepPlace");
 const LOAD = Symbol("corten.load");
 /** The link or GET form that started a navigation the server redirected, still marked busy. */
 const SOURCE = Symbol("corten.source");
+/**
+ * Key of the navigation a write sent the browser on: its page is fetched whole, as a full load
+ * would, so what the write changed in the layout around `<main>` (a count in the header) is drawn
+ * again too ({@link swapDocument}).
+ */
+const WRITTEN = Symbol("corten.written");
 
 /**
  * Whether the first document has fired `load`. Before it, a navigation is the browser's own (a
@@ -1552,6 +1701,7 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   // The page is about to change: replies to its pending submits would patch the wrong page.
   if (!again) for (const pending of submits.values()) pending.controller.abort();
   const redirected = event.info?.[REDIRECTED];
+  const written = !!event.info?.[WRITTEN];
   // The same page read again, or a form or link marked `data-keep-place` (filters applied as they
   // change): the page changes under the user, who stays where they were reading, on the control
   // they used. Kept across a redirect the server answers with.
@@ -1566,7 +1716,7 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
     // Chromium leaves a swapped page where the last one was scrolled, and Firefox does not scroll
     // to an `#id` the address already had.
     const handler = async () => {
-      await visit(url, event.signal, redirected, false, undefined, startedBy(event));
+      await visit(url, event.signal, redirected, false, undefined, startedBy(event), written);
       if (event.signal.aborted) return;
       let id = url.hash.slice(1);
       try {
@@ -1580,7 +1730,7 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
     return;
   }
   const handler = async () => {
-    await visit(url, event.signal, redirected, again, place, startedBy(event));
+    await visit(url, event.signal, redirected, again, place, startedBy(event), written);
     // Back to the control, unless the user has moved on meanwhile.
     const now = document.activeElement;
     const el = /** @type {HTMLInputElement | undefined} */ (place && (!now || now === document.body) ? document.querySelectorAll(place.at)[place.nth] : undefined);
@@ -1750,7 +1900,7 @@ async function send(form, submitter, sends) {
     if (location_) {
       renew();
       submits.delete(form);
-      if (navigation) navigation.navigate(location_, { info: { [LOAD]: true } });
+      if (navigation) navigation.navigate(location_, { info: { [LOAD]: true, [WRITTEN]: method !== "GET" } });
       else {
         // Without the Navigation API, a URL that differs only in its `#id` would only scroll.
         const to = new URL(location_, location.href);

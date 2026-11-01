@@ -79,7 +79,7 @@ one `<main>`, not inside a `for`, `if` or `match`. Each part renders for the req
 | an expression or component in `<head>` (`{head}`): the page's own tags | yes | yes, each marked `data-corten-head` so the next page's replace them | no |
 | `<Corten />`: the runtime, the import map, the page's scripts and stylesheets | yes | the area stylesheets the page needs | no |
 | `<main>`'s children: the page | yes | yes | no |
-| everything else: the header, the footer, the layout's own tags | yes | no: the runtime keeps what the page has | no |
+| everything else: the header, the footer, the layout's own tags | yes | no: the runtime keeps what the page has (after a write that redirects, it draws again what changed: below) | no |
 
 So the layout costs a navigation nothing, and what the layout shows that a navigation cannot
 update (the signed-in user, from a `Caller` the handler took) is covered by the page key: when it
@@ -126,8 +126,8 @@ impl FromRequestParts<Shared> for Chrome {
     async fn from_request_parts(parts: &mut Parts, state: &Shared) -> Result<Self, Response> {
         let viewer = Option::<Caller<Viewer>>::from_request_parts(parts, state).await?.map(|c| c.0);
         // The runtime keeps the header for a navigation or a `data-patch` action; every other
-        // answer that draws the layout (a full load, a refused form without JavaScript, a data
-        // client's `req.page`) draws the count.
+        // answer that draws the layout (a full load, the page a write redirects to, a refused form
+        // without JavaScript, a data client's `req.page`) draws the count.
         let swaps = Mode::of(&parts.headers).swaps();
         let cart = match (&viewer, !swaps) {
             (Some(who), true) => {
@@ -167,11 +167,31 @@ it. An app whose layout pages answer data clients with `req.screen` alone, which
 the title, starts the read only for `Mode::of(..) == Mode::Document`; a `req.page` data client
 of such an app then draws `None`.
 
-Since a navigation does not draw the header again, a write that changes the value draws it
-itself. The badge is a component the layout renders and a patch can carry (an `#[derive(Id)]`
-on it), and the write reads the value directly, not through the extractor above (which skips the
-read for its `Mode::Action` answer), and only for the patch: without JavaScript the redirect's
-next page is a full load that reads it.
+A write that redirects (`req.redirect`, `req.redirect_with_notice`) needs nothing more: the
+runtime fetches the page it sends the browser to whole, as a full load does (`Mode::Document`, so
+the extractor above reads the count), swaps in `<main>` and replaces each element around it that
+the server now draws otherwise, in the same document. The header shows the count the write made,
+with JavaScript as without, and only the navigation after a write pays the layout's reads; every
+other navigation still keeps the header. Each element the server drew beside `<main>` and beside
+each element around it, up to `<body>`, is compared with what the server sent for it, and one that
+changed is replaced as a patch replaces it, keeping what the user typed or opened; one that did not
+stays as it is, and what a script added beside them stays too. One a patch changed since (a count
+inside the header) is replaced whatever the new page has, as the server's markup is the only
+version it can compare. A page that differs in any other
+way around `<main>` loads in full, as a browser without JavaScript loads it: an element more or
+fewer beside one (a banner shown now), an attribute of `<main>` or of an element around it (`lang`,
+a theme on `<html>`), or the layout's own head tags (not the page's values for `style={..}`,
+which are set on what is swapped in). A browser extension that adds to `<head>` or to `<html>`
+before the runtime starts (a dark-mode extension) makes every such write load in full, which is
+right and as slow as without JavaScript. The page a write sends the browser to is
+fetched as a document, so when it redirects again, `fetch` follows that redirect itself: a
+`#id` on the second one is not kept, and one to another site loads in full.
+
+A write that answers in place, with a patch rather than a redirect, draws what it changed itself.
+The badge is a component the layout renders and a patch can carry (an `#[derive(Id)]` on it), and
+the write reads the value directly, not through the extractor above (which skips the read for its
+`Mode::Action` answer), and only for the patch: without JavaScript the redirect's next page is a
+full load that reads it.
 
 ```rust,ignore
 #[component]
@@ -188,11 +208,6 @@ async fn add_to_cart(req: Req, carts: State<Carts>, viewer: Caller<Viewer>) -> H
     req.redirect(&url::Cart)
 }
 ```
-
-A `data-patch` write that answers only with a redirect leaves the old value: the runtime follows
-it as a navigation, which keeps the header (in a browser with the Navigation API; older ones load
-the next page in full). Answer such a write with the patch, as above, or leave `data-patch` off
-the form, so the browser submits it and loads the next page in full.
 
 Corten has no layout slot that fills itself: the layout is the app's component (design rule 10),
 so the value reaches it as a prop, and the read stays where the handler can see it, its failure

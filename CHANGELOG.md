@@ -2126,6 +2126,26 @@ Corten is pre-1.0, so any minor version may change the API.
     began writing prices in the reader's locale (ce04961b), which is what benchmark round r7 to r8
     saw. `Currency`'s `Debug` is now its code (`Currency("USD")`, was its bytes)
     ([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
+99. The page a `data-patch` write redirects to is fetched whole (`Mode::Document`, as a full load
+    reads it) and the runtime draws again each element around `<main>` the server now draws
+    otherwise, so a layout value the write changed (a cart count, a warning) is current with
+    JavaScript as it is without; before, the navigation kept the layout the full load drew. An
+    element the server draws the same stays the same element, with what scripts added to it. When
+    the frame around `<main>` changed (an attribute of `<main>` or of an element around it, or the
+    layout's own head tags) or the elements around it are not the same tags, the page loads in
+    full instead. Every other navigation still swaps `<main>` alone. A whole document now carries
+    its notice in `corten-notice` too, so the runtime announces one the page did not draw.
+    Measured: the runtime is 779 bytes larger gzipped (10,091 to 10,870; brotli 9,119 to 9,840;
+    27,882 to 30,232 minified), and the watchlist's briefing write, which redirects to `/news`,
+    now reads 1,919 bytes gzipped where the swap read 1,410 (brotli 1,786 against 1,328; 4,871
+    against 3,566 uncompressed), once per write, and the server draws the layout for it as for a
+    full load. From the submit to the drawn page (headless Chromium on localhost, 20 rounds of each,
+    interleaved, while other builds ran): 53 ms (median, 37 to 128) where the old `<main>` swap
+    took 46.5 ms (37 to 67), and both well under the full load a browser makes without the runtime,
+    88.5 ms (62 to 120) and 67.5 ms (54 to 106) in the same runs; the full loads, the same code in
+    both, moved as much between runs as the swaps differ, so the swap's cost is within this
+    machine's noise
+    ([#538 A data-patch write that redirects leaves the layout as the full load drew it, so a layout value the write changed stays stale with JavaScript and is right without it](https://github.com/todd-skelton/corten/issues/538)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

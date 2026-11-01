@@ -907,9 +907,35 @@ async function run(browser) {
         (/** @type {any} */ (window)).__notices = 0;
         document.addEventListener("corten:notice", () => (/** @type {any} */ (window)).__notices++);
       });
+      // The page a write sends the browser to is fetched whole, as a full load reads it, and what
+      // the write changed in the layout around <main> is drawn again: here the header, changed on
+      // its way so the write has something to change.
+      /** @param {URL} url */
+      const news = (url) => url.pathname === "/news";
+      // What the route changes in the page: the brand in the header, a banner before the header (a run
+      // of another length), an attribute of <html>.
+      let [banner, frame] = ["", ""];
+      await page.route(news, async (route) => {
+        if (route.request().method() !== "GET" || route.request().headers()["corten"]) return route.fallback();
+        // Fetched uncompressed: Playwright does not decode zstd, which Firefox asks for.
+        const res = await route.fetch({ headers: { ...route.request().headers(), "accept-encoding": "identity" } });
+        const headers = res.headers();
+        delete headers["content-encoding"];
+        delete headers["content-length"];
+        const body = (await res.text())
+          .replace(">Watchlist</span>", ">Watchlist, again</span>")
+          .replace("<header", `${banner}<header`)
+          .replace("<html", `<html${frame}`);
+        await route.fulfill({ status: res.status(), headers, body });
+      });
+      // Something a script put beside <main> is not the layout's, and stays.
+      await page.evaluate(() => document.body.append(Object.assign(document.createElement("div"), { id: "extension" })));
       await thank();
       const first = await back();
       check("a redirect to a place keeps its #id and scrolls to it", first && loads === 1, `${await page.evaluate(() => [location.href, scrollY])} loads ${loads}`);
+      const brand = await page.evaluate(() => document.querySelector("header span")?.textContent);
+      check("a write's page draws the layout again, in the same document", brand === "Watchlist, again" && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1)), brand ?? "");
+      check("what a script put beside <main> stays", await page.evaluate(() => !!document.getElementById("extension")));
       // The write's notice (`req.redirect_with_notice`): the page draws it, so the runtime does
       // not hand it on too, the address carries nothing for it, and it is gone once read.
       const notices = ["the page it redirected to says what the write did", "a notice the page drew is not dispatched as well", "the notice is said once"];
@@ -918,12 +944,47 @@ async function run(browser) {
         check(notices[0], said === "You're on the list for the morning briefing." && new URL(page.url()).search === "", `${said} ${page.url()}`);
         check(notices[1], (await page.evaluate(() => (/** @type {any} */ (window)).__notices)) === 0);
       } else for (const name of notices) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
-      await page.evaluate(() => scrollTo(0, 0));
+      // The same header again: the element stays as it is, not replaced.
+      await page.evaluate(() => {
+        scrollTo(0, 0);
+        (/** @type {any} */ (document.querySelector("header"))).__same = 1;
+      });
       await thank();
       const second = await back();
       check("the same place again fetches the page again", second && loads === 2, `loads ${loads}`);
       check("both kept the document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
+      check("a layout element the write did not change stays the same element", await page.evaluate(() => (/** @type {any} */ (document.querySelector("header"))).__same === 1));
+      // A patch inside the header (a cart count) changes it from what the server drew, so the next
+      // write's page draws it again even when that page's header is the one drawn before.
+      await page.evaluate(async () => {
+        scrollTo(0, 0);
+        const brand = /** @type {HTMLElement} */ (document.querySelector("header span"));
+        brand.id = "smoke-brand";
+        const corten = /** @type {{ patch: (html: string) => Promise<void> }} */ (await import(/** @type {string} */ ("corten")));
+        await corten.patch('<span id="smoke-brand">Patched</span>');
+      });
+      await thank();
+      await back();
+      const redrawn = await page.evaluate(() => document.querySelector("header span")?.textContent);
+      check("a layout element a patch changed is drawn again by the next write", redrawn === "Watchlist, again", redrawn ?? "");
+      // More elements around <main>, or another attribute on an element around it: the page loads in
+      // full, as the server draws it.
+      for (const [name, change] of /** @type {const} */ ([
+        ["a write's page with more elements around <main> loads in full", () => (banner = '<p id="banner">Closed Monday</p>')],
+        ["a write's page whose <html> differs loads in full", () => (frame = ' data-theme="dark"')],
+      ])) {
+        change();
+        await page.evaluate(() => {
+          scrollTo(0, 0);
+          (/** @type {any} */ (window)).__marker = 4;
+        });
+        await thank();
+        await page.waitForFunction(() => (/** @type {any} */ (window)).__marker === undefined && document.getElementById("briefing"), null, { timeout: 10000 }).catch(() => {});
+        const drawnNow = await page.evaluate(() => ({ marker: (/** @type {any} */ (window)).__marker, banner: !!document.getElementById("banner"), theme: document.documentElement.getAttribute("data-theme") }));
+        check(name, drawnNow.marker === undefined && drawnNow.banner && (frame === "" || drawnNow.theme === "dark"), JSON.stringify(drawnNow));
+      }
       page.off("request", onNews);
+      await page.unroute(news);
       // After the loads are counted: the page that drew the notice removed it.
       if (engine !== "webkit") check("the notice is said once", !(await page.evaluate(async () => (await (await fetch("/news")).text()).includes("on the list"))));
     }

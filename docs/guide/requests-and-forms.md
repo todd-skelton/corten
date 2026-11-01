@@ -755,12 +755,16 @@ it. It is for a page of the app: a route, a place on one, a checked `Local` or a
 `#[derive(Href)]` enum of those (`OnSite`); a URL of another site does not compile.
 
 A client navigation runs only the page inside `<main>`, not the layout around it, so a notice the
-layout holds is not drawn there. When the page did not render the notice, its answer hands it to
-the runtime, which dispatches `corten:notice` on the document (`detail.message`) once the page is
-swapped in; corten-ui's `Toaster` shows it. A page that renders it itself (a status line in the
-form it sent the user back to) is not sent it twice. When the navigation has to load the page in
-full instead (its layout changed), the runtime keeps the notice for that load in session storage
-and dispatches the event once the page's modules have connected.
+layout holds is not drawn there; the navigation a write's redirect starts is the exception, which
+fetches the whole page and draws again what changed around `<main>` (the [views
+guide](views.md)), a notice the layout holds included. When the page did not render the notice,
+its answer hands it to the runtime, which dispatches `corten:notice` on the document
+(`detail.message`) once the page is swapped in; corten-ui's `Toaster` shows it. A page that
+renders it itself (a status line in the form it sent the user back to) is not sent it twice. When
+the navigation has to load the page in full instead (its layout changed), the runtime keeps the
+notice for that load in session storage and dispatches the event once the page's modules have
+connected; the page loaded then does not draw it, since the fetch before it read it, so a page
+whose status line would have said it shows it through `corten:notice` alone.
 
 A browser refuses a `Secure` cookie, and so a `__Host-` one, from a plain `http://` origin other
 than loopback: a tool served on the LAN as `http://automation.lan:3001` or `http://192.168.1.5`.

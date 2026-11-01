@@ -65,10 +65,9 @@ async fn show(req: Req, Params(at): Params<url::Item<'_>>) -> HtmlResult {
    every page that draws the layout takes it, and the layout's props builder awaits it. Never read
    it after the page's own reads (a full load then waits for both), never join it into each
    handler's reads by hand, and do not fetch it from a script on every load to draw it the first
-   time. A `data-patch`
-   write that changes it reads it only when `req.mode == Mode::Action` and answers
-   `req.patch(Badge { .. })` then, else `req.redirect(..)` (a redirect alone leaves the old value
-   with JavaScript), or the form drops `data-patch`. Write each nav link from
+   time. A write that changes it and redirects needs nothing more: the runtime fetches the page a
+   write sends it to whole and draws the layout again. One that answers in place with a patch reads
+   it only when `req.mode == Mode::Action` and answers `req.patch(Badge { .. })` then. Write each nav link from
    one mention of its route, `<a {..req.nav(&url::Item { id })}>` (`href`, `data-nav` and
    `aria-current` on its own page; `req.nav_section(..)` for a section), never `href` and
    `aria-current` separately.

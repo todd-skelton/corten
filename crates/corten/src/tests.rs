@@ -3557,10 +3557,10 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
         let res = fetch("/done", mode).await.unwrap();
         assert_eq!(set(&res), [gone], "{mode:?}");
         assert_eq!(res.headers()[header::CACHE_CONTROL], "private, no-cache");
-        // The page drew it: a navigation's answer says so (`&d`), so the runtime keeps it only for a
-        // full load in its place.
+        // The page drew it: the answer says so (`&d`), so the runtime keeps it only for a full load
+        // in its place. A whole document says it too, for the runtime that fetched it after a write.
         let header = res.headers().get("corten-notice").map(|v| v.to_str().unwrap().to_string());
-        assert_eq!(header.as_deref(), mode.map(|_| "m=Batch+3517+deleted%3B+2+left.&d"), "{mode:?}");
+        assert_eq!(header.as_deref(), Some("m=Batch+3517+deleted%3B+2+left.&d"), "{mode:?}");
         let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
         assert!(body.contains("<p>Batch 3517 deleted; 2 left.</p>"), "{body}");
     }
@@ -3616,7 +3616,7 @@ async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
             assert_eq!(header.as_deref(), Some("m=Batch+3517+deleted%3B+2+left."), "{path}");
             assert!(!body.contains("Batch 3517"), "{body}");
         } else {
-            assert_eq!(header, None);
+            assert_eq!(header.as_deref(), Some("m=Batch+3517+deleted%3B+2+left.&d"), "drawn in the layout");
             assert!(body.contains(r#"<p id="toast">Batch 3517 deleted; 2 left.</p>"#), "{body}");
         }
     }

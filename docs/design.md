@@ -72,7 +72,8 @@ framework's shape, and what it does not do yet.
    title for a data client; the title, head tags and `<main>` for a navigation), so a layout
    costs a navigation nothing: on the item page a full document got about 7% faster than with
    the shell and a navigation stayed within noise (`render_cost` medians of alternating runs,
-   same bytes).
+   same bytes). The one navigation that reads the whole document is the one after a `data-patch`
+   write that redirects, so what the write changed in the layout is drawn as a full load draws it.
 11. **A request says what it is with a `corten` header, not `Accept` or `Sec-Fetch-*`.** A
    navigation and an action both answer HTML, so no registered media type tells them apart, and
    `Accept` already chooses the format: `application/json` asks for a page's data
@@ -86,7 +87,8 @@ framework's shape, and what it does not do yet.
    a page" and that a script may set.
 12. **The runtime prefetches links itself, not with Speculation Rules or `rel="prefetch"`.** A
    navigation the runtime makes asks with `corten: nav` and gets the title, head tags and
-   `<main>`, a fraction of the document. A Speculation Rules prefetch fetches the whole document
+   `<main>`, a fraction of the document (all but the one after a write, which is never
+   prefetched). A Speculation Rules prefetch fetches the whole document
    into a cache the browser uses only for a document navigation, not for the runtime's `fetch`. A
    `rel="prefetch"` response goes into the HTTP cache, but it is the document, sent without
    `corten: nav`, and answers vary on that header (`Vary: corten, accept`), so the runtime's
@@ -126,8 +128,8 @@ framework's shape, and what it does not do yet.
    fetch by mistake carries neither, so the runtime loads the URL in full. `corten-shell` is the
    key of the page around `<main>`, compared with the one the page loaded with, not a validator
    of the answer, so it is not an `ETag`, which caches and conditional requests read.
-   `corten-notice` hands the runtime a redirect's notice (`req.redirect_with_notice`) the swapped
-   page did not draw, which it dispatches as `corten:notice`; the notice itself rides to the page
+   `corten-notice` hands the runtime a redirect's notice (`req.redirect_with_notice`) the page
+   it swaps in (a navigation's answer, or the document after a write) did not draw, which it dispatches as `corten:notice`; the notice itself rides to the page
    in the `__Host-corten-notice` cookie, since `fetch` follows the redirect (in `corten-notice`,
    read only without `Sec-Fetch-Site`, for a write from a plain `http://` origin off loopback,
    which refuses a `Secure` cookie; never with `Policy::hsts`). Corten would move to
