@@ -2665,8 +2665,8 @@ Corten is pre-1.0, so any minor version may change the API.
     write's own are not checked, and a release build compiles none of it.
     Measured with callgrind (in-process `oneshot`, a POST that redirects to a path, the
     difference between 1,200 and 200 requests over 1,000, median of three and the range of the
-    nine pairs, against main at f5c76a08, the branch at 7befb95d; the commit after it changes
-    only how a redirect's address is read): release 27,035 instructions a request on the branch
+    nine pairs, against main at f5c76a08, the branch at 7befb95d; the later commits change only
+    the check of a redirect to another address, which the measured request does not reach): release 27,035 instructions a request on the branch
     (26,988 to 27,047) against 27,035 on main (26,944 to 27,072), none of the check compiled in;
     debug 217,283 on the branch (217,087 to 217,376) against 189,171 on main (189,119 to
     189,197), the headers kept for the check

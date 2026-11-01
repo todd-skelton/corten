@@ -1238,14 +1238,15 @@ the redirect passes if any of the app's policies allows it.
 
 Not checked: another method (no form sends it), a script's own `fetch` (held to `connect-src`),
 a post from another site's page, a browser's post that does not say its page's origin
-(`Origin: null`), a `Relay` answer, a form on a relayed page (held to the policy it came with,
-which the app cannot see), an app under `Policy::report_only` (the browser reports the
+(`Origin: null`), a `Relay` answer, an app under `Policy::report_only` (the browser reports the
 redirect and follows it), and a release build, which sends the redirect as written and does no
 work for the check. The browser holds every redirect the submission follows to the form's
 page's `form-action`, not only the write's own: a write that redirects to `/`, where a
 signed-out `Caller` is sent to sign in on another origin, is stopped too. A later redirect
 answers a `GET` the server cannot tell from a link, so it is not checked; allow those origins
-as well.
+as well. A form on a relayed page posting to one of the app's routes is held to the app's policy
+at the page's path, not to the CSP the relayed page came with, which the app does not see: allow
+the origin there too, or relay the write.
 
 Every page is sent with `Cross-Origin-Opener-Policy: same-origin`, so a window another site
 opened, or one this page opens on another site, cannot reach it. Two things loosen it, for the
