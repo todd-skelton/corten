@@ -1279,7 +1279,38 @@ Corten is pre-1.0, so any minor version may change the API.
     by one 56 and 539 (493 to 606) against 435 (394 to 748) (release build, the check's
     functions timed alone, median and range of nine runs of 50)
     ([#514 A route parameter cannot be followed by fixed text in its segment, so /sitemap/{kind}/{page}.xml has no typed route](https://github.com/todd-skelton/corten/issues/514)).
-159. `Mode::swaps()`: true for a navigation and a `data-patch` action, whose answer the runtime
+159. A UI kit, copied into the app as source (docs/guide/kit.md). `corten ui init` writes theme
+    tokens under shadcn/ui's variable names (`--background`, `--primary`, `--ring`, `--radius`
+    and the rest), light and dark, following the system when the page chose none, `src/ui.rs`
+    listing the kit's components, and the page's colors in `static/style.css`, and lists
+    `ui::COMPONENTS` on the `App`. `corten ui add <name>..` (or `--all`) copies a component into
+    `src/ui/` with the kit version it came from, refusing to replace a file unless `--force`, and
+    lists it (and, for one that styles a corten-ui widget, adds `corten-ui` to `Cargo.toml` and
+    `corten_ui::COMPONENTS` to the `App`); each writes all its changes or none. `corten ui list`
+    names them; `corten ui diff` says, for each copy, whether the app edited it and whether the
+    kit changed it since (from the version and hash on its first line), with the lines that
+    differ. The components are `Button` (six variants, four
+    sizes), `Badge`, `Card` with its header, content and footer, `Alert`, `Field`, `Input`,
+    `Textarea`, `Select`, `Slider`, `Checkbox`, `Switch`, `RadioGroup`, `Separator`, `Skeleton`,
+    `Table`, `Breadcrumb` and `Pagination` (typed route links), `Avatar`, `Dialog` and `Sheet`
+    (a `<dialog>` opened by `command="show-modal"`), `Popover`, `Accordion` (`<details name>`),
+    and `Tabs`, `DropdownMenu`, `Combobox` and `Toasts`, which style corten-ui's widgets: ordinary
+    `#[component(css)]`s whose variants are enums matched to classes, so one without a rule does not
+    compile (a `compile_fail` doctest in each), with no script and no `style=`. A component whose
+    element takes the app's attributes (a button, a link, an input) styles the element written
+    inside it, so `html!` checks those attributes as always. The `corten new` check now also runs
+    `corten ui init`, `corten ui add --all` and `corten check` on the new app, and the ui-gallery
+    example is drawn by every kit component from the kit's own files (its orders page shows those
+    the draft listing does not), so its browser test runs each in Chromium and WebKit, with and
+    without JavaScript
+    ([#404 corten ui init: no theme tokens a component kit can build on, and a shadcn theme cannot be brought over](https://github.com/todd-skelton/corten/issues/404),
+    [#405 corten ui add: no command copies a component's source into an app](https://github.com/todd-skelton/corten/issues/405),
+    [#406 Kit components: styled plain elements and native controls](https://github.com/todd-skelton/corten/issues/406),
+    [#407 Kit components: Dialog, Sheet, Popover and Accordion on the platform's elements](https://github.com/todd-skelton/corten/issues/407),
+    [#408 Kit components: styled Tabs, Dropdown Menu, Combobox and Toast over corten-ui](https://github.com/todd-skelton/corten/issues/408),
+    [#409 The component kit has no test that every component compiles in an app and works in each browser](https://github.com/todd-skelton/corten/issues/409),
+    [#410 An app cannot see what changed in a kit component since it copied it](https://github.com/todd-skelton/corten/issues/410)).
+160. `Mode::swaps()`: true for a navigation and a `data-patch` action, whose answer the runtime
     swaps into the page it has, so the layout around `<main>` does not render. A value only the
     layout shows that needs a read of its own (a cart's count) is read only when it is false, in
     the function that builds the layout's props: a full load and a page without JavaScript have it

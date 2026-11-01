@@ -1,0 +1,7 @@
+
+/* corten ui {{version}}: the page's colors from the kit's theme. color-scheme themes form
+   controls and scrollbars: light, the system's when the page chose no theme, else the one chosen. */
+:root { color-scheme: light; background: var(--background); color: var(--foreground); }
+:root:not([data-theme]) { color-scheme: light dark; }
+[data-theme="dark"] { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }

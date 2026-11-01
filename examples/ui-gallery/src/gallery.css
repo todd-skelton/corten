@@ -1,54 +1,49 @@
 /* The page: an introduction, then the listing form beside a column of the draft's other cards
-   (one column on a phone), so cards of different heights leave no holes. */
-.intro { margin-block-end: 24px; }
-.intro p { margin: 4px 0 0; color: var(--muted); }
-.grid { display: grid; gap: 16px; align-items: start; }
+   (one column on a phone), so cards of different heights leave no holes. The components' look is
+   the kit's (src/ui.rs); this is the layout and the parts the kit has no component for. */
+.intro { margin-block-end: 1.5rem; }
+.intro p { margin: .25rem 0 0; color: var(--muted-foreground); }
+.grid { display: grid; gap: 1rem; align-items: start; }
 @media (min-width: 52rem) { .grid { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
-.side { display: grid; gap: 16px; }
-.card { display: grid; gap: 12px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
-.card h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-.card p { margin: 0; }
-/* A card's own button (Print label) is as wide as its label, as the others are. */
-.card > button { justify-self: start; }
-.order { display: grid; }
-.row { display: flex; flex-wrap: wrap; align-items: end; gap: 0 20px; }
-/* The regions (CheckboxGroup), the pricing and the lowest offer (RequiredWhen) are fieldsets. The
-   lowest offer is hidden for a fixed price by the radio's own state, so it is right before the
-   script runs and without it; the script only makes it required or disabled. */
-.order fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.aside { display: grid; gap: 1rem; }
+.order { display: grid; gap: 1.25rem; }
+.row { display: flex; flex-wrap: wrap; align-items: start; gap: 1rem 1.25rem; }
+/* The lowest offer is hidden for a fixed price by the radio's own state, so it is right before the
+   script runs and without it; the script (RequiredWhen) only makes it required or disabled. */
 .order:has(input[value="fixed"]:checked) .floor { display: none; }
-/* A choice is a row of options under a label, styled as the fields above it are. */
-.choices { margin-block: 12px; }
-.choices fieldset { display: flex; flex-wrap: wrap; gap: 8px; }
-.choices legend { float: left; width: 100%; margin-block-end: 6px; padding: 0; font-size: 13px; font-weight: 500; color: var(--muted); }
-.choices label { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; }
-.choices label:has(:checked) { border-color: var(--accent); background: var(--tint); }
-.choices input { margin: 0; accent-color: var(--accent); }
-.primary { justify-self: start; margin-block: 12px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.buttons { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.buttons form { margin: 0; }
-
-/* The adornment sits between the price's decrease button and its input: the number field's
-   root is display: contents (field.css), so its parts are the control's flex items. */
-.unit { order: 1; color: var(--muted); }
+.floor > fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+/* The regions (CheckboxGroup): a fieldset of the kit's checkboxes. */
+.choices fieldset { display: grid; gap: .625rem; margin: 0; padding: 0; border: 0; min-width: 0; }
+.choices legend { margin-bottom: .75rem; padding: 0; font-size: .875rem; font-weight: 500; }
+/* A number field's parts in a row, drawn as the kit's fields are. Its root is display: contents,
+   so an adornment sits between the decrease button and the input. */
+.stepper { display: inline-flex; align-items: center; gap: .25rem; }
+.stepper > [data-scope] { display: contents; }
+.stepper input {
+  width: 9ch; height: 2.25rem; padding: 0 .5rem; font: inherit; font-size: .875rem; text-align: center;
+  color: var(--foreground); background: transparent; border: 1px solid var(--input); border-radius: calc(var(--radius) - 2px);
+  appearance: textfield;
+}
+.stepper input::-webkit-inner-spin-button { appearance: none; }
+.stepper input:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 35%, transparent); }
+.stepper button {
+  width: 2.25rem; height: 2.25rem; padding: 0; font: inherit; color: var(--foreground); background: var(--background);
+  border: 1px solid var(--input); border-radius: calc(var(--radius) - 2px); cursor: pointer;
+}
+.stepper button:hover { background: var(--accent); }
+.stepper button:disabled { opacity: .5; cursor: not-allowed; }
+.unit { order: 1; font-size: .875rem; color: var(--muted-foreground); }
 .unit ~ * > input { order: 2; }
 .unit ~ * > button:last-child { order: 3; }
-
-.book [role="tablist"] { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
-.book [role="tab"] { padding: 8px 12px; border: 0; border-radius: 0; background: none; color: var(--muted); font: inherit; font-weight: 500; text-decoration: none; cursor: pointer; }
-.book [role="tab"]:hover { color: var(--ink); }
-.book [role="tab"][aria-selected="true"] { box-shadow: inset 0 -2px var(--accent); color: var(--ink); }
-.book [role="tabpanel"] { padding: 8px 0 0; }
-.book [role="tabpanel"] p { margin: 0; }
-.periods [role="radiogroup"] { display: inline-flex; justify-self: start; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
-.periods [role="radio"] { padding: 4px 12px; border: 0; border-radius: 6px; background: none; color: var(--muted); font: inherit; font-weight: 500; text-decoration: none; cursor: pointer; }
-.periods [role="radio"][aria-checked="true"] { background: var(--tint); color: var(--accent); }
-
-/* A popover's display applies only while it is open, or it would show closed. */
-.actions [role="menu"]:popover-open { display: grid; }
-.actions [role="menu"] { inset: auto; position-area: block-end span-inline-end; position-try-fallbacks: flip-block; min-width: anchor-size(width); margin: 4px 0; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
-.actions [role="menu"] form { margin: 0; }
-.actions [role="menuitem"] { display: block; width: 100%; padding: 6px 12px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-align: start; text-decoration: none; cursor: pointer; }
-.actions [role="menuitem"]:focus { outline: none; background: var(--tint); color: var(--accent); }
-.actions > a { justify-self: start; }
-
+/* The sales period: a segmented choice, as the kit's tabs are. */
+.periods [role="radiogroup"] { display: inline-flex; gap: .25rem; padding: .25rem; background: var(--muted); border-radius: var(--radius); }
+.periods [role="radio"] {
+  padding: .25rem .75rem; font: inherit; font-size: .875rem; font-weight: 500; color: var(--muted-foreground);
+  text-decoration: none; background: none; border: 0; border-radius: calc(var(--radius) - 2px); cursor: pointer;
+}
+.periods [role="radio"][aria-checked="true"] { color: var(--foreground); background: var(--background); box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
+.facts { display: grid; gap: .5rem; font-size: .875rem; }
+.facts > p { margin: 0; }
+.buttons { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.buttons form { margin: 0; }
+.rename { display: grid; gap: 1rem; margin: 0; }
