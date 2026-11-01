@@ -244,7 +244,7 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
                 }
                 return;
             }
-            if private && plain {
+            if private && plain && !(no_store && must_understand) {
                 return;
             }
             // A personal answer whose header is replaced below gets `no-store` if any reader
@@ -309,7 +309,9 @@ pub(crate) fn says(line: &[u8]) -> Says {
         let d = d.trim_ascii();
         says.no_store |= d.eq_ignore_ascii_case(b"no-store");
         says.private |= d.eq_ignore_ascii_case(b"private");
-        says.must_understand |= d.eq_ignore_ascii_case(b"must-understand");
+        // By name, whatever its value: a reader that ignores the value still sees it.
+        let name = d.split(|&b| b == b'=').next().unwrap_or(d).trim_ascii();
+        says.must_understand |= name.eq_ignore_ascii_case(b"must-understand");
     }
     says
 }

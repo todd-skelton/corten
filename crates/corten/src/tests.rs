@@ -3296,6 +3296,27 @@ async fn a_cache_control_counts_only_for_what_it_plainly_says() {
             }),
         )
         .route(
+            "/must-understand-valued",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "no-store, must-understand=1, max-age=600"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "valued")
+            }),
+        )
+        .route(
+            "/private-must-understand",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private, no-store, must-understand"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "private")
+            }),
+        )
+        .route(
+            "/upper-valued",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "public, max-age=600, No-Store=1"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "upper")
+            }),
+        )
+        .route(
             "/must-understand-failure",
             get(|| async {
                 let line = [(header::CACHE_CONTROL, "must-understand, no-store")];
@@ -3348,6 +3369,9 @@ async fn a_cache_control_counts_only_for_what_it_plainly_says() {
         ("/second-line", "public, max-age=600, no-store"),
         ("/escaped", "no-store"),
         ("/must-understand-shared", "max-age=60, must-understand, no-store"),
+        ("/must-understand-valued", "no-store"),
+        ("/private-must-understand", "no-store"),
+        ("/upper-valued", "no-store"),
         ("/private-then-no-store", "private, max-age=600, no-store"),
         ("/must-understand", "no-store"),
         ("/must-understand-failure", "no-store"),

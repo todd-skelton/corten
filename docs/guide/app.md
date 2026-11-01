@@ -693,9 +693,11 @@ directive with a value (`private="set-cookie"`, which lets a shared cache keep t
 `no-store=1`) or inside a quoted value does not count, nor does a `no-store` with
 `must-understand` (a cache that knows the status may ignore it), which is left as written unless
 the answer is personal. A `no-store` goes out where every reader sees it: several lines are
-joined into one, and beside a quoted value or a byte that is not text it goes out alone. An
-answer that sets a cookie or read a caller, whose header does not count, goes out
-`private, no-cache`, or `no-store` if any reader could find one in its header.
+joined into one, and beside a quoted value or a byte that is not text it goes out alone (its
+other directives dropped, so no reader can find anything else). A personal answer (it sets a
+cookie, read a caller, has the CSP nonce, or is a `Cache` answer to a request with credentials)
+whose header does not count goes out `private, no-cache`, or `no-store` if any reader could
+find one in its header.
 
 An answer at a URL that names its content (a hash of its bytes, as an uploaded picture's can be)
 never changes there. `Public::immutable(answer)` sends it as Corten's versioned files are sent,
