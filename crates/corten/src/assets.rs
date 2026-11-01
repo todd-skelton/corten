@@ -813,7 +813,7 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> io::Res
     Ok(())
 }
 
-fn content_type(path: &str) -> &'static str {
+pub(crate) fn content_type(path: &str) -> &'static str {
     match path.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase()).as_deref() {
         Some("js" | "mjs") => "text/javascript; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",

@@ -1568,6 +1568,32 @@ fn stroke_style(value: &Value, at: &str, refs: &mut Refs) -> Result<String, Stri
 /// A color in CSS Color 4 syntax. An sRGB color whose components are whole 8-bit values, or
 /// whose `hex` is them rounded to 8 bits, is the hex (`#1d1b26`, `rgb(29 27 38 / 0.05)` with an alpha).
 fn color(value: &Value, at: &str) -> Result<String, String> {
+    // A hex alone is not a color in the format (2025.10): the error is the object to write instead.
+    let (written_hex, alpha) = match value {
+        Value::String(text) => (Some(text.as_str()), None),
+        Value::Object(entries) if field(entries, "components").is_none() => match field(entries, "hex") {
+            Some(Value::String(text)) => (Some(text.as_str()), field(entries, "alpha")),
+            _ => (None, None),
+        },
+        _ => (None, None),
+    };
+    if let Some(text) = written_hex {
+        // An `alpha` beside the hex is kept as written; `#rrggbbaa` carries its own.
+        // It is checked as a color's is, so the object to write compiles.
+        let alpha = match alpha {
+            None => None,
+            Some(alpha) => match number(alpha, &format!("{at}.alpha"))? {
+                (text, a) if (0.0..=1.0).contains(&a) => Some(text),
+                (text, _) => return Err(format!("{at}.alpha: {text} is not from 0 to 1")),
+            },
+        };
+        return Err(match hex_object(text, alpha) {
+            Some(object) => format!("{at}: a color is its components, with the hex as a fallback; write {object}"),
+            None => format!(
+                "{at}: {text:?} is not a color; a color is an object, {{\"colorSpace\": \"srgb\", \"components\": [1, 0, 0]}}"
+            ),
+        });
+    }
     let entries = fields(value, at, &["colorSpace", "components"], &["alpha", "hex"])?;
     let space = string(field(entries, "colorSpace").expect("checked"), &format!("{at}.colorSpace"))?;
     const ANY: (f64, f64, bool) = (f64::NEG_INFINITY, f64::INFINITY, false);
@@ -1637,8 +1663,21 @@ fn color(value: &Value, at: &str) -> Result<String, String> {
         if let [Some(r), Some(g), Some(b)] = [parts[0].1, parts[1].1, parts[2].1] {
             let bytes = [r, g, b].map(|c| (c * 255.0).round() as u8);
             let whole = [r, g, b].iter().all(|c| (c * 255.0 - (c * 255.0).round()).abs() < 1e-6);
-            // `hex` is a fallback the format does not tie to the components; when it is their color
-            // at 8 bits it is the shorter text, and when not, the components are the color.
+            // In sRGB `hex` is the components at 8 bits. One step off in a channel is a rounding
+            // the author's tool chose (and the components are the color); more is two colors, and
+            // which one the page shows would be a guess.
+            if let Some((text, written)) = hex {
+                if written.iter().zip(bytes).any(|(w, b)| w.abs_diff(b) > 1) {
+                    let components: Vec<&str> = parts.iter().map(|(text, _)| text.as_str()).collect();
+                    return Err(format!(
+                        "{at}.hex: {text} is not the components [{}], which are {} at 8 bits; correct one so they agree",
+                        components.join(", "),
+                        hex_text(bytes)
+                    ));
+                }
+            }
+            // When the hex is their color at 8 bits it is the shorter text, and when not, the
+            // components are the color.
             let agrees = hex.is_some_and(|(_, written)| written == bytes);
             if whole || agrees {
                 return Ok(match alpha {
@@ -1656,6 +1695,38 @@ fn color(value: &Value, at: &str) -> Result<String, String> {
     } else {
         format!("{function}({components}{alpha})")
     })
+}
+
+/// The color object a hex stands for (`#1d1b26`, `#f00`, with an alpha `#1d1b2680`): sRGB
+/// components to four places, which round back to the same 8-bit values, and the hex as written.
+fn hex_object(text: &str, alpha: Option<&str>) -> Option<String> {
+    let digits = text.strip_prefix('#').filter(|d| d.chars().all(|c| c.is_ascii_hexdigit()))?;
+    let long: String = match digits.len() {
+        3 | 4 => digits.chars().flat_map(|c| [c, c]).collect(),
+        6 | 8 => digits.to_string(),
+        _ => return None,
+    };
+    let bytes: Vec<u8> =
+        (0..long.len()).step_by(2).map(|i| u8::from_str_radix(&long[i..i + 2], 16).expect("hex digits")).collect();
+    let unit = |b: u8| {
+        let text = format!("{:.4}", f64::from(b) / 255.0);
+        let text = text.trim_end_matches('0').trim_end_matches('.');
+        if text.is_empty() {
+            "0".to_string()
+        } else {
+            text.to_string()
+        }
+    };
+    let components: Vec<String> = bytes[..3].iter().map(|b| unit(*b)).collect();
+    let alpha = match alpha {
+        Some(alpha) => format!(", \"alpha\": {alpha}"),
+        None => bytes.get(3).map(|a| format!(", \"alpha\": {}", unit(*a))).unwrap_or_default(),
+    };
+    Some(format!(
+        r#"{{"colorSpace": "srgb", "components": [{}]{alpha}, "hex": "{}"}}"#,
+        components.join(", "),
+        hex_text([bytes[0], bytes[1], bytes[2]])
+    ))
 }
 
 /// `#1d1b26`. Never the 3-digit form: measured on the watchlist's tokens, `#fff` for `#ffffff`
@@ -1705,15 +1776,46 @@ mod tests {
         assert_eq!(
             c("srgb", "[0.5, 0, 0]", r##", "hex": "#7f0000""##).unwrap(),
             "color(srgb 0.5 0 0)",
-            "a fallback that is not the components rounded leaves the components as the color"
+            "a fallback one step from the components rounded leaves the components as the color"
         );
+        assert!(error(c("srgb", "[0.1137, 0.1059, 0.149]", r##", "hex": "#ff0000""##)).ends_with(
+            ".hex: #ff0000 is not the components [0.1137, 0.1059, 0.149], which are #1d1b26 at 8 bits; correct one so they agree"
+        ));
+        assert!(error(c("srgb", "[0.5, 0, 0]", r##", "hex": "#7d0000""##)).contains("which are #800000"), "two steps off");
+        assert_eq!(
+            c("display-p3", "[1, 0.2, 0]", r##", "hex": "#ff0000""##).unwrap(),
+            "color(display-p3 1 0.2 0)",
+            "outside sRGB the hex is a gamut-mapped fallback, not checked"
+        );
+        assert_eq!(c("srgb", r#"["none", 0, 0]"#, r##", "hex": "#ff0000""##).unwrap(), "color(srgb none 0 0)");
+        // A hex alone: the error is the object to paste, which compiles to the same color.
+        let pasted = error(one("color", r##""#1d1b26""##));
+        assert!(
+            pasted.ends_with(
+                r##": a color is its components, with the hex as a fallback; write {"colorSpace": "srgb", "components": [0.1137, 0.1059, 0.149], "hex": "#1d1b26"}"##
+            ),
+            "{pasted}"
+        );
+        let object = pasted.split("write ").nth(1).unwrap();
+        assert_eq!(one("color", object).unwrap(), "#1d1b26");
+        assert!(error(one("color", r##"{"hex": "#F0A"}"##)).contains(r##"[1, 0, 0.6667], "hex": "#ff00aa"}"##));
+        assert!(error(one("color", r##""#00000080""##)).contains(r##"[0, 0, 0], "alpha": 0.502, "hex": "#000000"}"##));
+        assert_eq!(
+            one("color", r##"{"colorSpace": "srgb", "components": [0, 0, 0], "alpha": 0.502, "hex": "#000000"}"##).unwrap(),
+            "rgb(0 0 0 / 0.502)"
+        );
+        let half = error(one("color", r##"{"hex": "#000000", "alpha": 0.5}"##));
+        assert!(half.ends_with(r##"[0, 0, 0], "alpha": 0.5, "hex": "#000000"}"##), "an alpha beside the hex is kept: {half}");
+        assert_eq!(one("color", half.split("write ").nth(1).unwrap()).unwrap(), "rgb(0 0 0 / 0.5)");
+        assert!(error(one("color", r##"{"hex": "#000000", "alpha": 2}"##)).contains("not from 0 to 1"));
+        assert!(error(one("color", r##"{"hex": "#000000", "alpha": "0.5"}"##)).contains("alpha is a number"));
+        assert!(error(one("color", r#""red""#)).contains("\"red\" is not a color"));
         assert!(error(c("hsl", "[360, 0, 0]", "")).contains("outside hsl's range, [0, 360)"));
         assert!(error(c("srgb", "[1.2, 0, 0]", "")).contains("outside srgb's range"));
         assert!(error(c("rgb", "[1, 0, 0]", "")).contains("not a color space"));
         assert!(error(c("srgb", "[1, 0]", "")).contains("has 2 values"));
         assert!(error(c("srgb", "[1, 0, 0]", r##", "hex": "#f00""##)).contains("6-digit"));
         assert!(error(c("srgb", "[1, 0, 0]", r#", "alpha": 2"#)).contains("not from 0 to 1"));
-        assert!(error(one("color", r##""#ff0000""##)).contains("is an object, not a string"));
     }
 
     #[test]
