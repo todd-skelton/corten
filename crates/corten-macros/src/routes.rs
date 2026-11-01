@@ -151,6 +151,21 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
                 ),
             );
         }
+        // The router holds no parameter where another route has its catch-all, and would name
+        // `{page}` for `{page}.xml` in saying so: say it here with the paths as written.
+        if let Some(b) = routed[..i].iter().find(|b| {
+            let theirs = crate::route::suffixed(&b.path).0;
+            (matched != a.path || theirs != b.path)
+                && (beside_catch_all(&matched, &theirs) || beside_catch_all(&theirs, &matched))
+        }) {
+            return err(
+                a.span,
+                format!(
+                    "{} ({}) and {} ({}) have a parameter where the other has its catch-all, which the router cannot hold together: give the parameter's route a segment of its own, like /sitemap/{{page}}.xml",
+                    b.name, b.path, a.name, a.path
+                ),
+            );
+        }
     }
     // The area's or API's prefix, when its route is in the module: each route is checked against
     // it here, where the error can point at the route (`Area::route` and `Api::route` check every
@@ -779,6 +794,23 @@ fn derives_route(attr: &Group) -> bool {
 }
 
 /// Two paths a request matches the same way: equal once each `{param}` is just a parameter.
+/// Whether `path` has a parameter where `other` has its catch-all, after the same segments
+/// (`/{name}` and `/{*page}`), which axum's router refuses to hold together.
+fn beside_catch_all(path: &str, other: &str) -> bool {
+    let param = |s: &str| s.starts_with('{') && s.ends_with('}');
+    let mut ours = path.split('/');
+    for theirs in other.split('/') {
+        let Some(mine) = ours.next() else { return false };
+        if theirs.starts_with("{*") {
+            return param(mine) && !mine.starts_with("{*");
+        }
+        if !(mine == theirs || param(mine) && param(theirs)) {
+            return false;
+        }
+    }
+    false
+}
+
 fn same_pattern(a: &str, b: &str) -> bool {
     fn shape(path: &str) -> String {
         let mut out = String::new();
@@ -801,4 +833,26 @@ fn same_pattern(a: &str, b: &str) -> bool {
         out
     }
     shape(a) == shape(b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::beside_catch_all;
+
+    #[test]
+    fn a_parameter_beside_a_catch_all_is_found() {
+        for (path, other, beside) in [
+            ("/{name}", "/{*page}", true),
+            ("/docs/{name}", "/docs/{*rest}", true),
+            ("/{kind}/{name}", "/{a}/{*rest}", true),
+            ("/{name}/more", "/{*page}", true),
+            ("/docs/{name}", "/{*page}", false),
+            ("/docs/{name}", "/blog/{*rest}", false),
+            ("/docs", "/{*page}", false),
+            ("/{*page}", "/{*page}", false),
+            ("/docs/{name}", "/docs/{id}", false),
+        ] {
+            assert_eq!(beside_catch_all(path, other), beside, "{path} beside {other}");
+        }
+    }
 }

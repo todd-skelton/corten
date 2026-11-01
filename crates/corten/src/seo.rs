@@ -116,6 +116,11 @@ pub fn sitemap<'a>(urls: impl IntoIterator<Item = SitemapUrl<'a>>) -> Public<Fil
 ///     pub struct ItemsPage {
 ///         pub page: u32,
 ///     }
+///
+///     #[route("/items/{id}", get = item)]
+///     pub struct Item {
+///         pub id: u32,
+///     }
 /// }
 ///
 /// const ORIGIN: &str = "https://shop.example";
@@ -125,9 +130,16 @@ pub fn sitemap<'a>(urls: impl IntoIterator<Item = SitemapUrl<'a>>) -> Public<Fil
 ///     corten::seo::sitemap_index(pages.iter().map(String::as_str))
 /// }
 ///
+/// const PER_PAGE: u32 = 2;
+///
 /// async fn items(at: Params<url::ItemsPage>) -> Public<corten::seo::File> {
-///     let loc = format!("{ORIGIN}/items/{}", at.page);
-///     corten::seo::sitemap([corten::seo::SitemapUrl { loc: &loc, lastmod: None }])
+///     let first = (at.page - 1) * PER_PAGE + 1;
+///     let locs: Vec<String> = (first..first + PER_PAGE).map(|id| format!("{ORIGIN}{}", url::Item { id }.href())).collect();
+///     corten::seo::sitemap(locs.iter().map(|loc| corten::seo::SitemapUrl { loc, lastmod: None }))
+/// }
+///
+/// async fn item(_: Params<url::Item>) -> &'static str {
+///     "item"
 /// }
 /// # fn main() { let _ = App::new(url::router()).router(); }
 /// ```

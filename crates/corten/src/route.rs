@@ -74,6 +74,41 @@
 //! struct Item { id: u32 }
 //! ```
 //!
+//! Nor does such a route beside a catch-all at its parameter's place, which the router cannot hold
+//! (one deeper, `/docs/{name}.md`, can sit beside `/{*page}`):
+//!
+//! ```compile_fail
+//! use corten::Params;
+//!
+//! #[corten::routes]
+//! mod url {
+//!     #[route("/{name}.txt", get = text)]
+//!     pub struct Text<'a> { pub name: &'a str }
+//!
+//!     #[route("/{*page}", get = page)]
+//!     pub struct Page<'a> { pub page: &'a str }
+//! }
+//! async fn text(_: Params<url::Text<'_>>) -> &'static str { "" }
+//! async fn page(_: Params<url::Page<'_>>) -> &'static str { "" }
+//! # fn main() {}
+//! ```
+//!
+//! ```
+//! use corten::Params;
+//!
+//! #[corten::routes]
+//! mod url {
+//!     #[route("/docs/{name}.md", get = doc)]
+//!     pub struct Doc<'a> { pub name: &'a str }
+//!
+//!     #[route("/{*page}", get = page)]
+//!     pub struct Page<'a> { pub page: &'a str }
+//! }
+//! async fn doc(_: Params<url::Doc<'_>>) -> &'static str { "" }
+//! async fn page(_: Params<url::Page<'_>>) -> &'static str { "" }
+//! # fn main() { let _ = corten::App::new(url::router()).router(); }
+//! ```
+//!
 //! (Either feed route alone compiles, as does `/files/{name}.xml`:)
 //!
 //! ```
@@ -2390,6 +2425,27 @@ fn refuse(a: &str, b: &str) -> ! {
 /// route still takes every path of its shape from the router, so another route (a `/{*page}`
 /// catch-all) does not answer `/sitemap/about` either, and the 404 has the route's `MatchedPath`.
 /// A route with none is `methods` as it is.
+///
+/// A `WRITTEN` path that is not `PATH` with text after some parameters does not build:
+///
+/// ```compile_fail,E0080
+/// # use corten::prelude::*;
+/// #[derive(Route)]
+/// #[route("/feeds")]
+/// struct Feeds;
+///
+/// struct Feed;
+/// impl corten::Route for Feed {
+///     const PATH: &'static str = "/feeds/{name}";
+///     const WRITTEN: &'static str = "/feeds/{name}.x/extra";
+///     fn write_href(&self, out: &mut String, _: bool) {
+///         out.push_str("/feeds/a.x/extra");
+///     }
+/// }
+///
+/// let app = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Feed>(get(|| async { "feed" })));
+/// # let _ = app.router();
+/// ```
 pub(crate) fn with_suffixes<R: Route + ?Sized, S: Clone + Send + Sync + 'static>(
     methods: axum::routing::MethodRouter<S>,
 ) -> axum::routing::MethodRouter<S> {
