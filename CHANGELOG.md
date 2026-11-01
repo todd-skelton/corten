@@ -1284,13 +1284,14 @@ Corten is pre-1.0, so any minor version may change the API.
     layout shows that needs a read of its own (a cart's count) is read only when it is false, in
     the function that builds the layout's props: a full load and a page without JavaScript have it
     in the HTML, and a click between pages does not read it. The views guide shows the pattern and
-    the write side (the write reads the value and answers with a patch to the badge; a
-    `data-patch` redirect alone leaves the old value). The two places the renderer chose a swap
+    the write side (for its `data-patch` answer the write reads the value and patches the badge;
+    a redirect alone leaves the old value). The two places the renderer chose a swap
     now call it: an item-like page measured with callgrind (release, in-process `oneshot`, the
     difference between 1,200 and 200 requests over 1,000, median of three and the range of the
     nine pairs, against main at bfdb1fe1) runs 22,371 instructions as a full document (22,368 to
     22,385) against 22,371 (22,368 to 22,386), and 22,012 as a navigation (21,953 to 22,270)
-    against 21,994 (21,921 to 21,997)
+    against 21,994 (21,921 to 21,997): the runs vary more than the builds differ, so no
+    measurable change
     ([#523 A layout value that needs an async read (a cart count) can only be read by every handler on every navigation, or fetched by the browser after load](https://github.com/todd-skelton/corten/issues/523)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
