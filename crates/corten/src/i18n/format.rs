@@ -378,7 +378,11 @@ const fn display_digits(key: u32) -> u8 {
 /// (the generator writes them), and anything shorter sorts first.
 const fn code_key(code: &str) -> u32 {
     let b = code.as_bytes();
-    if b.len() == 3 { u32::from_be_bytes([0, b[0], b[1], b[2]]) } else { 0 }
+    if b.len() == 3 {
+        u32::from_be_bytes([0, b[0], b[1], b[2]])
+    } else {
+        0
+    }
 }
 
 impl Display for Currency {
