@@ -257,6 +257,12 @@ impl Signal {
     /// [`crate::App::shutdown_grace`] and then leaves it to end with the process. Served another
     /// way than [`crate::serve`] (the router passed to `axum::serve`), the work still runs to its
     /// end and sees the client leave and the deadline, but is not told of shutdown or waited for.
+    ///
+    /// A step that stopping midway would lose (a paid call whose answer is not recorded yet) is the
+    /// exception: the work checks the signal before it starts one and bounds it with a timeout, so
+    /// that one step, its record and the commit end within a grace set above them; a step cut off
+    /// by that timeout is the provider's idempotency key's to answer (the requests and forms guide,
+    /// Work that must not run twice at once).
     pub async fn finish<F, Fut, T>(&self, work: F) -> T
     where
         F: FnOnce(Signal) -> Fut,

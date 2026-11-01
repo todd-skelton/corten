@@ -1472,8 +1472,9 @@ impl Req {
     }
 
     /// Answers a refused submit: its input failed validation (422 Unprocessable Content), it was
-    /// made against a state that has moved on ([`Errors::refuse`](crate::Errors::refuse), 409 for
-    /// a stale revision, 410 for a deleted record), or a service the handler calls failed (502),
+    /// made against a state that has moved on or while other work on it is under way
+    /// ([`Errors::refuse`](crate::Errors::refuse), 409 for a stale revision or a busy lock, 410 for
+    /// a deleted record), or a service the handler calls failed (502),
     /// with the status of [`Errors::refusal`](crate::Errors::refusal):
     ///
     /// - [`Mode::Action`]: `form`, the form re-rendered with the errors, as a patch. The runtime

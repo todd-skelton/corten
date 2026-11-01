@@ -739,6 +739,15 @@ impl<M: Middleware> App<M> {
     /// Daily at 03:30 UTC is `next_mark(HOUR * 7 / 2, 24 * HOUR)`; at 03:30 in a zone with
     /// daylight saving time takes a time-zone library, which is the app's. Jobs in separate tasks
     /// that must not overlap share a `tokio::sync::Mutex`.
+    ///
+    /// The loop and the `Mutex` hold within one process. An app that runs as several (a blue/green
+    /// release while the old and the new both run, an app scaled out) runs each task in each of
+    /// them: a job that must not run twice across them claims each run in the store they share (a
+    /// row for the job and its mark, added by one instance only) and skips a run another instance
+    /// claimed (instances that all claim and whose intervals start on the clock's marks; a clock
+    /// ahead of the others makes runs come early by as much, and shortens or lengthens the gap when
+    /// the instance that runs changes); a lock alone would let the next instance's tick run it
+    /// again (the app guide, On a schedule).
     pub fn task<F, Fut>(mut self, name: &'static str, task: F) -> Self
     where
         F: FnOnce(Signal) -> Fut + Send + 'static,
@@ -750,8 +759,9 @@ impl<M: Middleware> App<M> {
 
     /// How long [`serve`] waits, once shutdown begins, for the app's [tasks](App::task) to
     /// return, and for work its handlers finish ([`crate::Signal::finish`]) whose handler is gone
-    /// (5 seconds unless set). Keep it under the time the platform waits before it kills
-    /// the process (`docker stop`: 10 seconds; Kubernetes: 30).
+    /// (5 seconds unless set). Keep the platform's wait before it kills the process above the
+    /// longer of this and the deadline (`docker stop`: 10 seconds unless Compose's
+    /// `stop_grace_period` sets it; Kubernetes: 30, `terminationGracePeriodSeconds`).
     pub fn shutdown_grace(mut self, grace: Duration) -> Self {
         self.grace = grace;
         self

@@ -1355,7 +1355,13 @@ Corten is pre-1.0, so any minor version may change the API.
     measurable (a full document 24,954, 24,944 to 24,980, against 24,830 on main, 24,794 to
     24,978; a navigation 23,541, 23,515 to 23,862, against 23,573, 23,515 to 23,893)
     ([#534 A layout value read the way the guide shows starts after the page's own reads, so a full load waits for both, and an extractor cannot read Mode to start it early](https://github.com/todd-skelton/corten/issues/534)).
-163. APIs nest as areas do: an API whose prefix is under another's (a feature's
+163. `JsonResponse` from a `Relay` (`Ok(relay.into())`), so a JSON route that answers some
+    requests itself and passes the rest to another service (a route moved off it a part at a time,
+    a cache in front of it) names one answer, and the relayed one stays the upstream's: its failure
+    body passes on, and the app does not compress it. Before, such a route sent its own JSON as a
+    `Relay`, uncompressed. No request path changed
+    ([#541 A route that answers its own JSON for some requests and relays the rest to another service has no answer type, so a half-ported route sends its own JSON as a Relay](https://github.com/todd-skelton/corten/issues/541)).
+164. APIs nest as areas do: an API whose prefix is under another's (a feature's
     `/api/forecast-calibration` in the app's `/api`) keeps its routes, their checks and its `state`,
     takes the settings it leaves unset (`deadline`, `errors`) from the API around it, and meets
     that API's middleware before its own; a setting it gives replaces the outer one. Its partner
@@ -2760,17 +2766,16 @@ Corten is pre-1.0, so any minor version may change the API.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
 6. The full-stack benchmark tables in the README and `bench/fullstack`, server and browser, are
-   from round r8 (2026-10-30, one c-8 droplet, Xeon Platinum 8168, the tree at `2976f15`); its
-   instruction counts are r7's (2026-10-28, Xeon Platinum 8280, `a9b1163`), since r8's droplet
-   locked up at the counting step; `bench/live` is still r3 (Xeon Platinum 8280). r7's results are kept without a
-   browser pass. Corten serves 15,747 item pages and 24,652 JSON responses a second from memory at
-   64 users (r7: 18,758 and 24,976), and 3,616 item-API pages against ASP.NET Core's 1,065 (r7:
-   3,540 and 1,157). Its page from memory fell 16.1% while the other apps moved by a median of
-   -2.0%, after a 19.9% fall from r6 to r7. A page costs 95,949 user instructions and the JSON
-   69,572 in r7. A page from memory costs 63 µs of CPU (15,890 per CPU-second; ASP.NET Core 4,184),
-   300 pages a second take 4.7% of a core (ASP.NET Core 25%), and each MiB serves 960 pages a
-   second (ASP.NET Core 48). Next.js and Laravel failed as before. The item page loads 10.2 KB of
-   JavaScript (gzip; r7 9.3 KB).
+   from round r10 (2026-11-01, one c-8 droplet, Xeon Platinum 8280, the tree at `f5c76a0`);
+   `bench/live` is still r3 (Xeon Platinum 8280). r8 is kept without instruction counts and r7
+   without a browser pass; r9 measured nothing. Corten serves 23,898 item pages and 32,155 JSON
+   responses a second from memory at 64 users (r8: 15,747 and 24,652), and 4,283 item-API pages
+   against ASP.NET Core's 1,255 (r8: 3,616 and 1,065), while the other apps that passed rose by a
+   median of 9-15% on r10's droplet. A page costs 110,172 user instructions and the JSON 69,968 (r7: 95,949
+   and 69,572). A page from memory costs 41 µs of CPU (24,459 per CPU-second; ASP.NET Core 4,648),
+   300 pages a second take 4.0% of a core (ASP.NET Core 19%), and each MiB serves 1,457 pages a
+   second (ASP.NET Core 54). Next.js and Laravel failed as before. The item page loads 10.6 KB of
+   JavaScript (gzip; r8 10.2 KB).
 7. `Form` in the prelude is `corten::Form` (Added 20), and a route's parameters its `Params`. Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
@@ -2986,6 +2991,32 @@ Corten is pre-1.0, so any minor version may change the API.
     example rather than a test. Corten adds no test mode or rollback helper: the driver's are the one
     way
     ([#506 No story for tests that need a database or a live service: #[ignore] runs both, and a live recorder ran with the database tests](https://github.com/todd-skelton/corten/issues/506)).
+42. The requests and forms guide has a section on work on something the app's data already names
+    that must not run twice (postage for an order, a batch over the same rows): inside
+    `Signal::finish` with a time budget, for each item a lock in the store every instance shares (a
+    Postgres advisory lock held in a transaction committed with the item's record), under it a check
+    of what is done already, a 502 that keeps what was bought when the provider fails, and a 409
+    showing the current state while another request holds the lock; and what it does not cover,
+    which is the app's to design for its provider (a call whose record is lost, answered by the
+    provider's idempotency key), with the timeouts and the shutdown grace the work needs. The app
+    guide's On a schedule has a job claim its run by its mark in the shared store, so it does not
+    run twice across instances while every instance claims and ticks on the marks (a clock ahead of
+    the others makes runs come early). `App::task` and `SubmitKey` say that a loop, a `Mutex` or a
+    static lock holds within one process, which a blue/green release or a scaled-out app is not;
+    `Signal::finish` and the cancellation guide say that a paid call is checked against the signal
+    before it starts rather than stopped midway, and `Refusal::Conflict` covers another request
+    acting on the same thing now
+    ([#537 The guide's one-at-a-time patterns (a schedule's loop, a shared Mutex) hold within one process, so a second instance during a blue/green release runs the work again, and a paid handler action has no pattern at all](https://github.com/todd-skelton/corten/issues/537)).
+43. The app guide (Numbers in JSON) and `ToJson` for floats say how numbers are written in a JSON
+    response, a feed's rows and an agent tool's output: as serde_json writes them (a whole float as
+    `2.0` where `JSON.stringify` writes `2`, and where each switches to an exponent), which readers
+    that type a number by its text read differently; a value a client should read as an integer is
+    an integer field, text that must match another service's byte for byte is `Raw`, and a shared
+    checksum is over canonical JSON (RFC 8785). Corten keeps one number format for these rather than
+    a second one for JavaScript parity, which would make a `ToJson` disagree with the `serde_json`
+    fields inside it, feeds and agent output, and would still not give canonical bytes (design.md,
+    Limits 16)
+    ([#540 Json writes a whole f64 as 2.0 where JSON.stringify writes 2, so a route ported from a Node service changes its numbers' text and how clients read them](https://github.com/todd-skelton/corten/issues/540)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

@@ -187,6 +187,10 @@ App::new(pages)
     .api(|routes| api::api(routes, db))   // .allow_origin(..) in the chain for a partner site
 ```
 
+A value a client should read as an integer (a count) is an integer field in the response type,
+never an `f64` (a whole float is written `2.0`); text that must match another service's byte for
+byte is `json::Raw`.
+
 A JSON handler `?`s its input's check as well: `check(&input)?` in a `JsonResult<T>` handler
 answers 422 with the fields (its error is a `JsonError`, an `Error` or the `Errors`). A page
 does not: there `?` on `Errors` does not compile, and the form answers with `req.invalid`.
@@ -214,7 +218,8 @@ A WebSocket is a route whose handler takes `corten::upgrade::Upgrade` and return
 not add an `Origin` check of your own. A URL that is also a page or a relayed answer takes
 `Option<Upgrade>` and returns `corten::Result<SwitchOr<A>>`. A route that passes another server's answer on returns
 `corten::Relay::new(status, headers, body)`, never a `Response`; never merge a router after
-`app.router()` for either.
+`app.router()` for either. A JSON route that answers some requests itself and relays the rest
+returns `Result<JsonResponse, JsonError>`: `Ok(Json(value).into())` or `Ok(relay.into())`.
 
 A time shown where the visitor is needs their time zone: turn on Corten's `zones` feature and set
 `App::zoned_dates()`. Dates then render in the visitor's zone on

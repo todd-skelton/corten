@@ -1,0 +1,24 @@
+{
+ "failed": "never answered /items/item_1 within a minute",
+ "logs": [
+  "ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+  "",
+  "   WARN  worker script has failed on restart.  ",
+  "",
+  "   WARN  worker script has failed on restart.  ",
+  "",
+  "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+  "",
+  "   WARN  worker script has failed on restart.  ",
+  "",
+  "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+  "",
+  "   WARN  worker script has failed on restart.  ",
+  "",
+  "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+  "",
+  "   ERROR  PHP Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 2097152 bytes) in app/Support/ItemSource.php on line 15.  ",
+  "",
+  "   ERROR  loading initial config: loading new config: frankenphp app module: start: failed to initialize workers: too many consecutive failures: worker public/frankenphp-worker.php has not reached frankenphp_handle_request()."
+ ]
+}

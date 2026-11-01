@@ -5736,6 +5736,56 @@ async fn a_relay_is_not_compressed_by_the_app() {
     assert_eq!(res.headers()["content-encoding"], "zstd");
 }
 
+#[cfg(feature = "json")]
+#[crate::routes]
+mod half_url {
+    #[route("/half/{status}", get = half)]
+    pub struct Half {
+        pub status: u16,
+    }
+}
+
+/// A JSON route that answers `200` itself and passes anything else on, as a route moved off
+/// another service a part at a time does.
+#[cfg(feature = "json")]
+async fn half(crate::Params(at): crate::Params<half_url::Half>) -> Result<crate::JsonResponse, crate::JsonError> {
+    if at.status == 200 {
+        return Ok(Json(Quote { id: 7, partner: "own" }).into());
+    }
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert("content-type", "application/json".parse().unwrap());
+    headers.insert("content-security-policy", "default-src 'self'".parse().unwrap());
+    let body = format!(r#"{{"from":"upstream","pad":"{}"}}"#, "x".repeat(4000));
+    let status = StatusCode::from_u16(at.status).unwrap();
+    Ok(crate::Relay::new(status, headers, Body::from(body)).into())
+}
+
+/// A JSON route that passes some requests on answers the relay as a `JsonResponse`, and it stays
+/// the upstream's answer whatever the client accepts: its failure body (never the JSON error or
+/// the error page), its CSP, and not compressed; the route's own answer is still the app's (#541).
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn a_json_route_passes_a_relay_on_as_the_upstream_gave_it() {
+    let router = App::new(half_url::router()).error_page(test_error_page, ()).router();
+    for accept in ACCEPTS {
+        for status in [StatusCode::BAD_REQUEST, StatusCode::BAD_GATEWAY] {
+            let mut req = Request::get(format!("/half/{}", status.as_u16())).header("accept-encoding", "zstd, br, gzip");
+            if let Some(accept) = accept {
+                req = req.header("accept", accept);
+            }
+            let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(res.status(), status, "{accept:?}");
+            assert_eq!(res.headers()["content-type"], "application/json", "{accept:?}");
+            assert_eq!(res.headers()["content-security-policy"], "default-src 'self'", "{accept:?}");
+            assert!(!res.headers().contains_key("content-encoding"), "{accept:?}: {:?}", res.headers());
+            let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            assert!(body.starts_with(br#"{"from":"upstream""#), "{accept:?} {status}");
+        }
+    }
+    let (status, _, body) = call_with(router, "GET", "/half/200", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, r#"{"id":7,"partner":"own"}"#));
+}
+
 /// A relayed answer is passed on as the upstream gave it: its failure status and body, never the
 /// error page or the JSON error, without the hop-by-hop headers.
 #[tokio::test]

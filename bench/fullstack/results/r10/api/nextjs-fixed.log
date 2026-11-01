@@ -1,0 +1,116 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 7335   85.275177/s
+    checks_succeeded...: 98.84% 7250 out of 7335
+    checks_failed......: 1.15%  85 out of 7335
+
+    ✗ status 200
+      ↳  98% — ✓ 7250 / ✗ 85
+
+    HTTP
+    http_req_duration..............: avg=5.7s  p(50)=2.53s p(95)=40.13s p(99)=48.78s max=52.96s
+      { expected_response:true }...: avg=5.76s p(50)=2.53s p(95)=40.14s p(99)=48.84s max=52.96s
+    http_req_failed................: 1.15%  85 out of 7335
+    http_reqs......................: 7335   85.275177/s
+
+    EXECUTION
+    dropped_iterations.............: 1665   19.356942/s
+    iteration_duration.............: avg=6.13s p(50)=2.54s p(95)=40.13s p(99)=48.78s max=54.88s
+    iterations.....................: 7335   85.275177/s
+    vus............................: 7      min=7          max=1000
+    vus_max........................: 1000   min=200        max=1000
+
+    NETWORK
+    data_received..................: 176 MB 2.0 MB/s
+    data_sent......................: 808 kB 9.4 kB/s
+
+
+
+time="2026-11-01T06:11:56Z" level=warning msg="Insufficient VUs, reached 1000 active VUs and cannot initialize more" executor=constant-arrival-rate scenario=load
+time="2026-11-01T06:12:16Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_147\": dial: i/o timeout"
+time="2026-11-01T06:12:16Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_220\": dial: i/o timeout"
+time="2026-11-01T06:12:16Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_476\": dial: i/o timeout"
+time="2026-11-01T06:12:16Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_67\": dial: i/o timeout"
+time="2026-11-01T06:12:16Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_124\": dial: i/o timeout"
+time="2026-11-01T06:12:16Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_5\": dial: i/o timeout"
+time="2026-11-01T06:12:16Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_30\": dial: i/o timeout"
+time="2026-11-01T06:12:16Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_11\": dial: i/o timeout"
+time="2026-11-01T06:12:17Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_245\": dial: i/o timeout"
+time="2026-11-01T06:12:17Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_55\": dial: i/o timeout"
+time="2026-11-01T06:12:17Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_45\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_44\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_55\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_256\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_73\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_230\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_225\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_150\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_12\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_164\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_104\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_427\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_88\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_76\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_97\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_84\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_223\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_464\": dial: i/o timeout"
+time="2026-11-01T06:12:18Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_10\": dial: i/o timeout"
+time="2026-11-01T06:12:19Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_48\": dial: i/o timeout"
+time="2026-11-01T06:12:19Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_359\": dial: i/o timeout"
+time="2026-11-01T06:12:19Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_1\": dial: i/o timeout"
+time="2026-11-01T06:12:19Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_266\": dial: i/o timeout"
+time="2026-11-01T06:12:19Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_60\": dial: i/o timeout"
+time="2026-11-01T06:12:19Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_76\": dial: i/o timeout"
+time="2026-11-01T06:12:20Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_464\": dial: i/o timeout"
+time="2026-11-01T06:12:20Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_8\": dial: i/o timeout"
+time="2026-11-01T06:12:20Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_406\": dial: i/o timeout"
+time="2026-11-01T06:12:20Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_9\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_428\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_3\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_16\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_410\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_119\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_3\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_312\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_13\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_264\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_23\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_17\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_388\": dial: i/o timeout"
+time="2026-11-01T06:12:21Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_374\": dial: i/o timeout"
+time="2026-11-01T06:12:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_20\": dial: i/o timeout"
+time="2026-11-01T06:12:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_63\": dial: i/o timeout"
+time="2026-11-01T06:12:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_101\": dial: i/o timeout"
+time="2026-11-01T06:12:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_281\": dial: i/o timeout"
+time="2026-11-01T06:12:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_185\": dial: i/o timeout"
+time="2026-11-01T06:12:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_12\": dial: i/o timeout"
+time="2026-11-01T06:12:23Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_285\": dial: i/o timeout"
+time="2026-11-01T06:12:23Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_49\": dial: i/o timeout"
+time="2026-11-01T06:12:23Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_411\": dial: i/o timeout"
+time="2026-11-01T06:12:23Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_99\": dial: i/o timeout"
+time="2026-11-01T06:12:23Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_197\": dial: i/o timeout"
+time="2026-11-01T06:12:23Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_11\": dial: i/o timeout"
+time="2026-11-01T06:12:23Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_94\": dial: i/o timeout"
+time="2026-11-01T06:12:23Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_86\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_457\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_250\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_306\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_27\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_45\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_258\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_4\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_2\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_5\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_1\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_332\": dial: i/o timeout"
+time="2026-11-01T06:12:24Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_58\": dial: i/o timeout"
+time="2026-11-01T06:12:25Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_9\": dial: i/o timeout"
+time="2026-11-01T06:12:25Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_262\": dial: i/o timeout"
+time="2026-11-01T06:12:25Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_129\": dial: i/o timeout"
+time="2026-11-01T06:12:25Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_61\": dial: i/o timeout"
+time="2026-11-01T06:12:25Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_50\": dial: i/o timeout"
+time="2026-11-01T06:12:25Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_194\": dial: i/o timeout"
+time="2026-11-01T06:12:25Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_22\": dial: i/o timeout"

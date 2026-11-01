@@ -12,7 +12,7 @@ your routes. Each default can be replaced in one line.
 | The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
 | Routes | a `#[corten::routes]` module: each route names its handlers, and `router()` is what `App::new` takes; every handler is checked when the crate compiles, there and in `Area::route` and `Api::route` (Corten's `get`, `post`, ...), so no route reaches the app unchecked | |
 | What handlers share | nothing | `#[corten::routes(state = Shared)]` and `router(shared)`; `#[derive(Clone, FromRef)]` on `Shared` lets a handler take one part, `State<Market>` (each field's type once; `#[from_ref(skip)]` leaves a field out) |
-| What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too; `Result<JsonResponse, JsonError>` for a status or cookie of the handler's own) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
+| What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too; `Result<JsonResponse, JsonError>` for a status or cookie of the handler's own, or another server's answer passed on) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
 | The client's address | the connection's peer; no `X-Forwarded-For` is read | a handler takes `ClientIp`; behind a proxy, `PROXIES=10.0.0.0/8` in the environment or `Policy::proxy("10.0.0.0/8")` ([below](#the-clients-address)) |
 | Who is asking | nothing: no lookup runs | a handler takes `Caller<Viewer>` (`Viewer: Identify`), looked up only then, once per request ([below](#who-is-asking)) |
 | A part of the app | none | `.area(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
@@ -26,7 +26,7 @@ your routes. Each default can be replaced in one line.
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
 | Work that lives as long as the app | none | `.task("refresh", refresh)`: started by `serve`, told when shutdown begins ([below](#tasks)); on a schedule, with tokio's intervals ([below](#on-a-schedule)) |
 | Connections | a request's head (its line and headers) must arrive within 30 seconds of the connection opening or its last answer, or the connection is closed; no limit on how many are open | `.header_timeout(d)` (`None` behind a proxy that buffers heads), `.max_connections(n)`: past it, connections wait to be accepted |
-| Shutdown | Ctrl-C and `SIGTERM` (on Windows Ctrl-C, Ctrl-Break, the console closing and system shutdown), or the app's `corten::shutdown()`, tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks and for work handlers finish (`Signal::finish`) (5 seconds) | `.shutdown_grace(d)`, under the platform's own bound (`docker stop`: 10 seconds) |
+| Shutdown | Ctrl-C and `SIGTERM` (on Windows Ctrl-C, Ctrl-Break, the console closing and system shutdown), or the app's `corten::shutdown()`, tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks and for work handlers finish (`Signal::finish`) (5 seconds) | `.shutdown_grace(d)`; the platform's wait before it kills the process (`docker stop`: 10 seconds; Kubernetes: 30) above the longer of the deadline and the grace |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
 | Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, JSON held as bytes (`json::Raw`) once when it is sent again, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`); a `Relay`'s answer goes on as the upstream sent it | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
@@ -295,6 +295,103 @@ hours in which each refresh is an hour after the last, at :15, and a refresh tha
 recheck's marks is followed by one recheck, not one for each; a test of an app's own schedule does
 the same. Daily at 03:30 UTC is `next_mark(HOUR * 7 / 2, 24 * HOUR)`. Jobs in separate tasks that
 must not overlap share a `tokio::sync::Mutex`.
+
+The loop and the `Mutex` hold within one process. An app that runs as several (a blue/green or
+rolling release while the old and the new both run, an app scaled out) runs each of its tasks in
+each of them, so each runs the schedule. A lock does not fix that: the instance whose tick comes a
+second after another's run ended finds it free and runs the job again. A job that must run once
+across them claims its run in the store they share, a row for the job and the mark the run is for,
+and runs only where the claim added the row:
+
+```rust,ignore
+const MINUTE: Duration = Duration::from_secs(60);
+
+/// The mark a tick is for: the nearest `past + k * period` on the wall clock to when the tick was
+/// due (`tick()` returns that), the same in every instance whose tick for it came early or late.
+/// `now` is the task's wall clock (below).
+fn mark_of(now: SystemTime, due: Instant, past: Duration, period: Duration) -> i64 {
+    let at = now - due.elapsed();
+    let at = at.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+    let (past, period) = (past.as_secs() as i64, period.as_secs() as i64);
+    past + (at - past + period / 2).div_euclid(period) * period
+}
+
+/// Whether this instance runs `job` for `mark`: the first to claim it does, the others skip it.
+/// `CREATE TABLE job_runs (job text, mark bigint, PRIMARY KEY (job, mark))`. `db` is the pool, or
+/// a transaction's connection.
+async fn claim(db: impl PgExecutor<'_>, job: &str, mark: i64) -> sqlx::Result<bool> {
+    let added = sqlx::query("INSERT INTO job_runs (job, mark) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(job)
+        .bind(mark)
+        .execute(db)
+        .await?;
+    Ok(added.rows_affected() == 1)
+}
+```
+
+`mark_of` takes the wall clock's time rather than reading it, since a test on a paused tokio
+clock (`start_paused`) does not move the wall clock, and every tick would land on the first mark.
+Every interval under a claim starts on the clock's marks, so all instances tick on the same ones:
+`recheck` above starts at once, and under a claim it starts as `hourly` does,
+`interval_at(next_mark(Duration::ZERO, 5 * MINUTE), 5 * MINUTE)`. Started when each process did,
+two instances that tick either side of half a period name adjacent marks, and both run it seconds
+apart. In the loop (the task given the pool, a wall clock `wall: impl Fn() -> SystemTime` that is
+`SystemTime::now` in the app and, in a test on a paused clock, the time the test started plus
+`Instant`'s elapsed time since, and `Job` a `name()` for its row), each tick gives when it was
+due, and the job runs only when its claim says so:
+
+```rust,ignore
+let (job, mark) = tokio::select! {
+    biased;
+    _ = signal.aborted() => return,
+    due = hourly.tick() => (Job::Refresh, mark_of(wall(), due, 15 * MINUTE, HOUR)),
+    due = recheck.tick() => (Job::Recheck, mark_of(wall(), due, Duration::ZERO, 5 * MINUTE)),
+};
+// Raced with shutdown: a claim waiting for a connection would outlast the grace.
+let claimed = tokio::select! {
+    biased;
+    _ = signal.aborted() => return,
+    claimed = claim(&pool, job.name(), mark) => claimed,
+};
+match claimed {
+    Ok(true) => {} // run it, as above
+    Ok(false) => continue, // another instance has this one
+    Err(error) => {
+        tracing::warn!(%error, "claiming a run"); // the schedule goes on; this run is skipped
+        continue;
+    }
+}
+```
+
+The claim gives at most one run for each mark. An instance that claims a run and stops before it is
+done or fails (a deploy's shutdown, a crash, an error) leaves that run undone; a job that must not
+miss one records what it finished, and the next run takes up what the last left, as the queue above
+does. The table gains a row per run, so a prune of old marks belongs in the job. Each mark runs at
+most once whatever the clocks say, since each instance names its own tick's mark. A clock ahead of
+the others runs each mark early by as much, and when the instance that runs changes (one with a
+faster clock starts, or it stops), the time between two runs is a period less or more that skew; a
+skew near a period puts two runs moments apart. Keep the clocks in sync (NTP), which a short period
+needs most. Across a release the claim holds only while the old and the new both claim and name the
+job and its marks alike: the release that brings the claim in, or renames a job or moves its marks,
+runs it in both while they overlap, so it goes out with the old drained first.
+
+A claim keeps apart runs of one job for one mark, and nothing else: one job's run that overran its
+period overlaps the next, and two jobs kept apart by one loop or one `Mutex` (the refresh and the
+recheck above) run at once on two instances. Jobs that must not overlap, across instances, take one
+lock for all of them before they claim, and a busy lock skips the tick with its mark unclaimed: a
+mark whose every tick meets another job's run (jobs in separate tasks, every instance ticking while
+it runs) is run nowhere, so a job that must not miss one records what it finished, as above. For
+work of seconds that is the advisory lock in [Work that must not run twice at
+once](requests-and-forms.md#work-that-must-not-run-twice-at-once), with the timeouts it sets there,
+and the claim and the job's writes run on the lock's transaction (`held.conn()` in place of the
+pool), so the job holds one connection and a run that fails rolls its claim back with it. Then an
+instance whose tick for that mark comes later may run it again: the failed run's database writes
+went with its claim, a call outside the database did not. For work of minutes it is the queue's
+leased claim, renewed while the work runs.
+
+Each instance's status (the map above) holds only the runs it claimed, so behind a load balancer
+a status page shows a different last run from each. Status shown across instances is kept in the
+shared store too: the run's row, given when it started, how long it took and how it ended.
 
 Limits, which are the app's to handle:
 
@@ -782,7 +879,8 @@ fn app(pages: Routes) -> App {
 ```
 
 A JSON answer is `200` with the value's JSON. One with a status or a cookie of its own is a
-`JsonResponse`, made from the value, and its handler returns `Result<JsonResponse, JsonError>`:
+`JsonResponse`, made from the value (or from a `Relay`, [below](#websockets-and-relays)), and its
+handler returns `Result<JsonResponse, JsonError>`:
 `Json(started).with_status(StatusCode::ACCEPTED)` for a job begun,
 `Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE)` for a document that does not exist
 yet, `Json(session).with_cookie(SetCookie::try_new("session", &token)?)` for a sign-in (never a
@@ -901,7 +999,7 @@ Under the prefix:
    pages keep refusing that site's writes. The site authenticates with a token: a write from it
    that carries the user's cookies is refused, and no `Access-Control-Allow-Credentials` is sent.
 6. `Json` in the prelude is `corten::Json` (feature `json`). It reads a request body into a
-   `FromJson` (item 7) with the value and the rejections axum's `Json` gives: Corten's reader takes
+   `FromJson` (item 8) with the value and the rejections axum's `Json` gives: Corten's reader takes
    an `application/json` body, and axum (`serde_json`) any other JSON content type and any body
    the reader gives up on. What it writes is a `ToJson`: derive it
    (`#[derive(ToJson)]`, also in the prelude) on the response type, next to `Serialize` if other
@@ -913,7 +1011,9 @@ Under the prefix:
    attribute it cannot follow (`flatten` of a map or an enum, `serialize_with`) does not compile. A field whose type has only `Serialize` (an id or a
    date from another crate) is written by `serde_json`. `serde_json::Value` is a `ToJson`, as above.
    axum's `Json` works too, and writes any `Serialize` through `serde_json` and a `BytesMut`.
-7. To read JSON another service answers, derive `FromJson` (in the prelude) next to `Deserialize`
+7. Numbers are written as serde_json writes them, a whole float as `2.0`
+   ([Numbers in JSON](#numbers-in-json)).
+8. To read JSON another service answers, derive `FromJson` (in the prelude) next to `Deserialize`
    and read it with `corten::json::from_slice` or `from_str`. Corten's reader takes the fields the
    type declares and skips the rest; on anything it does not follow (an escaped key, a missing or
    duplicate field) `serde_json` reads the text instead, so the value and every error are
@@ -930,6 +1030,51 @@ behavior).
 
 A screen that a native app or an agent reads is not an API route: it stays a page that answers
 with `req.screen`, so every surface shares one handler (see [Surfaces](../architecture.md)).
+
+### Numbers in JSON
+
+Numbers in a JSON response, a feed's rows and an agent tool's output are written as `serde_json`
+writes them, whether by a `ToJson` or by `serde_json` for a field it hands on: the shortest digits
+that read back as the same value, a whole float with its fraction (`2.0`, where JavaScript's
+`JSON.stringify` writes `2`; Python's `json.dumps` writes `2.0` too), an exponent (`1e+16`,
+`5e-6`) when the magnitude is at least `1e16` or nonzero and below `1e-5` for an `f64` (at least
+`1e13` or nonzero and below `1e-6` for an `f32`, whose digits are the `f32`'s), where
+`JSON.stringify` writes digits below `1e21` and down to `0.000001`, `-0.0` (where it writes `0`),
+and `null` for NaN and infinity.
+
+Both `2` and `2.0` are the number 2 in JSON's grammar, and RFC 8259 leaves how a reader types a
+number to the reader; one that types it by its text tells them apart: Python's `json` reads a
+float, `serde_json::Value` keeps them apart, and serde or Go reading into an integer field refuse
+`2.0`. Keeping the fraction is what lets those readers type a float field the same way for every
+value (with `JSON.stringify`'s form, `2` reads as an integer and `2.5` as a float). So:
+
+1. A value the API's contract calls an integer (a count) is an integer field (`u64`), converted
+   where the response is built, even when the app sums or scales it as an `f64`. `as u64` turns
+   NaN, negative values and minus infinity into 0, and plus infinity or a value from `u64::MAX as
+   f64` (2^64) up into `u64::MAX`, with no error, so check first:
+   `(0.0..9_007_199_254_740_992.0).contains(&total)` refuses all of those and keeps a JavaScript
+   client exact (past 2^53 a count is a string for one).
+2. A parity test against the service a route replaces reads both bodies into the route's response
+   type, or walks both `Value`s and compares numbers with `as_i64` or `as_u64` when both are
+   integers and `as_f64` on both otherwise, and flags a field the old service sent as an integer
+   that now arrives as a float: that field should be an integer type.
+3. Text that must match another service's byte for byte is written by the app and sent as `Raw`,
+   which is a `ToJson` and so can be one field of a derived response. `Raw` has no `Serialize`, so
+   a type that feeds or agent output also write holds `Box<serde_json::value::RawValue>`
+   (serde_json's `raw_value` feature, and schemars' `raw_value` feature for agent output or
+   generated types, whose schema is then any JSON value). JavaScript's number form comes from
+   `serde_json::Serializer::with_formatter` over a type that derives `Serialize`, with a
+   `Formatter` whose `write_f64` and `write_f32` write it (`-0.0` as `0`, digits below `1e21` and
+   down to `1e-6`, an exponent outside that), sent with `Raw::new`.
+4. A checksum shared with other services is taken over canonical JSON (RFC 8785, which writes
+   numbers the JavaScript way), not any serializer's output; Corten has no RFC 8785 writer, so that
+   is a crate of the app's.
+
+Handler arguments in markup are the exception: only the browser's `JSON.parse` reads them, so a
+float passed for a `number` parameter is written as Rust's `Display` writes it, with no fraction on
+a whole number and never an exponent (`JSON.parse` reads the digits as the same number), and NaN
+and infinity as `null`. A value passed whole (an `any` parameter, a generated type) is written by
+its `ToJson`, as above.
 
 ## WebSockets and relays
 
@@ -1000,6 +1145,16 @@ be compressed forwards the client's `Accept-Encoding`, and the upstream's encode
 it is, as long as the HTTP client does not decode it (for reqwest, leave its `gzip`, `brotli` and
 `zstd` features off). When the client leaves, the body is dropped, and
 the upstream request with it. What else to drop (`Set-Cookie`) is the route's to decide.
+
+A route that answers some requests itself and passes the rest on (by method, body or tenant,
+while it moves off another service; a cache in front of an upstream) names one answer for both.
+A page route's is `PageOr<Relay>`, a page or the relayed answer. A JSON route's is
+`Result<JsonResponse, JsonError>`: `Ok(Json(value).into())` for its own answer and
+`Ok(relay.into())` for the upstream's, which stays the upstream's (its status, headers and
+failure body, its encoding) as a `Relay` is anywhere. A route that only relays returns `Relay`:
+its own failures (a path that does not parse) are then the error page, and it can be `Public`.
+A JSON route that relays some requests is never `Public`, as no `JsonResponse` is, so a shared
+cache keeps neither of its answers.
 
 An app moved onto Corten a slice at a time serves its own paths and relays the rest to the
 old server behind a catch-all route. `any = relay` serves every method there, those the app never
