@@ -309,6 +309,7 @@ fn own_theme(root: &Path, code: &str) -> Result<Option<Theme>, String> {
     let Some(path) = tokens_path(code) else { return Ok(None) };
     let mut reader = ThemeReader { root, docs: Vec::new(), theme: Theme::default(), steps: 0, open: Vec::new() };
     let file = root.join(&path);
+    let file = std::fs::canonicalize(&file).unwrap_or(file);
     let doc = reader.load(&file)?;
     let is_resolver = matches!(&doc, crate::json::Value::Object(f) if f.iter().any(|(k, v)| k == "resolutionOrder" && matches!(v, crate::json::Value::Array(_))));
     if is_resolver {
@@ -337,7 +338,9 @@ struct ThemeReader<'a> {
 
 impl ThemeReader<'_> {
     fn shown(&self, file: &Path) -> String {
-        slash(file.strip_prefix(self.root).unwrap_or(file))
+        let canonical = std::fs::canonicalize(self.root).ok();
+        let relative = canonical.as_deref().and_then(|root| file.strip_prefix(root).ok());
+        slash(relative.or_else(|| file.strip_prefix(self.root).ok()).unwrap_or(file))
     }
 
     fn load(&mut self, file: &Path) -> Result<crate::json::Value, String> {
@@ -363,6 +366,8 @@ impl ThemeReader<'_> {
             (file.to_path_buf(), doc.clone())
         } else {
             let next = file.parent().map(Path::to_path_buf).unwrap_or_default().join(path);
+            // One path per file, as the macro resolves it, so `../tokens/x.json` is `x.json`.
+            let next = std::fs::canonicalize(&next).unwrap_or(next);
             let loaded = self.load(&next)?;
             (next, loaded)
         };
@@ -1410,6 +1415,27 @@ mod tests {
         .unwrap();
         let looped = own_theme(&dir, "tokens!(\"tokens/loop.resolver.json\");").unwrap().unwrap();
         assert_eq!(looped.groups, ["space"], "{looped:?}");
+        // Two files that include each other by a path that grows (`../tokens/..`) are one file each.
+        std::fs::write(
+            dir.join("tokens/far.resolver.json"),
+            r##"{ "sets": { "a": { "sources": [{ "$ref": "space.tokens.json" }, { "$ref": "../tokens/near.json#/sets/x" }] } },
+                "resolutionOrder": [{ "$ref": "#/sets/a" }] }"##,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("tokens/near.json"),
+            r##"{ "sets": { "x": { "sources": [{ "$ref": "../tokens/far.resolver.json#/sets/a" }] } } }"##,
+        )
+        .unwrap();
+        let far = own_theme(&dir, "tokens!(\"tokens/far.resolver.json\");").unwrap().unwrap();
+        assert_eq!(far.groups, ["space"], "{far:?}");
+        std::fs::write(
+            dir.join("tokens/r2.json"),
+            r##"{ "resolutionOrder": [{ "$ref": "../tokens/base.tokens.json#/nope" }] }"##,
+        )
+        .unwrap();
+        let named = own_theme(&dir, "tokens!(\"tokens/r2.json\");").unwrap_err();
+        assert!(named.starts_with("tokens/base.tokens.json#/nope names nothing"), "{named}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
