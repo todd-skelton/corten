@@ -1,0 +1,4 @@
+/* corten ui {{version}}: separator */
+.separator { flex: none; margin: 0; border: 0; background: var(--border); }
+.horizontal { height: 1px; width: 100%; }
+.vertical { width: 1px; align-self: stretch; min-height: 1em; }

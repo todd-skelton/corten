@@ -9,9 +9,19 @@ use corten_ui::{
 use serde::Deserialize;
 use std::time::SystemTime;
 
-use crate::{
-    app::{CREATED, EXPIRES_IN, LISTED_AGO, Msg, NO_REGION, RenameForm, SellForm, url},
+use crate::app::{CREATED, EXPIRES_IN, LISTED_AGO, Msg, NO_REGION, RenameForm, SellForm, url};
+use crate::ui::{
+    button::{Button, ButtonSize, ButtonVariant},
+    card::{Card, CardContent, CardFooter, CardHeader},
+    checkbox::Checkbox,
+    combobox::Combobox,
+    dialog::{Dialog, DialogFooter},
+    dropdown_menu::DropdownMenu,
     field::Field,
+    input::Input,
+    radio_group::{Radio, RadioGroup},
+    sheet::{Sheet, Side},
+    tabs::Tabs,
 };
 
 /// The card the draft sells.
@@ -164,126 +174,184 @@ pub fn Gallery<'a>(
         <div class={Intro}>
             <h1>"Sell "{CARD}</h1>
             <p>
-                "A draft listing, built from corten-ui's headless components: they work as plain HTML first, and a small design system styles them."
+                "A draft listing, built from corten-ui's headless components: they work as plain HTML first, and the UI kit (corten ui add) styles them."
             </p>
         </div>
         <div class={Grid}>
-            <section class={Card}>
-                <h2>"List for sale"</h2>
-                <form class={Order} method="post" action={url::Sell} data-patch>
-                    <div class={Row}>
-                        <Field id="qty" label="Quantity"><NumberField field={&qty} /></Field>
-                        <Field id="price" label="Price (USD)">
-                            <input id="price" name={f.price} inputmode="decimal" value="12.50" required>
-                        </Field>
-                        <Field id="weight" label="Shipping weight">
-                            <span class={Unit}>"oz"</span>
-                            <NumberField field={&weight} />
-                        </Field>
-                    </div>
-                    <Field id="condition" label="Condition"><ComboBox field={&condition} /></Field>
-                    <div class={Choices}>
-                        <CheckboxGroup legend="Ships to" missing={NO_REGION}>
-                            for (region, label) in REGIONS {
-                                <label>
-                                    <input type="checkbox" name={f.ships} value={region} checked={region == Region::Us}>{label}
-                                </label>
-                            }
-                        </CheckboxGroup>
-                    </div>
-                    <div class={Choices}>
-                        <fieldset>
-                            <legend>"Pricing"</legend>
-                            <label><input type="radio" name={f.pricing} value={Pricing::Fixed} checked>"Fixed price"</label>
-                            <label><input type="radio" name={f.pricing} value={Pricing::Offers}>"Accept offers"</label>
-                        </fieldset>
-                    </div>
-                    <RequiredWhen control={f.pricing} values={&[Pricing::Offers]}>
-                        <div class={Floor}>
-                            <Field id="floor" label="Lowest offer">
-                                <input id="floor" name={f.floor} inputmode="decimal">
+            <Card>
+                <CardHeader><h2>"List for sale"</h2></CardHeader>
+                <CardContent>
+                    <form class={Order} method="post" action={url::Sell} data-patch>
+                        <div class={Row}>
+                            <Field id="qty" label="Quantity" note="">
+                                <span class={Stepper}><NumberField field={&qty} /></span>
+                            </Field>
+                            <Field id="price" label="Price (USD)" note="">
+                                <Input><input id="price" name={f.price} inputmode="decimal" value="12.50" required></Input>
+                            </Field>
+                            <Field id="weight" label="Shipping weight" note="">
+                                <span class={Stepper}>
+                                    <span class={Unit}>"oz"</span>
+                                    <NumberField field={&weight} />
+                                </span>
                             </Field>
                         </div>
-                    </RequiredWhen>
-                    <button class={Primary}>"List for sale"</button>
-                </form>
-                <OrderResult text={result} />
-            </section>
-            <div class={Side}>
+                        <Field id="condition" label="Condition" note="">
+                            <Combobox><ComboBox field={&condition} /></Combobox>
+                        </Field>
+                        <div class={Choices}>
+                            <CheckboxGroup legend="Ships to" missing={NO_REGION}>
+                                for (region, label) in REGIONS {
+                                    <Checkbox label={label}>
+                                        <input type="checkbox" name={f.ships} value={region} checked={region == Region::Us}>
+                                    </Checkbox>
+                                }
+                            </CheckboxGroup>
+                        </div>
+                        <RadioGroup legend="Pricing">
+                            <Radio label="Fixed price">
+                                <input type="radio" name={f.pricing} value={Pricing::Fixed} checked>
+                            </Radio>
+                            <Radio label="Accept offers"><input type="radio" name={f.pricing} value={Pricing::Offers}></Radio>
+                        </RadioGroup>
+                        <div class={Floor}>
+                            <RequiredWhen control={f.pricing} values={&[Pricing::Offers]}>
+                                <Field id="floor" label="Lowest offer" note="">
+                                    <Input><input id="floor" name={f.floor} inputmode="decimal"></Input>
+                                </Field>
+                            </RequiredWhen>
+                        </div>
+                        <div>
+                            <Button variant={ButtonVariant::Primary} size={ButtonSize::Md}>
+                                <button>"List for sale"</button>
+                            </Button>
+                        </div>
+                    </form>
+                    <OrderResult text={result} />
+                </CardContent>
+            </Card>
+            <div class={Aside}>
                 // Built in the markup, so the panels' views live until the group has rendered them.
-                <section class={(Card, Book)}>
-                    <h2>"Market"</h2>
-                    <TabGroup
-                        id="book"
-                        label="Market"
-                        selected={tab as usize}
-                        tabs={&[
-                            Tab { label: "Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&at(None)) },
-                            Tab { label: "Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&at(Some(MarketTab::Offers))) },
-                            Tab { label: "Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&at(Some(MarketTab::Sales))) },
-                        ]}
-                    />
-                    <ShownFor choice={&period} values={&[Period::Week]}>
-                        <p>"Average $12.10 this week."</p>
-                    </ShownFor>
-                    <ShownFor choice={&period} values={&[Period::Month]}>
-                        <p>"Average $11.95 this month."</p>
-                    </ShownFor>
-                </section>
-                <section class={(Card, Periods)}>
-                    <h2>"Sales"</h2>
-                    <ChoiceGroup
-                        choice={&period}
-                        label="Sales period"
-                        options={&[
-                            ChoiceOption { value: Period::Week, label: "Week", link: Some(&week) },
-                            ChoiceOption { value: Period::Month, label: "Month", link: Some(&month) },
-                        ]}
-                    />
-                    <ShownFor choice={&period} values={&[Period::Week]}><p>"Sold 3 this week."</p></ShownFor>
-                    <ShownFor choice={&period} values={&[Period::Month]}><p>"Sold 14 this month."</p></ShownFor>
-                </section>
-                <section class={Card}>
-                    <h2>"Activity"</h2>
-                    <p>
-                        "Listed "
-                        <RelativeTime when={t.relative(now - LISTED_AGO, now, RelativeStyle::Short)} />
-                    </p>
-                    <p>
-                        "The best offer expires "
-                        <RelativeTime when={t.relative(now + EXPIRES_IN, now, RelativeStyle::Long)} />
-                    </p>
-                    <p>
-                        "Drafted "
-                        <LocalTime when={t.date_time(SystemTime::UNIX_EPOCH + CREATED, DateStyle::Medium, TimeStyle::Short)} />
-                    </p>
-                </section>
-                <section class={(Card, Actions)}>
-                    <h2>"Draft"</h2>
-                    <div class={Buttons}>
-                        <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
-                        <button type="button" command="show-modal" commandfor={RenameId}>"Rename draft"</button>
-                        <MenuButton id="actions" label="More actions">
-                            <a role="menuitem" href={url::Help}>"Help"</a>
-                            <form method="post" action={url::Archive} data-patch><button role="menuitem">"Archive"</button></form>
-                            <button type="button" role="menuitem" disabled>"Delete"</button>
-                            <button type="button" role="menuitem" command="show-modal" commandfor={RenameId}>"Rename…"</button>
-                            <form method="post" action={url::Watch} data-patch><button role="menuitem">"Watch"</button></form>
-                        </MenuButton>
-                    </div>
-                    <MenuResult text="" />
-                    <a href={url::Home { tab: None, sale: Some(Sale::Last), period: None }}>"Last sale"</a>
-                </section>
-                <section class={Card}>
-                    <h2>"Stock"</h2>
-                    <Sku sku="ASH-DRAKE-NM" />
-                    <PrintButton label="Print label" />
-                </section>
+                <Card>
+                    <CardHeader><h2>"Market"</h2></CardHeader>
+                    <CardContent>
+                        <Tabs>
+                            <TabGroup
+                                id="book"
+                                label="Market"
+                                selected={tab as usize}
+                                tabs={&[
+                                    Tab { label: "Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&at(None)) },
+                                    Tab { label: "Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&at(Some(MarketTab::Offers))) },
+                                    Tab { label: "Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&at(Some(MarketTab::Sales))) },
+                                ]}
+                            />
+                        </Tabs>
+                        <div class={Facts}>
+                            <ShownFor choice={&period} values={&[Period::Week]}>
+                                <p>"Average $12.10 this week."</p>
+                            </ShownFor>
+                            <ShownFor choice={&period} values={&[Period::Month]}>
+                                <p>"Average $11.95 this month."</p>
+                            </ShownFor>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader><h2>"Sales"</h2></CardHeader>
+                    <CardContent>
+                        <div class={Periods}>
+                            <ChoiceGroup
+                                choice={&period}
+                                label="Sales period"
+                                options={&[
+                                    ChoiceOption { value: Period::Week, label: "Week", link: Some(&week) },
+                                    ChoiceOption { value: Period::Month, label: "Month", link: Some(&month) },
+                                ]}
+                            />
+                        </div>
+                        <div class={Facts}>
+                            <ShownFor choice={&period} values={&[Period::Week]}><p>"Sold 3 this week."</p></ShownFor>
+                            <ShownFor choice={&period} values={&[Period::Month]}><p>"Sold 14 this month."</p></ShownFor>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader><h2>"Activity"</h2></CardHeader>
+                    <CardContent>
+                        <div class={Facts}>
+                            <p>
+                                "Listed "
+                                <RelativeTime when={t.relative(now - LISTED_AGO, now, RelativeStyle::Short)} />
+                            </p>
+                            <p>
+                                "The best offer expires "
+                                <RelativeTime when={t.relative(now + EXPIRES_IN, now, RelativeStyle::Long)} />
+                            </p>
+                            <p>
+                                "Drafted "
+                                <LocalTime
+                                    when={t.date_time(SystemTime::UNIX_EPOCH + CREATED, DateStyle::Medium, TimeStyle::Short)}
+                                />
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader><h2>"Draft"</h2></CardHeader>
+                    <CardContent>
+                        <div class={Buttons}>
+                            <form method="post" action={url::Save} data-patch>
+                                <Button variant={ButtonVariant::Secondary} size={ButtonSize::Md}>
+                                    <button>"Save draft"</button>
+                                </Button>
+                            </form>
+                            <Button variant={ButtonVariant::Outline} size={ButtonSize::Md}>
+                                <button type="button" command="show-modal" commandfor={RenameId}>"Rename draft"</button>
+                            </Button>
+                            <DropdownMenu>
+                                <MenuButton id="actions" label="More actions">
+                                    <a role="menuitem" href={url::Help}>"Help"</a>
+                                    <form method="post" action={url::Archive} data-patch>
+                                        <button role="menuitem">"Archive"</button>
+                                    </form>
+                                    <button type="button" role="menuitem" disabled>"Delete"</button>
+                                    <button type="button" role="menuitem" command="show-modal" commandfor={RenameId}>
+                                        "Rename…"
+                                    </button>
+                                    <form method="post" action={url::Watch} data-patch>
+                                        <button role="menuitem">"Watch"</button>
+                                    </form>
+                                </MenuButton>
+                            </DropdownMenu>
+                        </div>
+                        <MenuResult text="" />
+                    </CardContent>
+                    <CardFooter>
+                        <Button variant={ButtonVariant::Link} size={ButtonSize::Sm}>
+                            <a href={url::Home { tab: None, sale: Some(Sale::Last), period: None }}>"Last sale"</a>
+                        </Button>
+                        <Button variant={ButtonVariant::Link} size={ButtonSize::Sm}>
+                            <a href={url::Orders { page: None }}>"Orders"</a>
+                        </Button>
+                    </CardFooter>
+                </Card>
+                <Card>
+                    <CardHeader><h2>"Stock"</h2></CardHeader>
+                    <CardContent>
+                        <Sku sku="ASH-DRAKE-NM" />
+                        <div>
+                            <Button variant={ButtonVariant::Outline} size={ButtonSize::Sm}>
+                                <PrintButton label="Print label" />
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
         </div>
-        {rename}
+        <Dialog>{rename}</Dialog>
         if sale {
-            <SaleSheet />
+            <Sheet side={Side::Right}><SaleSheet /></Sheet>
         }
     }
 }
@@ -329,7 +397,9 @@ pub fn Sku<'a>(sku: &'a str) -> impl Render {
             "SKU "
             <code id={SkuId}>{sku}</code>
             " "
-            <CopyButton text={SkuId} label="Copy" copied="Copied" />
+            <Button variant={ButtonVariant::Outline} size={ButtonSize::Sm}>
+                <CopyButton text={SkuId} label="Copy" copied="Copied" />
+            </Button>
             " "
             <span ref={copied} hidden>"Copies: "<output ref={copies} aria-label="Copies">"0"</output></span>
         </p>
@@ -346,7 +416,9 @@ pub fn SaleSheet() -> impl Render {
         <dialog open aria-label="Last sale" on:connect={dialog::modalClosedBy(target, close, signal)}>
             <h2>"Last sale"</h2>
             <p>"A Near Mint copy sold for $12.00 on May 3."</p>
-            <a ref={close} href={url::Home { tab: None, sale: None, period: None }}>"Close"</a>
+            <Button variant={ButtonVariant::Outline} size={ButtonSize::Md}>
+                <a ref={close} href={url::Home { tab: None, sale: None, period: None }}>"Close"</a>
+            </Button>
         </dialog>
     }
 }
@@ -358,19 +430,24 @@ pub struct RenameId;
 /// Naming the draft, in a modal dialog. Refused, the server draws it open with the error, as the
 /// form's patch or in the page a post without the runtime answers with, and `dialog::modal`
 /// makes it modal again when it joins the page.
-#[component]
+#[component(css = Gallery)]
 pub fn RenameDialog<'a>(name: &'a str, errors: &'a Errors) -> impl Patch {
     let f = RenameForm::FIELDS;
     let e = errors.within(RenameId);
     html! {
         <dialog id={RenameId} open={!errors.is_empty()} aria-label="Rename the draft" on:connect={dialog::modal(target)}>
-            <form method="post" action={url::Rename} data-patch>
-                <label for="draft-name">"Name"</label>
-                <input id="draft-name" name={f.name} value={name} {..e.aria(f.name)}>
-                {e.message(f.name)}
-                <button>"Rename"</button>
+            <h2>"Rename the draft"</h2>
+            <form class={Rename} method="post" action={url::Rename} data-patch>
+                <Field id="draft-name" label="Name" note={e.message(f.name)}>
+                    <Input><input id="draft-name" name={f.name} value={name} {..e.aria(f.name)}></Input>
+                </Field>
+                <DialogFooter>
+                    <Button variant={ButtonVariant::Ghost} size={ButtonSize::Md}>
+                        <button type="button" command="close" commandfor={RenameId}>"Cancel"</button>
+                    </Button>
+                    <Button variant={ButtonVariant::Primary} size={ButtonSize::Md}><button>"Rename"</button></Button>
+                </DialogFooter>
             </form>
-            <form method="dialog"><button>"Cancel"</button></form>
         </dialog>
     }
 }

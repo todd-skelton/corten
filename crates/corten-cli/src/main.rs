@@ -6,6 +6,7 @@
 //! - `corten build` builds the release binary. `corten check` runs format, lint and
 //!   tests, then a type check of the app's scripts (with TypeScript's `tsc`, when it is installed).
 //! - `corten fmt` runs `cargo fmt` and lays out the markup in `html!`, which rustfmt leaves alone.
+//! - `corten ui` sets up the UI kit and copies its components into the app.
 
 mod dev;
 mod fmt;
@@ -13,6 +14,7 @@ mod json;
 mod new;
 mod pin;
 mod scripts;
+mod ui;
 
 use std::process::{Command, ExitCode};
 
@@ -35,6 +37,16 @@ Usage:
                    node_modules or the PATH; without it, a note says they were not checked)
                    against the types/app.d.ts the tests wrote. At a workspace root it checks
                    the scripts of each member that uses corten.
+  corten ui init   Set up the UI kit: theme tokens (tokens/ui.*.json, light and dark),
+                   src/ui.rs listing its components, and the page's colors in
+                   static/style.css; declares mod ui and lists ui::COMPONENTS on the App.
+  corten ui add <name>.. [--force] | corten ui add --all [--force]
+                   Copy kit components into src/ui/, where they are yours to change, and
+                   list them in src/ui.rs. Refuses to replace a file without --force.
+  corten ui list   The kit's components.
+  corten ui diff [name]..
+                   How each copied component differs from this command's kit: whether you
+                   edited it, whether the kit changed it since, and the lines. Writes nothing.
   corten help      This text.
   corten --version The version, and the commit the command was built from. dev, fmt and
                    check say when the app's Cargo.lock pins another corten, and how to
@@ -68,6 +80,7 @@ fn main() -> ExitCode {
             );
         }),
         Some("fmt") => fmt::run(&args[1..]),
+        Some("ui") => ui::run(&args[1..]),
         Some("check") => fmt::run(&["--check".to_string()])
             .and_then(|()| cargo(&["clippy", "--all-targets", "--", "-D", "warnings"]))
             // The tests first: the one that writes `types/app.d.ts` brings it up to date (and fails,
