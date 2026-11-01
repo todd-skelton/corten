@@ -2805,8 +2805,8 @@ Corten is pre-1.0, so any minor version may change the API.
 95. `corten new --corten-path` given a checkout's root (a workspace, not the corten crate) wrote
     a dependency that does not build, and `corten ui add` could not find `corten-ui` beside it. A
     workspace root that has the corten crate now means that crate, read by `cargo metadata`, and a
-    directory that is neither (or a corten crate in a directory not named `corten`, which
-    `corten ui` and `corten check` would not find) is refused before anything is written
+    directory that is neither (or a corten crate in a directory not named `corten`, beside
+    which `corten ui add` would not find corten-ui) is refused before anything is written
     ([#560 corten new --corten-path takes the repository root and writes a corten dependency that does not build](https://github.com/todd-skelton/corten/issues/560)).
 
 ### Documentation

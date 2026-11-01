@@ -88,7 +88,7 @@ fn dependency(path: Option<&str>) -> Result<String, String> {
 
 /// The directory of the `corten` package that `dir` is, or whose workspace root `dir` is, read
 /// by `cargo metadata` as `corten check` reads an app's packages. Its directory is named
-/// `corten`, as `corten ui` and `corten check` look for it.
+/// `corten`, since `corten ui add` finds corten-ui beside it.
 fn corten_crate(dir: &Path) -> Result<PathBuf, String> {
     let manifest = dir.join("Cargo.toml");
     if !manifest.is_file() {
@@ -114,7 +114,7 @@ fn corten_crate(dir: &Path) -> Result<PathBuf, String> {
         Some(corten) if corten == dir || root.as_deref() == Some(dir) => match corten.file_name() {
             Some(name) if name == "corten" => Ok(corten),
             _ => Err(format!(
-                "its corten crate is in {}, and corten ui and corten check look for a directory named corten",
+                "its corten crate is in {}, and corten ui add finds corten-ui beside a directory named corten",
                 corten.display()
             )),
         },
@@ -187,7 +187,7 @@ mod tests {
         write("ws/crates/corten/src/lib.rs", "");
         write("ws/crates/other/Cargo.toml", "[package]\nname = \"other\"\nversion = \"0.0.0\"\nedition = \"2021\"\n");
         write("ws/crates/other/src/lib.rs", "");
-        write("fork/Cargo.toml", "[package]\nname = \"corten\"\nversion = \"0.0.0\"\nedition = \"2021\"\n");
+        write("fork/Cargo.toml", "[workspace]\n\n[package]\nname = \"corten\"\nversion = \"0.0.0\"\nedition = \"2021\"\n");
         write("fork/src/lib.rs", "");
         std::fs::create_dir_all(base.join("empty")).unwrap();
         let at = |p: &str| base.join(p).to_string_lossy().into_owned();
