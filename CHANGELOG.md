@@ -2626,7 +2626,8 @@ Corten is pre-1.0, so any minor version may change the API.
 93. A form's write redirected to another origin that its page's CSP `form-action` does not allow
     is a 500 that names the origin and `Policy::form_action` in a debug build, where it passed
     every test and the browser stopped it on the form's page with only a console error. It holds
-    a `req.redirect` and a sign-in redirect from one of the app's pages (plain or `data-patch`)
+    a `req.redirect` and a sign-in redirect answering a form's `POST` from one of the app's pages
+    (plain or `data-patch`)
     to that page's policy, matched as CSP 3 matches a source after a redirect, with the page's
     `Origin` as `'self'`; the handler's other headers (a cookie) go out with the 500. A `GET`, a
     script's `fetch`, another site's post, a `Relay` answer, `Policy::report_only` and a
@@ -2635,9 +2636,9 @@ Corten is pre-1.0, so any minor version may change the API.
     difference between 1,200 and 200 requests over 1,000, median of three and the range of the
     nine pairs, against main at f5c76a08, the branch at 6d146b8d; later commits change only what
     runs for a redirect to another address and a report-only flag): release 26,956 instructions a
-    request (26,904 to 27,044) against 27,035 (26,944 to 27,072), the runs varying more than the
-    builds; debug 215,810 (215,661 to 215,861) against 189,171 (189,119 to 189,197), the headers
-    kept for the check
+    request on the branch (26,904 to 27,044) against 27,035 on main (26,944 to 27,072), the runs
+    varying more than the builds; debug 215,810 on the branch (215,661 to 215,861) against 189,171
+    on main (189,119 to 189,197), the headers kept for the check
     ([#527 A form's redirect to another origin that the app's form-action does not allow passes every test and is blocked in the browser](https://github.com/todd-skelton/corten/issues/527)).
 
 ### Documentation

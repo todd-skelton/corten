@@ -847,6 +847,7 @@ impl Applied {
         placed.sort_by_key(|(prefix, ..)| std::cmp::Reverse(prefix.len()));
         #[cfg(debug_assertions)]
         let forms = Arc::new(FormPolicy {
+            names: policy.hosts.clone().unwrap_or_default(),
             app: csp.form_action.clone(),
             areas: placed.iter().map(|(prefix, csp, _)| (*prefix, csp.form_action.clone())).collect(),
             whole: std::iter::once(&csp)
@@ -878,8 +879,19 @@ impl Applied {
     /// headers are kept; the page and its policy are worked out for a redirect to another address.
     #[cfg(debug_assertions)]
     pub(crate) fn form_check(&self, method: &Method, uri: &axum::http::Uri, headers: &HeaderMap) -> Option<FormCheck> {
-        // A report-only policy stops nothing: the browser reports the redirect and follows it.
-        if self.report_only || matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) {
+        // A report-only policy stops nothing: the browser reports the redirect and follows it. A
+        // form sends only GET and POST, and a GET form cannot be told from a link.
+        if self.report_only || *method != Method::POST {
+            return None;
+        }
+        // A body a form cannot send (JSON from a webhook or a native client) is not a form's.
+        let form_type = |kind: &[u8]| {
+            let kind = kind.split(|&b| b == b';').next().unwrap_or(b"").trim_ascii();
+            [&b"application/x-www-form-urlencoded"[..], b"multipart/form-data", b"text/plain"]
+                .iter()
+                .any(|t| kind.eq_ignore_ascii_case(t))
+        };
+        if headers.get(header::CONTENT_TYPE).is_some_and(|kind| !form_type(kind.as_bytes())) {
             return None;
         }
         // The runtime's `data-patch` submission is a `fetch` too, and is checked: the same form
@@ -1094,6 +1106,8 @@ pub(crate) fn misdirected() -> Response {
 /// prefix first), and whether every policy sends a page's whole address to itself as `Referer`.
 #[cfg(debug_assertions)]
 pub(crate) struct FormPolicy {
+    /// The names given to [`Policy::host`], the app's own when a request names no host.
+    names: Vec<String>,
     app: Vec<String>,
     areas: Vec<(&'static str, Vec<String>)>,
     whole: bool,
@@ -1172,7 +1186,8 @@ impl FormCheck {
                 sources
             }
         };
-        Some(FormTargets { sources, own })
+        let names = if own.is_none() { self.forms.names.clone() } else { Vec::new() };
+        Some(FormTargets { sources, own, names })
     }
 }
 
@@ -1184,6 +1199,9 @@ pub(crate) struct FormTargets {
     sources: Vec<String>,
     /// The page's origin, `'self'`.
     own: Option<Own>,
+    /// When the request names no host (a test's): the app's names (`Policy::host`), on a web
+    /// scheme's default port, count as `'self'`.
+    names: Vec<String>,
 }
 
 /// An origin: its scheme when known, and its host and port, lowercase.
@@ -1230,6 +1248,14 @@ impl FormTargets {
         let Ok(to) = std::str::from_utf8(to) else { return true };
         let Some(to) = address(to) else { return true };
         if self.own.as_ref().is_some_and(|own| own.is(to.scheme.as_deref(), &to.at)) {
+            return true;
+        }
+        let bare = without_default_port(to.scheme.as_deref(), &to.at);
+        let named = |name: &String| match name.strip_prefix('.') {
+            Some(domain) => bare == domain || bare.strip_suffix(name.as_str()).is_some_and(|sub| !sub.is_empty()),
+            None => bare == name,
+        };
+        if to.scheme.as_deref().is_none_or(|scheme| matches!(scheme, "http" | "https")) && self.names.iter().any(named) {
             return true;
         }
         let page = self.own.as_ref().and_then(|own| own.scheme.as_deref());
@@ -1672,6 +1698,7 @@ mod tests {
         let targets = |sources: &[&str]| FormTargets {
             sources: sources.iter().map(|s| s.to_string()).collect(),
             own: Some(Own { scheme: Some("https".into()), at: "app.example".into() }),
+            names: Vec::new(),
         };
         let cases: &[(&[&str], &str, bool)] = &[
             (&[], "/done", true),

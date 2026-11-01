@@ -1218,11 +1218,13 @@ A form's handler that redirects to another origin (a hosted checkout, a sibling 
 address the app does not serve) needs that origin in `form-action`: Chromium and WebKit hold the
 redirects a submission follows to the form's page's policy, and stop one it does not allow there,
 on the form's page, with only a console error. A test that runs the request in process sees the
-303 either way, so a debug build checks for the browser: a form's write from one of the app's
-pages (`Sec-Fetch-Site: same-origin` with its `Origin`, an `Origin` on its host, or neither
+303 either way, so a debug build checks for the browser: a form's post (a `POST` with no body
+or one a form sends: `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`)
+from one of the app's pages (`Sec-Fetch-Site: same-origin` with its `Origin`, an `Origin` on its host, or neither
 header, as a test or another client that is not a browser sends) whose redirect (`req.redirect`,
 or a sign-in redirect) goes to an origin outside the page's own (its `Origin`, else its host)
-and the page's `form-action` is answered as a 500 that names the origin and
+(or, for a test's request that names no host, the app's `Policy::host` names) and the page's
+`form-action` is answered as a 500 that names the origin and
 `Policy::form_action` (under `corten dev`; it is logged either way). The page is the one the
 `Referer` names; without one (a test sends none) it may be any of the app's pages, so the
 redirect passes if any of the app's policies allows it: a test that sends the form's page as

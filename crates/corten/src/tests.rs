@@ -1517,6 +1517,53 @@ async fn a_redirect_outside_form_action_names_the_origin_and_a_sign_in_is_checke
     assert_eq!(status, StatusCode::SEE_OTHER, "report-only");
 }
 
+/// Only a form's post is checked (a form sends nothing else), a test's request is on the app's
+/// own names, and a page whose policy sends only its origin as `Referer` may be any page.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn only_a_form_post_is_checked_against_form_action() {
+    use crate::security::{Policy, Referrer};
+    let to = |uri: &'static str| {
+        move |req: Req| async move {
+            let uri: axum::http::Uri = uri.parse().unwrap();
+            req.redirect::<()>(&uri)
+        }
+    };
+    let routes = Router::new()
+        .route("/else", axum::routing::post(to("https://else.example/x")).put(to("https://else.example/x")))
+        .route("/canonical", axum::routing::post(to("https://app.example/done")))
+        .route("/sibling", axum::routing::post(to("http://localhost:9999/account")));
+    let router = App::new(Routes::from(routes))
+        .policy(Policy::new().host("app.example").referrer(Referrer::StrictOrigin))
+        .area(|area| checkout_url::area(area).policy(|p| p.form_action("http://localhost:9999")))
+        .router();
+    let send = |method: &'static str, path: &'static str, headers: &'static [(&'static str, &'static str)]| {
+        let router = router.clone();
+        async move {
+            let mut req = Request::builder().method(method).uri(path).header("accept", "text/html");
+            for (name, value) in headers {
+                req = req.header(*name, *value);
+            }
+            router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap().status()
+        }
+    };
+    assert_eq!(send("POST", "/else", &[]).await, StatusCode::INTERNAL_SERVER_ERROR, "a form's post");
+    const FORM: &[(&str, &str)] = &[("content-type", "application/x-www-form-urlencoded; charset=utf-8")];
+    assert_eq!(send("POST", "/else", FORM).await, StatusCode::INTERNAL_SERVER_ERROR, "a form's body");
+    assert_eq!(send("PUT", "/else", &[]).await, StatusCode::SEE_OTHER, "no form sends a PUT");
+    const JSON: &[(&str, &str)] = &[("content-type", "application/json")];
+    assert_eq!(send("POST", "/else", JSON).await, StatusCode::SEE_OTHER, "no form sends JSON");
+    assert_eq!(send("POST", "/canonical", &[]).await, StatusCode::SEE_OTHER, "the app's own name, with no Host");
+    // Under strict-origin every page's Referer is `/`: the form may be on the checkout page.
+    const ROOT: &[(&str, &str)] = &[
+        ("host", "app.example"),
+        ("origin", "https://app.example"),
+        ("sec-fetch-site", "same-origin"),
+        ("referer", "https://app.example/"),
+    ];
+    assert_eq!(send("POST", "/sibling", ROOT).await, StatusCode::SEE_OTHER, "a Referer of / is not the page");
+}
+
 /// Someone signed in on another origin's sign-in page.
 #[cfg(debug_assertions)]
 #[derive(Clone, Hash)]
