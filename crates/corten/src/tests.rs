@@ -1444,11 +1444,36 @@ async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
     const IDP_OLD: &[(&str, &str)] = &[("host", "app.localhost"), ("origin", "https://idp.example")];
     assert_eq!(send("/else", "POST", IDP_OLD).await.0, StatusCode::SEE_OTHER, "another origin, no Sec-Fetch-Site");
     // A test that names no host and sends the form's page is held to that page's policy.
-    let (status, _) = send("/sibling", "POST", &[("referer", "http://app.localhost/")]).await;
+    let (status, _) = send("/sibling", "POST", &[("referer", "http://app.localhost/news")]).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the Referer alone says the page");
-    const FROM_ROOT: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/")];
-    let (status, _) = send("/sibling", "POST", FROM_ROOT).await;
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the home page does not allow it");
+    const FROM_NEWS: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/news")];
+    let (status, _) = send("/sibling", "POST", FROM_NEWS).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the news page does not allow it");
+    // A Referer of `/` is what any page under a referrer policy that sends only the origin sends
+    // (one the page set itself included): it names no page.
+    const ROOT: &[(&str, &str)] = &[("host", "app.localhost"), ("referer", "http://app.localhost/")];
+    let (status, _) = send("/sibling", "POST", ROOT).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "a Referer of / may be any page");
+    // Other ways a browser says the page is not one of the app's, and the bodies a form sends.
+    for site in ["same-site", "none"] {
+        let headers: &'static [(&'static str, &'static str)] = match site {
+            // Allowed by `allow_origin`, else the write is refused before the check.
+            "same-site" => &[("host", "app.localhost"), ("origin", "https://idp.example"), ("sec-fetch-site", "same-site")],
+            _ => &[("host", "app.localhost"), ("origin", "http://app.localhost"), ("sec-fetch-site", "none")],
+        };
+        assert_eq!(send("/else", "POST", headers).await.0, StatusCode::SEE_OTHER, "{site}");
+    }
+    for body in ["multipart/form-data; boundary=x", "text/plain"] {
+        let headers: &'static [(&'static str, &'static str)] = match body {
+            "text/plain" => &[("content-type", "text/plain")],
+            _ => &[("content-type", "multipart/form-data; boundary=x")],
+        };
+        assert_eq!(send("/else", "POST", headers).await.0, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+    }
+    // An https page's Origin and a Host that writes its default port are the same origin.
+    const PORT: &[(&str, &str)] =
+        &[("host", "app.localhost:443"), ("origin", "https://app.localhost"), ("sec-fetch-site", "same-origin")];
+    assert_eq!(send("/public", "POST", PORT).await.0, StatusCode::SEE_OTHER, "Host with :443");
     // A browser that does not say the page's origin is not checked.
     const NULL: &[(&str, &str)] = &[("host", "127.0.0.1:3000"), ("origin", "null"), ("sec-fetch-site", "same-origin")];
     let (status, _) = send("/else", "POST", NULL).await;
@@ -1461,10 +1486,10 @@ async fn a_write_redirected_outside_form_action_is_an_error_in_debug_builds() {
         ("host", "app.localhost"),
         ("origin", "http://app.localhost"),
         ("sec-fetch-site", "same-origin"),
-        ("referer", "http://app.localhost/"),
+        ("referer", "http://app.localhost/news"),
     ];
     let (status, _) = send("/checkout/go", "POST", FROM_HOME).await;
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the home page does not allow it");
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the news page does not allow it");
     // A browser that sends no page (no-referrer) may be on any of the app's pages.
     const NO_PAGE: &[(&str, &str)] =
         &[("host", "app.localhost"), ("origin", "http://app.localhost"), ("sec-fetch-site", "same-origin")];

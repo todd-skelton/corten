@@ -1226,17 +1226,20 @@ origin and `Policy::form_action` (the detail under `corten dev`; it is logged ei
    JavaScript is stopped),
 2. from one of the app's pages: `Sec-Fetch-Site: same-origin` with an `Origin`, an `Origin` on
    the request's host, or neither header, as a test or a client that is not a browser sends,
-3. whose redirect (`req.redirect`, or a sign-in redirect) goes to an origin that is not the
+3. whose redirect (any a handler answers: `req.redirect`, a `Location` set by hand, a sign-in
+   redirect, or a `data-patch` answer's `corten-location`) goes to an origin that is not the
    page's own (its `Origin`, else its host; for a request that names neither, the app's
    `Policy::host` names) and that the page's `form-action` does not allow.
 
 The page is the one the `Referer` names, so a test that sends it is held to that page's policy.
-Without one it may be any of the app's pages, and the redirect passes if any of the app's
-policies allows it.
+Without one, or with a `Referer` of `/` (what every page sends under a referrer policy that
+sends only the origin, one a page sets itself included), it may be any of the app's pages, and
+the redirect passes if any of the app's policies allows it.
 
 Not checked: another method (no form sends it), a script's own `fetch` (held to `connect-src`),
 a post from another site's page, a browser's post that does not say its page's origin
-(`Origin: null`), a `Relay` answer, an app under `Policy::report_only` (the browser reports the
+(`Origin: null`), a `Relay` answer, a form on a relayed page (held to the policy it came with,
+which the app cannot see), an app under `Policy::report_only` (the browser reports the
 redirect and follows it), and a release build, which sends the redirect as written and does no
 work for the check. The browser holds every redirect the submission follows to the form's
 page's `form-action`, not only the write's own: a write that redirects to `/`, where a

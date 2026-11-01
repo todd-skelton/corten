@@ -850,9 +850,6 @@ impl Applied {
             names: policy.hosts.clone().unwrap_or_default(),
             app: csp.form_action.clone(),
             areas: placed.iter().map(|(prefix, csp, _)| (*prefix, csp.form_action.clone())).collect(),
-            whole: std::iter::once(&csp)
-                .chain(placed.iter().map(|(_, csp, _)| csp))
-                .all(|csp| csp.referrer.same == Part::Address),
         });
         Applied {
             policy,
@@ -1103,14 +1100,13 @@ pub(crate) fn misdirected() -> Response {
 }
 
 /// The `form-action` sources of the app's policy and of each area's that adds to it (innermost
-/// prefix first), and whether every policy sends a page's whole address to itself as `Referer`.
+/// prefix first).
 #[cfg(debug_assertions)]
 pub(crate) struct FormPolicy {
     /// The names given to [`Policy::host`], the app's own when a request names no host.
     names: Vec<String>,
     app: Vec<String>,
     areas: Vec<(&'static str, Vec<String>)>,
-    whole: bool,
 }
 
 #[cfg(debug_assertions)]
@@ -1155,7 +1151,9 @@ impl FormCheck {
         let ours = match &self.site {
             Some(site) => site.as_bytes() == b"same-origin" && origin.is_some(),
             None => match (&origin, &self.origin) {
-                (Some(origin), _) => host.as_deref() == Some(origin.at.as_str()),
+                (Some(origin), _) => host.as_deref().is_some_and(|host| {
+                    without_default_port(None, host) == without_default_port(origin.scheme.as_deref(), &origin.at)
+                }),
                 (None, None) => true,
                 (None, Some(_)) => false,
             },
@@ -1169,14 +1167,14 @@ impl FormCheck {
             Some(origin) => Some(Own { scheme: origin.scheme, at: origin.at }),
             None => host.map(|at| Own { scheme: None, at }),
         };
-        // A page under a referrer policy that sends only the origin to itself has a `Referer` of
-        // `/` wherever it is.
+        // A page under a referrer policy that sends only the origin (the app's, an area's, or one
+        // the page sends itself) has a `Referer` of `/` wherever it is, so `/` names no page.
         let page = text(&self.referer)
             .and_then(address)
             // A test that names no host may still say the page.
             .filter(|page| own.as_ref().is_none_or(|own| own.is(page.scheme.as_deref(), &page.at)))
             .map(|page| page.path)
-            .filter(|path| self.forms.whole || path != "/");
+            .filter(|path| path != "/");
         let sources = match page {
             Some(path) => self.forms.at(&path).to_vec(),
             None => {

@@ -2657,12 +2657,12 @@ Corten is pre-1.0, so any minor version may change the API.
 93. A form's write redirected to another origin that its page's CSP `form-action` does not allow
     is a 500 that names the origin and `Policy::form_action` in a debug build, where it passed
     every test and the browser stopped it on the form's page with only a console error. It holds
-    a `req.redirect` and a sign-in redirect answering a form's `POST` from one of the app's pages
-    (plain or `data-patch`)
-    to that page's policy, matched as CSP 3 matches a source after a redirect, with the page's
-    `Origin` as `'self'`; the handler's other headers (a cookie) go out with the 500. A `GET`, a
-    script's `fetch`, another site's post, a `Relay` answer, `Policy::report_only` and a
-    redirect after the write's own are not checked, and a release build compiles none of it.
+    any redirect a handler answers to a form's `POST` from one of the app's pages, plain or
+    `data-patch` (a `Location`, a sign-in redirect, a `corten-location`), to that page's policy,
+    matched as CSP 3 matches a source after a redirect, with the page's `Origin` as `'self'`;
+    the handler's other headers (a cookie) go out with the 500. A `GET`, a script's `fetch`,
+    another site's post, a `Relay` answer, `Policy::report_only` and a redirect after the
+    write's own are not checked, and a release build compiles none of it.
     Measured with callgrind (in-process `oneshot`, a POST that redirects to a path, the
     difference between 1,200 and 200 requests over 1,000, median of three and the range of the
     nine pairs, against main at f5c76a08, the branch at 7befb95d; the commit after it changes
