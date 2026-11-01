@@ -1153,7 +1153,8 @@ fn app(pages: Routes) -> App {
 5. An area a library ships is a function the app passes on,
    `.area(shop_admin::area)`. `Area::route::<R>(get(h))` adds a route by hand; Corten's `get`
    checks the handler as a routes module does, and `R`'s path must have the shape
-   `#[derive(Route)]` writes (whole-segment parameters, plain text), or the app does not compile.
+   `#[derive(Route)]` writes (plain text, and parameters that are whole segments or followed by
+   text in theirs, `/feeds/{name}.atom`), or the app does not compile.
 6. Areas nest (`/admin` and `/admin/billing`, each with its own routes and stylesheet).
 
 How the common cases look:

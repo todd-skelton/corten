@@ -21,6 +21,9 @@ price-alert form that posts and patches a message), and the same item as JSON, b
 | phoenix | Phoenix 1.8.16, LiveView 1.2, Elixir 1.19 on OTP 28, Bandit | [apps/phoenix](apps/phoenix) |
 
 Every app renders the same visible text for the same 16 URLs, 404 included (`parity.mjs`), and
+writes its counts as an English page does, digits grouped and the word singular for one ("2,866
+listings", "1 listing"), as Corten's plural messages do. Parity compares the grouping (the
+fixture's counts are all 3 or more); the singular form is checked by reading each app. And every app
 answers `GET /api/items/{id}` with the same JSON (`check-app.mjs` checks both before an app joins
 a round). Each has the same interactions: a client-side sort, a form action that updates part of
 the page, and client-side navigation from the home page, each done the framework's usual way

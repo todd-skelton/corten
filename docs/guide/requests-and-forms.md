@@ -157,6 +157,23 @@ module a route with a parameter in its path holds each of its handlers to taking
 `Params`: one that reads the path another way (axum's `Path`), or reads another route's, does
 not compile.
 
+A parameter may be followed by plain text in its segment, as a file's extension is:
+`#[route("/sitemap/{kind}/{page}.xml")] pub struct SitemapPage<'a> { pub kind: &'a str, pub page: u32 }`
+links to `/sitemap/items/3.xml`, and `Params` reads `page` as `3`. A segment that does not end in
+the text (`/sitemap/items/3.json`), or is only the text, is a 404 before the handler runs,
+whatever its method; one whose value is not the type (`x.xml`) is a 400, as any parameter is,
+and the value reads as any path parameter's does (a `bool` is `true` or `false`).
+The router matches the segment whole, so the route takes every path of its shape, as
+`/sitemap/{kind}/{page}` would: a `/{*page}` catch-all does not answer `/sitemap/items/3.json`
+either (`req.serves` agrees), and the app's middleware sees that 404 with the route's
+`MatchedPath`. Two routes of a module that differ only in that text (`{name}.rss` and
+`{name}.atom`) do not compile, and two in different modules, areas or APIs stop the app at
+startup: give each a segment of its own. A route with a parameter where another has its catch-all,
+after the same segments (`/{name}.txt` and `/{*page}`), which the router cannot hold, does not
+compile either when both are in one module, and stops the app at startup otherwise;
+`/docs/{name}.md` beside `/{*page}` is fine. Text before a parameter (`item_{id}`) does not
+compile.
+
 Links write a route's parameters by name with `Display`, so `Params` refuses what would read them
 back differently: a `#[serde(..)]` key on the route struct that links do not follow (`alias`,
 `flatten`, `skip`, `skip_deserializing`, `with`, `deserialize_with`, `borrow` on a
