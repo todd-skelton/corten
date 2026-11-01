@@ -7,5 +7,11 @@
 .alert > p { margin: 0; }
 .neutral { background: var(--card); color: var(--card-foreground); }
 .neutral > p { color: var(--muted-foreground); }
+.info { background: var(--card); color: var(--info); border-color: color-mix(in oklab, var(--info) 50%, var(--border)); }
+.info > p { color: color-mix(in oklab, var(--info) 85%, var(--foreground)); }
+.success { background: var(--card); color: var(--success); border-color: color-mix(in oklab, var(--success) 50%, var(--border)); }
+.success > p { color: color-mix(in oklab, var(--success) 85%, var(--foreground)); }
+.warning { background: var(--card); color: var(--warning); border-color: color-mix(in oklab, var(--warning) 50%, var(--border)); }
+.warning > p { color: color-mix(in oklab, var(--warning) 85%, var(--foreground)); }
 .destructive { background: var(--card); color: var(--destructive); border-color: color-mix(in oklab, var(--destructive) 50%, var(--border)); }
 .destructive > p { color: color-mix(in oklab, var(--destructive) 85%, var(--foreground)); }

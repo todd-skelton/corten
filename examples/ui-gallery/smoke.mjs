@@ -798,6 +798,18 @@ async function run(browser) {
   orders.on("console", (m) => m.type() === "error" && !bug(m.text()) && ordersErrors.push(m.text()));
   orders.on("pageerror", (e) => ordersErrors.push(e.message));
   await orders.goto(`${base}/orders`);
+  // Alert's role follows its variant: a warning is an alert, read at once.
+  const alertRole = await orders.locator("strong", { hasText: "past its ship-by date" }).evaluate((s) => s.parentElement?.getAttribute("role"));
+  check("Alert: a warning is role=alert", alertRole === "alert", String(alertRole));
+  // Badge's tones: the paid order's text and its background meet WCAG AA (4.5:1), as drawn.
+  const paid = await orders.locator("td > span", { hasText: /^Paid$/ }).first().evaluate((el) => {
+    const rgb = (/** @type {string} */ c) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+    const lum = (/** @type {number[]} */ c) => c.map((v) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const style = getComputedStyle(el);
+    const [a, b] = [lum(rgb(style.color)), lum(rgb(style.backgroundColor))].sort((x, y) => y - x);
+    return { ratio: (a + 0.05) / (b + 0.05), color: style.color, background: style.backgroundColor };
+  });
+  check("Badge: a success badge's text meets 4.5:1", paid.ratio >= 4.5, JSON.stringify(paid));
   await orders.getByRole("button", { name: "Share the shop" }).click();
   check("Popover: its button opens it", await orders.locator("#share").evaluate((p) => p.matches(":popover-open")));
   await orders.keyboard.press("Escape");

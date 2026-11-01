@@ -1,7 +1,11 @@
 // corten ui {{version}}: alert
 //! A message the page calls out. Its heading and text are yours (`<h2>` to `<h6>` or `<strong>`,
-//! then `<p>`). It is `role="alert"`, so a screen reader reads it when a patch brings it in, as
-//! a form's error does.
+//! then `<p>`). Its role follows its variant, so a screen reader interrupts the user only for what
+//! needs them now: `Destructive` and `Warning` are `role="alert"` (read at once when a patch
+//! brings one in, as a form's error is), `Success` is `role="status"` (read politely, though a
+//! status brought in with its text is not read by every screen reader; the result of an action is
+//! a toast, corten-ui's `Toaster`), and `Neutral` and `Info` have no role and are read in the
+//! page's order.
 //!
 //! ```rust,ignore
 //! <Alert variant={AlertVariant::Destructive}>
@@ -15,6 +19,9 @@ use corten::prelude::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AlertVariant {
     Neutral,
+    Info,
+    Success,
+    Warning,
     Destructive,
 }
 
@@ -25,14 +32,17 @@ pub enum AlertVariant {
 ///
 /// #[component(css)]
 /// fn Alert() -> impl Render {
-///     html! { <div class={(Alert, Warning)}></div> }
+///     html! { <div class={(Alert, Urgent)}></div> }
 /// }
 /// ```
 #[component(css)]
 pub fn Alert<C: Render>(variant: AlertVariant, children: C) -> impl Render {
-    let variant = match variant {
-        AlertVariant::Neutral => Neutral,
-        AlertVariant::Destructive => Destructive,
+    let (variant, role) = match variant {
+        AlertVariant::Neutral => (Neutral, None),
+        AlertVariant::Info => (Info, None),
+        AlertVariant::Success => (Success, Some("status")),
+        AlertVariant::Warning => (Warning, Some("alert")),
+        AlertVariant::Destructive => (Destructive, Some("alert")),
     };
-    html! { <div class={(Alert, variant)} role="alert">{children}</div> }
+    html! { <div class={(Alert, variant)} role={role}>{children}</div> }
 }

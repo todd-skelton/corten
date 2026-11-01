@@ -46,7 +46,7 @@ impl Status {
 
     const fn look(self) -> BadgeVariant {
         match self {
-            Status::Paid => BadgeVariant::Primary,
+            Status::Paid => BadgeVariant::Success,
             Status::Shipped => BadgeVariant::Secondary,
             Status::Late => BadgeVariant::Destructive,
             Status::Refunded => BadgeVariant::Outline,
@@ -141,7 +141,7 @@ pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
             <h1>"Orders"</h1>
             <Badge variant={BadgeVariant::Secondary}>{ORDERS.len()}" this month"</Badge>
         </div>
-        <Alert variant={AlertVariant::Destructive}>
+        <Alert variant={AlertVariant::Warning}>
             <strong>"One order is past its ship-by date"</strong>
             <p>"Ada Lovelace's Ashen Drake was due to ship yesterday. Ship it today or message the buyer."</p>
         </Alert>
