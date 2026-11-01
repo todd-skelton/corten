@@ -3,7 +3,7 @@
 //! the author wrote (a column after a comment inside a line moves: the comment is not padded, to
 //! keep the bytes). A licence (`/*! .. */`, `//! ..`, or a comment with
 //! `@license` or `@preserve`) stays, as minifiers keep it, and so does a comment the browser
-//! reads (`//# sourceMappingURL=..`, `//# sourceURL=..`).
+//! reads (`//# sourceMappingURL=..`, `//# sourceURL=..`) and a `#!` first line.
 
 /// Whether the token before a `/` ends an expression (so the `/` divides) or not (so it starts a
 /// regular expression).
@@ -53,9 +53,13 @@ const BEFORE_REGEX: &[&str] = &[
 pub fn strip(source: &str) -> String {
     let bytes = source.as_bytes();
     let mut out = String::with_capacity(source.len());
-    // A hashbang line (`#!...`) is a comment the scan must not read as code: it is kept as it is.
-    let mut at =
-        if source.starts_with("#!") { source.find(['\n', '\r', '\u{2028}', '\u{2029}']).unwrap_or(source.len()) } else { 0 };
+    // A hashbang line (`#!...`, after the byte order mark a browser drops) is a comment the scan
+    // must not read as code: it is kept as it is.
+    let mut at = if source.strip_prefix('\u{FEFF}').unwrap_or(source).starts_with("#!") {
+        source.find(['\n', '\r', '\u{2028}', '\u{2029}']).unwrap_or(source.len())
+    } else {
+        0
+    };
     let mut copied = 0;
     let mut before = Before::Operator;
     let mut opens: Vec<Open> = Vec::new();
@@ -498,6 +502,12 @@ mod tests {
         );
         assert_eq!(strip("#!/x `\nexport const a = 1;\nconst b = `//c`;\n"), "#!/x `\nexport const a = 1;\nconst b = `//c`;\n");
         assert_eq!(strip("#!/usr/bin/env node"), "#!/usr/bin/env node");
+        let bom = "\u{FEFF}#! /*\nexport const a = 1;\n// */\nexport const b = 2;\n";
+        assert_eq!(strip(bom), "\u{FEFF}#! /*\nexport const a = 1;\n\nexport const b = 2;\n");
+        for end in ["\r", "\r\n", "\u{2028}", "\u{2029}"] {
+            let source = format!("#!/x `{end}export const t = `\n// in\n`;\n");
+            assert_eq!(strip(&source), source, "a hashbang ends at {end:?}");
+        }
     }
 
     #[test]
