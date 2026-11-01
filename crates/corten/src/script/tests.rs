@@ -336,6 +336,15 @@ async fn a_page_loads_its_handler_modules_as_module_scripts_with_the_views_they_
     let app = crate::App::new(Routes::new()).components(&[LineItem, Badge]).router();
     let res = app.oneshot(Request::get(&module).body(Body::empty()).unwrap()).await.unwrap();
     let source = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    // Served without its comments, each line where it was, then the three lines that hand it over.
+    let file = include_str!("line_item.js");
+    assert!(file.contains("/** @param {HTMLButtonElement} save */") && file.starts_with("// @ts-check"));
+    assert!(!source.contains("@param") && !source.contains("@ts-check"), "{source}");
+    assert_eq!(source.lines().count(), file.lines().count() + 3, "{source}");
+    assert_eq!(
+        source.lines().position(|l| l.starts_with("export function confirm")),
+        file.lines().position(|l| l.starts_with("export function confirm"))
+    );
     assert!(
         source.ends_with(concat!(
             "import \"corten\";\n",

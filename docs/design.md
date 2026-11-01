@@ -275,3 +275,9 @@ framework's shape, and what it does not do yet.
     or CDN in front of `corten::serve`. An app with live streams needs one: over HTTP/1.1 a
     browser opens about six connections to a host, each open stream holds one, and requests queue
     behind them once a page with a few `<corten-live>` elements or feeds is open in a few tabs.
+15. A component script's comments are removed by a scan that knows strings, template literals
+    and regular expressions but is not a JavaScript parser. Where only a parser could tell a
+    division from a regular expression (a `/` after a statement-level `}`, after `++` or `--`, or
+    starting a line after a value, as after `continue` or `let t`), the script is served as
+    written, comments included: correct, only larger. None of the repo's scripts is; of 1,230
+    third-party files with comments, 161 (mostly minified bundles) were.

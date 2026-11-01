@@ -66,6 +66,9 @@ pub struct Module {
     pub name: String,
     pub file: String,
     pub path: String,
+    /// What the browser receives: the source without its comments, each line where it was
+    /// ([`crate::comments`]).
+    pub served: String,
     pub handlers: Vec<Handler>,
     pub groups: Vec<ArgGroup>,
     /// It imports `keep` from `corten`: its handlers keep their component's state, so the
@@ -114,7 +117,8 @@ impl Module {
             }
         }
         let keeps = keeps(&source).map_err(at)?;
-        Ok(Module { name, file, path: path.display().to_string(), handlers, groups, keeps, imports, siblings })
+        let served = crate::comments::strip(&source);
+        Ok(Module { name, file, path: path.display().to_string(), served, handlers, groups, keeps, imports, siblings })
     }
 
     /// `::corten::script::Script { .. }`, where the events it imports are named by `at` and
@@ -127,7 +131,8 @@ impl Module {
         }
         let mut events = TokenStream::new();
         // Each import is an `#[event]`, not another component's constant.
-        let mut checks = TokenStream::new();
+        // The file is still read where it is, so editing it rebuilds the crate.
+        let mut checks = q("const _: &str = ::core::include_str!(__A0);", &[literal(&self.path)]);
         for class in &self.imports {
             events.extend(format!("{at}{class},").parse::<TokenStream>().expect("a path parses"));
             checks.extend(
@@ -142,8 +147,8 @@ impl Module {
             siblings.extend(q(",", &[]));
         }
         q(
-            "{ __A5 ::corten::script::Script { name: __A0, file: __A1, source: ::core::include_str!(__A2), handlers: &[__A3], events: &[__A4], imports: &[__A6] } }",
-            &[literal(&self.name), literal(&self.file), literal(&self.path), names, events, checks, siblings],
+            "{ __A5 ::corten::script::Script { name: __A0, file: __A1, source: __A2, handlers: &[__A3], events: &[__A4], imports: &[__A6] } }",
+            &[literal(&self.name), literal(&self.file), literal(&self.served), names, events, checks, siblings],
         )
     }
 
