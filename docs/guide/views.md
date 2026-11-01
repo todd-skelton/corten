@@ -303,10 +303,12 @@ script: names are global to the app, so two features that each write a `Settings
 starts. Name them by feature (`ShippingSettingsForm`). `cargo check` stops before code is generated,
 so it does not see this. Across crates (a feature's library and
 the app), the pair fails to link on every platform once the program uses both: each item's
-constant points at a static of its own beside its symbols, so a program that lists or renders a
-component (or, in a debug build such as every test, writes an id) loads them, even where the
+constant points at a static of its own beside its symbols, so a program that lists a component,
+or in a debug build (every test is one) renders it or writes an id, loads them, even where the
 linker loads only the object files it needs (a Windows GNU link, which otherwise left a library's
-out and linked). A namesake nothing uses is not linked and clashes with nothing. The same holds
+out and linked). A namesake the program does not use may still fail to link, depending on what
+shares its object file and on the platform (Linux loads more than a Windows GNU link), so rename
+one of the two rather than rely on it being left out. The same holds
 for a `script!` module, served by its name as a component's script is. The check is the declaration's, not the page's: two
 identical declarations of one component (a module declared in both `lib.rs` and `main.rs`, a
 macro that writes one component in several modules) fail too, so declare each once. A library's

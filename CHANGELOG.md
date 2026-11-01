@@ -2810,7 +2810,8 @@ Corten is pre-1.0, so any minor version may change the API.
     an id's write does in a debug build, so a program that uses both namesakes (lists the
     component, or renders it or writes the id in a debug build, as every test is) fails to link on
     every platform, naming the symbol
-    (`corten__two_components_style__dialog`). A namesake nothing uses is not linked. Each
+    (`corten__two_components_style__dialog`); a namesake the program does not use may still fail,
+    depending on what shares its object file. Each
     `Component` holds the static (`anchor`, hidden; the macros write it), which a hand-written
     one now needs too
     ([#570 The two_components_style guard passes on Windows for a library and an app component with one name, and fails only at Linux link](https://github.com/todd-skelton/corten/issues/570)).
