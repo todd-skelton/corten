@@ -5,7 +5,7 @@
 @if ($item['subtitle'])<p class="subtitle">{{ $item['subtitle'] }}</p>@endif
 <ul class="badges">@foreach ($item['badges'] as $b)<li>{{ $b }}</li>@endforeach</ul>
 <div class="gallery">@foreach ($item['images'] as $i => $url)<div class="img" role="img" aria-label="{{ $item['title'] }} image {{ $i + 1 }}" data-src="{{ $url }}"></div>@endforeach</div>
-<section class="summary">@if ($s = $item['summary'])<span><strong>{{ $s['lowest'] ?? '—' }}</strong> lowest</span> <span>{{ $s['count'] }} listings</span> <span>{{ $s['quantity'] }} available</span>@else<span>No listings yet</span>@endif</section>
+<section class="summary">@if ($s = $item['summary'])<span><strong>{{ $s['lowest'] ?? '—' }}</strong> lowest</span> <span>{{ number_format($s['count']) }} {{ $s['count'] === 1 ? 'listing' : 'listings' }}</span> <span>{{ number_format($s['quantity']) }} available</span>@else<span>No listings yet</span>@endif</section>
 {{-- The server renders the listings cheapest first; "high to low" is the same rows reversed, which is the order sortListings gives. --}}
 <section class="listings" x-data="{ descending: false, flip() { const rows = this.$refs.rows; rows.append(...[...rows.rows].reverse()); this.descending = !this.descending } }">
 <h2>Listings</h2>

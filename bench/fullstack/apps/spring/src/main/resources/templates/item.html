@@ -6,7 +6,7 @@
 <p class="subtitle" th:if="${item.subtitle != null}" th:text="${item.subtitle}"></p>
 <ul class="badges"><li th:each="b : ${item.badges}" th:text="${b}"></li></ul>
 <div class="gallery"><div class="img" role="img" th:each="url, s : ${item.images}" th:attr="aria-label=|${item.title} image ${s.count}|,data-src=${url}"></div></div>
-<section class="summary" th:with="s=${item.summary}"><th:block th:if="${s != null}"><span><strong th:text="${s.lowest ?: '—'}"></strong> lowest</span> <span th:text="|${s.count} listings|"></span> <span th:text="|${s.quantity} available|"></span></th:block><span th:if="${s == null}">No listings yet</span></section>
+<section class="summary" th:with="s=${item.summary}"><th:block th:if="${s != null}"><span><strong th:text="${s.lowest ?: '—'}"></strong> lowest</span> <span th:text="|${#numbers.formatInteger(s.count, 1, 'COMMA')} ${s.count == 1 ? 'listing' : 'listings'}|"></span> <span th:text="|${#numbers.formatInteger(s.quantity, 1, 'COMMA')} available|"></span></th:block><span th:if="${s == null}">No listings yet</span></section>
 <section class="listings">
 <h2>Listings</h2>
 <button type="button" class="sort">Price: low to high</button>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load humanize %}
 {% block title %}{{ item.title }} | Card Market{% endblock %}
 {% block main %}<article class="item">
 <nav class="crumbs">{% for c in item.categories %}<a href="/categories/{{ c.slug }}">{{ c.name }}</a>{% endfor %}</nav>
@@ -6,7 +7,7 @@
 {% if item.subtitle %}<p class="subtitle">{{ item.subtitle }}</p>{% endif %}
 <ul class="badges">{% for b in item.badges %}<li>{{ b }}</li>{% endfor %}</ul>
 <div class="gallery">{% for url in item.images %}<div class="img" role="img" aria-label="{{ item.title }} image {{ forloop.counter }}" data-src="{{ url }}"></div>{% endfor %}</div>
-<section class="summary">{% if item.summary %}<span><strong>{{ item.summary.lowest|default_if_none:"—" }}</strong> lowest</span> <span>{{ item.summary.count }} listings</span> <span>{{ item.summary.quantity }} available</span>{% else %}<span>No listings yet</span>{% endif %}</section>
+<section class="summary">{% if item.summary %}<span><strong>{{ item.summary.lowest|default_if_none:"—" }}</strong> lowest</span> <span>{{ item.summary.count|intcomma }} listing{{ item.summary.count|pluralize }}</span> <span>{{ item.summary.quantity|intcomma }} available</span>{% else %}<span>No listings yet</span>{% endif %}</section>
 <section class="listings">
 <h2>Listings</h2>
 <button type="button" class="sort">Price: low to high</button>

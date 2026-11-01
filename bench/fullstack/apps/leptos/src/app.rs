@@ -193,8 +193,8 @@ fn ItemDetail(item: ItemView) -> impl IntoView {
                 {match item.summary.clone() {
                     Some(s) => view! {
                         <span><strong>{s.lowest.unwrap_or_else(|| "—".into())}</strong>" lowest"</span>
-                        <span>{format!("{} listings", s.count)}</span>
-                        <span>{format!("{} available", s.quantity)}</span>
+                        <span>{counted(s.count, "listing", "listings")}</span>
+                        <span>{counted(s.quantity, "available", "available")}</span>
                     }.into_any(),
                     None => view! { <span>"No listings yet"</span> }.into_any(),
                 }}
@@ -296,4 +296,22 @@ fn ContentList(title: &'static str, class_name: &'static str, lines: Vec<Content
             </ul>
         </section>
     }
+}
+
+/// A count as an English page writes it: digits grouped, and the word singular for one.
+fn counted(n: i64, one: &str, other: &str) -> String {
+    let digits = n.unsigned_abs().to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3 + other.len() + 2);
+    if n < 0 {
+        out.push('-');
+    }
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out.push(' ');
+    out.push_str(if n == 1 { one } else { other });
+    out
 }
