@@ -148,23 +148,27 @@ fn init(root: &Path) -> Result<(), String> {
             return Err(format!("{path} exists: the kit is already set up here (corten ui add <name> adds a component)"));
         }
     }
-    for (path, text) in INIT {
-        write(&root.join(path), &stamped(text))?;
-        println!("  wrote {path}");
-    }
+    let mut files: Vec<(String, String)> = INIT.iter().map(|(path, text)| (path.to_string(), stamped(text))).collect();
+    let mut said: Vec<String> = INIT.iter().map(|(path, _)| format!("  wrote {path}")).collect();
     let mut todo = Vec::new();
-    match wire_lib(&root.join("src/lib.rs"))? {
-        true => println!("  edited src/lib.rs: pub mod ui; and .components(ui::COMPONENTS) on the App"),
-        false => todo.push("declare pub mod ui; in src/lib.rs and add .components(ui::COMPONENTS) to the App"),
+    match std::fs::read_to_string(root.join("src/lib.rs")).ok().and_then(|text| wire_lib(&text)) {
+        Some(text) => {
+            files.push(("src/lib.rs".into(), text));
+            said.push("  edited src/lib.rs: pub mod ui; and .components(ui::COMPONENTS) on the App".into());
+        }
+        None => todo.push("declare pub mod ui; in src/lib.rs and add .components(ui::COMPONENTS) to the App"),
     }
-    let style = root.join("static/style.css");
-    match std::fs::read_to_string(&style) {
+    match std::fs::read_to_string(root.join("static/style.css")) {
         Ok(text) => {
             let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
-            write(&style, &format!("{text}{sep}{}", stamped(PAGE_CSS)))?;
-            println!("  edited static/style.css: the page's colors from the theme");
+            files.push(("static/style.css".into(), format!("{text}{sep}{}", stamped(PAGE_CSS))));
+            said.push("  edited static/style.css: the page's colors from the theme".into());
         }
         Err(_) => todo.push("copy the page colors from corten ui into your page stylesheet (see docs/guide/kit.md)"),
+    }
+    apply(root, &files)?;
+    for line in said {
+        println!("{line}");
     }
     for step in &todo {
         println!("  to do: {step}");
@@ -175,15 +179,37 @@ fn init(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Writes every file, or none: when one cannot be written, those written before it are put back
+/// as they were (a new one removed), so a retry starts where the first try did. Each path is
+/// relative to `root`.
+fn apply(root: &Path, files: &[(String, String)]) -> Result<(), String> {
+    let mut done: Vec<(PathBuf, Option<Vec<u8>>)> = Vec::new();
+    for (path, text) in files {
+        let path = root.join(path);
+        let before = std::fs::read(&path).ok();
+        if let Err(error) = write(&path, text) {
+            done.push((path, before));
+            for (path, before) in done.into_iter().rev() {
+                let _ = match before {
+                    Some(bytes) => std::fs::write(&path, bytes),
+                    None => std::fs::remove_file(&path),
+                };
+            }
+            return Err(format!("{error}; the files written before it were put back, so nothing changed"));
+        }
+        done.push((path, before));
+    }
+    Ok(())
+}
+
 /// Declares `pub mod ui;` among the `mod` lines and lists its components on the `App::new(..)` chain.
-/// False, changing nothing, when the file does not have one of each to place them by.
-fn wire_lib(path: &Path) -> Result<bool, String> {
-    let Ok(text) = std::fs::read_to_string(path) else { return Ok(false) };
+/// None when the file does not have one of each to place them by, or declares it already.
+fn wire_lib(text: &str) -> Option<String> {
     if text.lines().any(|l| matches!(l.trim(), "mod ui;" | "pub mod ui;")) {
-        return Ok(false);
+        return None;
     }
     let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
-    let Some(last) = lines.iter().rposition(|l| is_mod_line(l)) else { return Ok(false) };
+    let last = lines.iter().rposition(|l| is_mod_line(l))?;
     // Among the declarations around the last one, in name order, as rustfmt sorts them.
     let mut first = last;
     while first > 0 && is_mod_line(&lines[first - 1]) {
@@ -193,11 +219,11 @@ fn wire_lib(path: &Path) -> Result<bool, String> {
     let mod_at = (first..=last).find(|&i| name(&lines[i]).as_str() > "ui").unwrap_or(last + 1);
     let news: Vec<usize> =
         lines.iter().enumerate().filter(|(_, l)| l.trim_start().starts_with("App::new(")).map(|(i, _)| i).collect();
-    let [at] = news[..] else { return Ok(false) };
+    let [at] = news[..] else { return None };
     // `App::new(..)` alone on its line, so the method goes on the next one.
     let line = &lines[at];
     if !line.trim_end().ends_with(')') || line.matches('(').count() != line.matches(')').count() {
-        return Ok(false);
+        return None;
     }
     let indent = line.len() - line.trim_start().len();
     let components = format!("{}.components(ui::COMPONENTS)", " ".repeat(indent + 4));
@@ -214,8 +240,7 @@ fn wire_lib(path: &Path) -> Result<bool, String> {
     if text.ends_with('\n') {
         out.push('\n');
     }
-    write(path, &out)?;
-    Ok(true)
+    Some(out)
 }
 
 fn is_mod_line(line: &str) -> bool {
@@ -243,9 +268,9 @@ fn add(root: &Path, args: &[String]) -> Result<(), String> {
         }
         found
     };
-    let ui = root.join("src/ui.rs");
-    let module = std::fs::read_to_string(&ui).map_err(|_| "src/ui.rs is missing: run corten ui init first".to_string())?;
-    // Every file is checked before any is written, so a refusal leaves the app as it was.
+    let module = std::fs::read_to_string(root.join("src/ui.rs"))
+        .map_err(|_| "src/ui.rs is missing: run corten ui init first".to_string())?;
+    // Every file is checked, and every change worked out, before any is written.
     if !force {
         for piece in &pieces {
             for (file, _) in piece.files {
@@ -256,34 +281,108 @@ fn add(root: &Path, args: &[String]) -> Result<(), String> {
             }
         }
     }
+    let mut files = Vec::new();
+    let mut said = Vec::new();
+    let mut todo = Vec::new();
     let mut listed = Some(module.clone());
     for piece in &pieces {
         let mut written = Vec::new();
         for (file, text) in piece.files {
-            let path = PathBuf::from("src/ui").join(file);
-            write(&root.join(&path), &stamped(text))?;
-            written.push(slash(&path));
+            let path = slash(&PathBuf::from("src/ui").join(file));
+            files.push((path.clone(), stamped(text)));
+            written.push(path);
         }
-        println!("  added {}: {}", piece.name, written.join(", "));
-        if let Some(widget) = piece.styles {
-            println!("    it styles corten_ui::{widget}: the app depends on corten-ui and lists corten_ui::COMPONENTS");
-        }
+        said.push(format!("  added {}: {}", piece.name, written.join(", ")));
         listed = listed.and_then(|m| list_in(&m, piece));
     }
     match listed {
         Some(text) if text != module => {
-            write(&ui, &text)?;
-            println!("  edited src/ui.rs");
+            files.push(("src/ui.rs".into(), text));
+            said.push("  edited src/ui.rs".into());
         }
         Some(_) => {}
         None => {
-            println!("  src/ui.rs has no COMPONENTS list to edit; add these to it:");
-            for piece in &pieces {
-                println!("    pub mod {};   and {}::{} in COMPONENTS", piece.name, piece.name, piece.owner);
-            }
+            todo.push("src/ui.rs has no COMPONENTS list to edit; add each component's pub mod and owner to it".to_string());
         }
     }
+    // A component that styles a corten-ui widget needs the widget: the dependency, and its
+    // components listed, as the app's own are.
+    if let Some(widget) = pieces.iter().find_map(|p| p.styles) {
+        match std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string()).and_then(|t| depend_on_ui(&t)) {
+            Ok(Some(text)) => {
+                files.push(("Cargo.toml".into(), text));
+                said.push("  edited Cargo.toml: corten-ui, the widgets these components style".into());
+            }
+            Ok(None) => {}
+            Err(why) => todo.push(format!(
+                "add corten-ui to Cargo.toml's [dependencies] ({why}): corten_ui::{widget} is what the component styles"
+            )),
+        }
+        match std::fs::read_to_string(root.join("src/lib.rs")).ok().map(|t| list_ui_widgets(&t)) {
+            Some(Some(text)) if !text.is_empty() => {
+                files.push(("src/lib.rs".into(), text));
+                said.push("  edited src/lib.rs: .components(corten_ui::COMPONENTS) on the App".into());
+            }
+            Some(Some(_)) => {}
+            _ => todo.push("add .components(corten_ui::COMPONENTS) to the App, after .components(ui::COMPONENTS)".to_string()),
+        }
+    }
+    apply(root, &files)?;
+    for line in said {
+        println!("{line}");
+    }
+    for step in todo {
+        println!("  to do: {step}");
+    }
     Ok(())
+}
+
+/// `Cargo.toml` with `corten-ui` after `corten` in `[dependencies]`, from the same place: the
+/// `corten-ui` next to a local `corten` (`--corten-path`), else this command's release, which
+/// `corten`'s is too. None when it is there already; an error saying why it cannot be placed.
+fn depend_on_ui(text: &str) -> Result<Option<String>, String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines.iter().position(|l| l.trim() == "[dependencies]").ok_or("it has no [dependencies]")?;
+    let end = lines[start + 1..].iter().position(|l| l.trim_start().starts_with('[')).map_or(lines.len(), |i| start + 1 + i);
+    let section = &lines[start + 1..end];
+    if section.iter().any(|l| l.trim_start().starts_with("corten-ui")) {
+        return Ok(None);
+    }
+    let at = section.iter().position(|l| l.trim_start().starts_with("corten ") || l.trim_start().starts_with("corten="));
+    let at = start + 1 + at.ok_or("it has no corten line in [dependencies]")?;
+    let corten = lines[at];
+    let dependency = match corten.split_once("path = \"") {
+        Some((_, rest)) => {
+            let path = rest.split_once('"').ok_or("corten's path is not closed")?.0;
+            let parent = path.strip_suffix("corten").ok_or("corten's path does not end at the corten crate")?;
+            format!("corten-ui = {{ path = \"{parent}corten-ui\" }}")
+        }
+        None => format!("corten-ui = \"{}\"", env!("CARGO_PKG_VERSION")),
+    };
+    let mut out: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    out.insert(at + 1, dependency);
+    let mut text_out = out.join("\n");
+    if text.ends_with('\n') {
+        text_out.push('\n');
+    }
+    Ok(Some(text_out))
+}
+
+/// `src/lib.rs` with `.components(corten_ui::COMPONENTS)` after `.components(ui::COMPONENTS)`:
+/// Some(empty) when it lists them already, None when there is no line to put it after.
+fn list_ui_widgets(text: &str) -> Option<String> {
+    if text.contains("corten_ui::COMPONENTS") {
+        return Some(String::new());
+    }
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    let at = lines.iter().position(|l| l.trim() == ".components(ui::COMPONENTS)")?;
+    let indent = lines[at].len() - lines[at].trim_start().len();
+    lines.insert(at + 1, format!("{}.components(corten_ui::COMPONENTS)", " ".repeat(indent)));
+    let mut out = lines.join("\n");
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    Some(out)
 }
 
 /// For each copied file of the components named (all that `src/ui/` has, by default): whether
@@ -477,7 +576,9 @@ fn write(path: &Path, text: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{INIT, KIT, Piece, fnv, list_in, report, stamp_of, stamped, unified, wire_lib};
+    use super::{
+        INIT, KIT, Piece, apply, depend_on_ui, fnv, list_in, list_ui_widgets, report, stamp_of, stamped, unified, wire_lib,
+    };
 
     fn piece(name: &str) -> &'static Piece {
         KIT.iter().find(|p| p.name == name).unwrap()
@@ -512,26 +613,52 @@ mod tests {
 
     #[test]
     fn init_declares_the_module_in_order_and_lists_it_on_the_app() {
-        let dir = std::env::temp_dir().join(format!("corten-ui-wire-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let lib = dir.join("lib.rs");
-        std::fs::write(
-            &lib,
-            "mod alpha;\nmod views;\n\npub fn app() -> App {\n    App::new(url::router())\n        .assets(views::Static)\n}\n",
-        )
-        .unwrap();
-        assert!(wire_lib(&lib).unwrap());
-        let text = std::fs::read_to_string(&lib).unwrap();
+        let lib =
+            "mod alpha;\nmod views;\n\npub fn app() -> App {\n    App::new(url::router())\n        .assets(views::Static)\n}\n";
+        let text = wire_lib(lib).unwrap();
         assert_eq!(
             text,
             "mod alpha;\n/// The UI kit (`corten ui`): public, so a component not used yet is not a warning.\npub mod ui;\nmod views;\n\npub fn app() -> App {\n    App::new(url::router())\n        .components(ui::COMPONENTS)\n        .assets(views::Static)\n}\n"
         );
-        assert!(!wire_lib(&lib).unwrap(), "a second run changes nothing");
+        assert_eq!(wire_lib(&text), None, "a second run changes nothing");
+    }
+
+    #[test]
+    fn a_widget_component_brings_corten_ui_from_where_corten_comes() {
+        let local = "[package]\nname = \"a\"\n\n[dependencies]\ncorten = { path = \"D:\\\\src\\\\crates\\\\corten\", features = [\"compress\"] }\nserde = \"1\"\n";
+        let text = depend_on_ui(local).unwrap().unwrap();
+        assert!(text.contains("compress\"] }\ncorten-ui = { path = \"D:\\\\src\\\\crates\\\\corten-ui\" }\nserde"), "{text}");
+        assert_eq!(depend_on_ui(&text).unwrap(), None, "a second run changes nothing");
+        let release = "[dependencies]\ncorten = { version = \"0.1.0\", features = [\"compress\"] }\n\n[dev-dependencies]\ntower = \"0.5\"\n";
+        let text = depend_on_ui(release).unwrap().unwrap();
+        assert!(text.contains(&format!("corten-ui = \"{}\"\n\n[dev-dependencies]", env!("CARGO_PKG_VERSION"))), "{text}");
+        assert!(depend_on_ui("[dependencies]\nserde = \"1\"\n").is_err());
+        let lib = "    App::new(url::router())\n        .components(ui::COMPONENTS)\n        .assets(views::Static)\n";
+        let text = list_ui_widgets(lib).unwrap();
+        assert!(text.contains(".components(ui::COMPONENTS)\n        .components(corten_ui::COMPONENTS)\n"), "{text}");
+        assert_eq!(list_ui_widgets(&text), Some(String::new()));
+        assert_eq!(list_ui_widgets("fn app() {}\n"), None);
+    }
+
+    #[test]
+    fn a_write_that_fails_puts_back_what_the_command_wrote_before_it() {
+        let dir = std::env::temp_dir().join(format!("corten-ui-apply-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("taken")).unwrap();
+        std::fs::write(dir.join("old.txt"), "old").unwrap();
+        // A directory where the last file goes: that write fails.
+        let files = [
+            ("old.txt".to_string(), "new".to_string()),
+            ("made.txt".to_string(), "x".to_string()),
+            ("taken".to_string(), "y".to_string()),
+        ];
+        let error = apply(&dir, &files).unwrap_err();
+        assert!(error.contains("nothing changed"), "{error}");
+        assert_eq!(std::fs::read_to_string(dir.join("old.txt")).unwrap(), "old");
+        assert!(!dir.join("made.txt").exists());
+        assert!(dir.join("taken").is_dir());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// What `App::router` checks when the app starts, here without compiling one: each `var(--x)`
-    /// a kit stylesheet reads is a token of the kit's theme, in both of its files.
     #[test]
     fn every_property_a_component_reads_is_a_token_of_the_theme() {
         let tokens = |path: &str| INIT.iter().find(|(p, _)| *p == path).unwrap().1;

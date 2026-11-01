@@ -1258,7 +1258,8 @@ Corten is pre-1.0, so any minor version may change the API.
     listing the kit's components, and the page's colors in `static/style.css`, and lists
     `ui::COMPONENTS` on the `App`. `corten ui add <name>..` (or `--all`) copies a component into
     `src/ui/` with the kit version it came from, refusing to replace a file unless `--force`, and
-    lists it; `corten ui list` names them; `corten ui diff` says, for each copy, whether the app
+    lists it (and, for one that styles a corten-ui widget, adds `corten-ui` to `Cargo.toml` and
+    `corten_ui::COMPONENTS` to the `App`); each writes all its changes or none. `corten ui list` names them; `corten ui diff` says, for each copy, whether the app
     edited it and whether the kit changed it since (from the version and hash on its first line),
     with the lines that differ. The components are `Button` (six variants, four
     sizes), `Badge`, `Card` with its header, content and footer, `Alert`, `Field`, `Input`,

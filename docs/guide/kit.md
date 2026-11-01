@@ -15,10 +15,13 @@ corten ui list            # every component the kit has
 corten ui diff            # how the copies differ from this command's kit
 ```
 
+Each command works out every change first and writes them all or none: when a file cannot be
+written, the ones written before it are put back, so running it again starts over.
+
 | Command | Writes |
 |---|---|
 | `corten ui init` | `tokens/ui.tokens.json` (light), `tokens/ui-dark.tokens.json` and `tokens/ui.resolver.json` (the theme modifier, following the system when the page chose no theme), `src/ui.rs` (the tokens and the `COMPONENTS` list), the page's colors at the end of `static/style.css`; in `src/lib.rs`, `mod ui;` and `.components(ui::COMPONENTS)` on the `App::new(..)` line. It refuses to run twice, and says what to do by hand when `src/lib.rs` or `static/style.css` is not where `corten new` puts them |
-| `corten ui add <name>..`, `--all` | each component's files in `src/ui/`, `pub mod <name>;` and the component in `src/ui.rs`'s `COMPONENTS`, laid out as rustfmt does. A file that exists is refused, before anything is written, unless `--force` |
+| `corten ui add <name>..`, `--all` | each component's files in `src/ui/`, `pub mod <name>;` and the component in `src/ui.rs`'s `COMPONENTS`, laid out as rustfmt does; for a component that styles a corten-ui widget, `corten-ui` in `Cargo.toml` (next to a local `corten`, else this command's release) and `.components(corten_ui::COMPONENTS)` on the `App`. A file that exists is refused, before anything is written, unless `--force` |
 | `corten ui diff [name]..` | nothing: for each copied file (of the components named, or all of `src/ui/`), whether the app edited it, whether the kit changed it since the copy, and a unified diff from the copy to the kit this command carries. A file the kit changed and the app did not is the kit's to replace (`corten ui add --force`); one both changed is merged by hand |
 
 Each file starts with the kit version it came from and a hash of the file as written
@@ -82,12 +85,12 @@ they are the whole page's.
 | `Table` | the look of the `<table>` inside it, scrolling sideways when it is wider than the page | |
 | `Breadcrumb` | a `<nav>` of typed links to the pages above (`Crumb { label, link: &url::Sets }`), then the page, `aria-current="page"` | |
 | `Pagination` | a `<nav>` of links to a list's pages, each from `link(n)`, a typed route; the first, the last and two each side of the current page, Previous and Next disabled at the ends | |
-| `Avatar` | a person's picture over their initials, which show while it loads and when there is none | |
+| `Avatar` | a person's picture over their initials, which show while it loads and when there is none; `alt` names the person on the picture, or on the avatar (`role="img"`) when there is none | |
 | `Dialog`, `DialogFooter` | the look of the `<dialog>` inside it, its `::backdrop` and its actions; a button opens it with `command="show-modal" commandfor={..}` and closes it with `command="close"`, with no script | |
 | `Sheet` | the same, sliding in from an edge of the window | `Side`: `Top`, `Right`, `Bottom`, `Left` |
 | `Popover` | the look of the `popover` inside it, opened by `popovertarget`, under its button where the browser has anchor positioning | |
 | `Accordion` | the look of the `<details name>` inside it, which open one at a time, and find-in-page opens the one with the match | |
-| `Tabs`, `DropdownMenu`, `Combobox`, `Toasts` | the look of corten-ui's `TabGroup`, `MenuButton`, `ComboBox` and `Toaster` inside them, by role and state (`[role="tab"][aria-selected="true"]`, `[role="menu"]:popover-open`, `[role="option"][data-highlighted]`); `Toasts` places the toaster at the bottom right. The app depends on `corten-ui` and lists `corten_ui::COMPONENTS`, which `corten ui add` says | |
+| `Tabs`, `DropdownMenu`, `Combobox`, `Toasts` | the look of corten-ui's `TabGroup`, `MenuButton`, `ComboBox` and `Toaster` inside them, by role and state (`[role="tab"][aria-selected="true"]`, `[role="menu"]:popover-open`, `[role="option"][data-highlighted]`); `Toasts` places the toaster at the bottom right. `corten ui add` makes the app depend on `corten-ui` and list `corten_ui::COMPONENTS` | |
 
 Variants are Rust enums matched to the stylesheet's classes, so a variant without a rule does
 not compile, and every prop is written where the component is used, as for any component
