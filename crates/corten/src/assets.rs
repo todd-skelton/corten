@@ -890,6 +890,7 @@ mod tests {
         style: None,
         event: None,
         view: None,
+        anchor: &0,
     };
 
     const fn styled(name: &'static str, prefix: &'static str, css: &'static str) -> Component {
@@ -899,6 +900,7 @@ mod tests {
             style: Some(crate::Style { name: prefix, file: "x.css", css, classes: &[] }),
             event: None,
             view: None,
+            anchor: &0,
         }
     }
 
@@ -953,6 +955,7 @@ mod tests {
                 style: None,
                 event: None,
                 view: None,
+                anchor: &0,
             }
         }
         const ENTRY: Component = script("entry", &["stripe"]);
@@ -981,6 +984,7 @@ mod tests {
             style: None,
             event: Some(crate::script::EventDef { class: "Saved", name: "saved", fields: &[] }),
             view: None,
+            anchor: &0,
         };
         const EMITS: Component = Component {
             name: "emits",
@@ -995,6 +999,7 @@ mod tests {
             style: None,
             event: None,
             view: None,
+            anchor: &0,
         };
         const USES: Component = script("uses", &["emits"]);
         let assets = Assets::build(None, &[USES, EMITS], "/assets").unwrap();
@@ -1009,6 +1014,7 @@ mod tests {
             style: None,
             event: Some(crate::script::EventDef { class: "RowToggled", name: "row-toggled", fields: &[] }),
             view: None,
+            anchor: &0,
         };
         let assets = Assets::build(None, &[TOGGLED], "/assets").unwrap();
         assert_eq!(assets.events(), Some(assets.url(EVENTS)));
@@ -1029,6 +1035,7 @@ mod tests {
             style: None,
             event: None,
             view: None,
+            anchor: &0,
         };
         let carried = Assets::build(None, &[GRID], "/assets").unwrap();
         assert_eq!(carried.events(), Some(carried.url(EVENTS)));
@@ -1060,6 +1067,7 @@ mod tests {
                 style: None,
                 event: None,
                 view: Some(crate::script::ViewDef { class: "Row", js, ts: "" }),
+                anchor: &0,
             }
         }
         const ROW: Component = view("export class Row {}\n");

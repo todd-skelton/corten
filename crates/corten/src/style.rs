@@ -960,6 +960,7 @@ mod tests {
             style: Some(Style { name: "report", file: "report.css", css: ".report__a{}", classes: &["a"] }),
             event: None,
             view: None,
+            anchor: &0,
         };
         let page = |req: crate::Req| async move { crate::tests::TestPage::test_page(&req, "Badges", BadgeCount { n: 1 }) };
         let app = |dev: bool| {
@@ -1038,6 +1039,7 @@ mod tests {
             style: Some(Style { name: "report", file: "report.css", css: ".report__a{}", classes: &["a"] }),
             event: None,
             view: None,
+            anchor: &0,
         };
         let page = |req: crate::Req| async move { crate::tests::TestPage::test_page(&req, "Badges", BadgeCount { n: 1 }) };
         let app = || {

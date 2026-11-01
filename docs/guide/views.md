@@ -302,10 +302,12 @@ script: names are global to the app, so two features that each write a `Settings
 `SettingsFormId`) in one crate fail to compile, at the second one, rather than the app when it
 starts. Name them by feature (`ShippingSettingsForm`). `cargo check` stops before code is generated,
 so it does not see this. Across crates (a feature's library and
-the app), the linker refuses the pair only when the program uses code next to both, since it
-loads only the object files it needs; the app's own check at start (`App::router`, which every
-test builds) catches the rest, so `cargo test` and `corten check` see it either way. The same
-holds for a `script!` module, served by its name as a component's script is. The check is the declaration's, not the page's: two
+the app), the pair fails to link on every platform once the program uses both: each item's
+constant points at a static of its own beside its symbols, so a program that lists or renders a
+component (or, in a debug build such as every test, writes an id) loads them, even where the
+linker loads only the object files it needs (a Windows GNU link, which otherwise left a library's
+out and linked). A namesake nothing uses is not linked and clashes with nothing. The same holds
+for a `script!` module, served by its name as a component's script is. The check is the declaration's, not the page's: two
 identical declarations of one component (a module declared in both `lib.rs` and `main.rs`, a
 macro that writes one component in several modules) fail too, so declare each once. A library's
 ids and scripts (a crate with a script prefix, which their names in the page carry) also carry

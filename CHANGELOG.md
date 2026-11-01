@@ -2802,6 +2802,18 @@ Corten is pre-1.0, so any minor version may change the API.
     92,418)
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
 
+95. Two components with one name in two crates (a library's `Dialog` with a stylesheet and the
+    app's) failed to link on Linux and linked on Windows (GNU), where the linker loads a library's
+    object file only for a symbol it needs and so never saw the library's, and the page got the
+    app's rules; a check passed on one machine and failed in CI. Each component's, event's and
+    `script!` module's constant now points at a static beside the symbols that take its names, and
+    an id's write does in a debug build, so a program that uses both namesakes (lists the
+    component, or renders it or writes the id in a debug build, as every test is) fails to link on
+    every platform, naming the symbol
+    (`corten__two_components_style__dialog`). A namesake nothing uses is not linked. Each
+    `Component` holds the static (`anchor`, hidden; the macros write it), which a hand-written
+    one now needs too
+    ([#570 The two_components_style guard passes on Windows for a library and an app component with one name, and fails only at Linux link](https://github.com/todd-skelton/corten/issues/570)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
