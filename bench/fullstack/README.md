@@ -39,7 +39,8 @@ The same apps hold the live-updates comparison in [bench/live](../live/README.md
 All numbers are measured, from one run (`results/r10/`, 2026-11-01 UTC, the tree at `f5c76a0`) on one
 DigitalOcean c-8 droplet (Intel Xeon Platinum 8280); see [Method](#method). Failed means the app could not do the
 test with its usual settings in one CPU and 1 GiB (see caveat 5); its other numbers are kept
-where it produced any. r9 measured nothing (its launcher hung before the upload). r8
+where it produced any. r9 measured nothing (its launcher hung in its own `ssh` call before
+the round started). r8
 (`results/r8/`, a Platinum 8168, Corten at `2976f15`, 530 commits before r10's, before plural
 messages, typed custom properties and comment-free component scripts, with no instruction counts),
 r7 (`results/r7/`, a Platinum 8280, Corten at `a9b1163`, with no browser
@@ -201,7 +202,8 @@ From the item API, fetching and parsing the 55 KB item costs Corten about 190 µ
 the page itself
 ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
 Corten's pages per CPU-second from memory rose 53.9% from r8, on a Platinum 8168, to r10; the
-other apps' median rose 11.1% (from +2.1% to +24.5%), across the same change of CPU.
+median of the other apps that passed rose 11.1% (from +2.1% to +24.5%), across the same change of
+CPU.
 
 In r10 Corten's core was 99% busy at 64 users for the page from memory and 95% for the JSON: the
 load generator, which from r7 also gets the item API's two cores (idle with items in memory), kept
@@ -295,22 +297,23 @@ use, in Corten's item-API phases.
 
 r10 ran on a Platinum 8280, r8 on a Platinum 8168. Between them Corten moved 530 commits, and the
 other apps changed only to write counts as Corten's plural messages do (digits grouped, the
-singular for one; `600050a`). The other apps' 64-user requests a second rose by a median of 11.0%
+singular for one; `600050a`). Medians below are over the other apps that passed the test in both
+rounds. The other apps' 64-user requests a second rose by a median of 11.0%
 for the page from memory, 14.7% for the JSON from memory, 8.9% for the item-API page and 9.2% for
 the item-API JSON. Corten's rose more from memory, the page 51.8% (15,747 to 23,898) and the JSON
-30.4% (24,652 to 32,155), and with the others from the item API: the page 18.4% (3,616 to 4,283)
-and the JSON 8.8% (3,852 to 4,191). Its pages per CPU-second from memory rose 53.9% (15,890 to
+30.4% (24,652 to 32,155), and its item-API page 18.4% (3,616 to 4,283); its item-API JSON moved
+with the others, 8.8% (3,852 to 4,191). Its pages per CPU-second from memory rose 53.9% (15,890 to
 24,459; the other apps' median +11.1%). Against r7, on the same CPU model, its page from memory
-is 27.4% faster (18,758 to 23,898) while the other apps' median rose 8.1%, and above r6's 23,416,
-after the falls from r6 to r7 and r7 to r8
+is 27.4% faster (18,758 to 23,898) while the other apps' median rose 8.1%, after the falls from r6
+to r7 and r7 to r8
 ([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
-Corten got worse in two places. Its item page costs 14.8% more user-mode instructions than in r7,
+Corten got worse in two places. First, its item page costs 14.8% more user-mode instructions than in r7,
 the last round that counted (95,949 to 110,172; kernel 33,294 to 32,989), while the other apps'
 page counts moved by a median of +0.3% (ASP.NET Core +15.9%, Spring +4.9% and Rails +3.9% after
 the change to their counts); its JSON held (69,572 to 69,968, +0.6%). Each page now runs more
-instructions in less CPU time, and one run of each cannot say why. Its item page's CSS grew 5.1%
-(2,609 to 2,742 bytes gzip) and its JavaScript 4.3% (10,394 to 10,844); the HTML held (2,385 to
-2,387). Its cold start (6.7 to 5.9 ms, while the others' median fell 6.4%), memory after the first
+instructions in less CPU time, and one run of each cannot say why. Second, its item page's CSS grew
+5.1% (2,609 to 2,742 bytes gzip). Its JavaScript also grew, by 4.3% (10,394 to 10,844), and the
+HTML held (2,385 to 2,387). Its cold start (6.7 to 5.9 ms, while the others' median fell 6.4%), memory after the first
 request (1.23 to 1.223 MiB) and peak memory at 64 users (16.4 MiB in both) held or went down. In
 the browser Corten's desktop interactive went from 61 to 59 ms and its phone from 461 to 459 ms,
 while the other apps moved by a median of -6.9% and -0.7%, and its phone blocking time went from
@@ -542,7 +545,7 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
     `count.mjs`, right after its warmup (the first time with a kernel soft lockup); the cause is not
     known, and the round finished without that step
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
-    r9 measured nothing (its launcher hung before the upload), so r10's counts are compared with
+    r9 measured nothing (its launcher hung in its own `ssh` call before the round started), so r10's counts are compared with
     r7's (the tree at `a9b1163`), the last round before it that counted: counts do not depend on
     the droplet, but Corten changed between the two commits.
 

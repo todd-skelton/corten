@@ -2739,8 +2739,8 @@ Corten is pre-1.0, so any minor version may change the API.
    `bench/live` is still r3 (Xeon Platinum 8280). r8 is kept without instruction counts and r7
    without a browser pass; r9 measured nothing. Corten serves 23,898 item pages and 32,155 JSON
    responses a second from memory at 64 users (r8: 15,747 and 24,652), and 4,283 item-API pages
-   against ASP.NET Core's 1,255 (r8: 3,616 and 1,065), while the other apps rose by a median of
-   9-15% on the faster CPU. A page costs 110,172 user instructions and the JSON 69,968 (r7: 95,949
+   against ASP.NET Core's 1,255 (r8: 3,616 and 1,065), while the other apps that passed rose by a
+   median of 9-15% on r10's droplet. A page costs 110,172 user instructions and the JSON 69,968 (r7: 95,949
    and 69,572). A page from memory costs 41 µs of CPU (24,459 per CPU-second; ASP.NET Core 4,648),
    300 pages a second take 4.0% of a core (ASP.NET Core 19%), and each MiB serves 1,457 pages a
    second (ASP.NET Core 54). Next.js and Laravel failed as before. The item page loads 10.6 KB of

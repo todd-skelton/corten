@@ -285,8 +285,8 @@ Corten reads only the fields the page uses from that response, not a `serde_json
 serves 3.4x ASP.NET Core's pages there (4,283 a second against 1,255) at under a fifth of its CPU
 ([details](bench/fullstack/README.md#cortens-item-api-path)). Corten's JSON route costs less than
 its HTML page (70,000 against 110,000 user-mode instructions a request; Leptos's JSON 205,000).
-Its page from memory is back above r6's (23,898 a second against 23,416) after the falls in r7 and
-r8, though each page now runs 15% more user-mode instructions than in r7.
+Against r7, on the same CPU model, its page from memory is 27% faster while the other apps that
+passed rose a median of 8%, though each page now runs 15% more user-mode instructions.
 Requests a second compare only within a round, since droplets of one size differ; instruction
 counts compare across rounds. Pushing live updates
 is measured in [bench/live](bench/live/README.md): at 10,000 open connections on one core, only
@@ -319,10 +319,10 @@ divide the 64-user rate by the app's peak memory under that load.
 Corten renders a page with 41 µs of CPU, ASP.NET Core with 215 µs and Leptos with 622 µs. Leptos
 peaks at less memory than Corten (16.1 MiB against 16.4) and serves a fifteenth of the pages.
 From the item API, fetching and parsing the 55 KB item costs Corten about 190 µs a page, 4.7 times
-the page itself; that is the next thing to make cheaper
+the page itself
 ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
-Its pages per CPU-second from memory rose 53.9% from r8 (a Platinum 8168) while the other apps'
-median rose 11.1%.
+Its pages per CPU-second from memory rose 53.9% from r8 (a Platinum 8168) while the median of the
+other apps that passed rose 11.1%.
 CPU time is counted from the container's cgroup, not sampled
 ([method](bench/fullstack/README.md#efficiency)).
 
