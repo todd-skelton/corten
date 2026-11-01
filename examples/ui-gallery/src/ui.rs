@@ -132,4 +132,25 @@ mod tests {
             }
         }
     }
+
+    /// An alert's role follows its variant, so a screen reader interrupts only for what needs the
+    /// user now.
+    #[test]
+    fn an_alerts_role_follows_its_variant() {
+        use super::alert::{Alert, AlertVariant};
+        use corten::view::Render;
+        for (variant, role) in [
+            (AlertVariant::Neutral, None),
+            (AlertVariant::Info, None),
+            (AlertVariant::Success, Some("status")),
+            (AlertVariant::Warning, Some("alert")),
+            (AlertVariant::Destructive, Some("alert")),
+        ] {
+            let html = Alert { variant, children: "" }.to_html();
+            match role {
+                Some(role) => assert!(html.contains(&format!(r#" role="{role}""#)), "{variant:?}: {html}"),
+                None => assert!(!html.contains("role="), "{variant:?}: {html}"),
+            }
+        }
+    }
 }

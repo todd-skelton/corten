@@ -7,4 +7,7 @@
 .primary { background: var(--primary); color: var(--primary-foreground); }
 .secondary { background: var(--secondary); color: var(--secondary-foreground); }
 .outline { color: var(--foreground); border-color: var(--border); }
+.info { background: var(--info); color: var(--info-foreground); }
+.success { background: var(--success); color: var(--success-foreground); }
+.warning { background: var(--warning); color: var(--warning-foreground); }
 .destructive { background: var(--destructive); color: var(--destructive-foreground); }
