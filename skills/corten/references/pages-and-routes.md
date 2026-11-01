@@ -215,7 +215,8 @@ A WebSocket is a route whose handler takes `corten::upgrade::Upgrade` and return
 not add an `Origin` check of your own. A URL that is also a page or a relayed answer takes
 `Option<Upgrade>` and returns `corten::Result<SwitchOr<A>>`. A route that passes another server's answer on returns
 `corten::Relay::new(status, headers, body)`, never a `Response`; never merge a router after
-`app.router()` for either.
+`app.router()` for either. A JSON route that answers some requests itself and relays the rest
+returns `Result<JsonResponse, JsonError>`: `Ok(Json(value).into())` or `Ok(relay.into())`.
 
 A time shown where the visitor is needs their time zone: turn on Corten's `zones` feature and set
 `App::zoned_dates()`. Dates then render in the visitor's zone on

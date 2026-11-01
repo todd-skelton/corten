@@ -1,0 +1,9 @@
+{
+ "fsw-django": {
+  "samples": 123,
+  "cpuAvgPct": 100.6,
+  "cpuMaxPct": 101.04,
+  "memAvgMiB": 346.3,
+  "memMaxMiB": 346.8
+ }
+}
