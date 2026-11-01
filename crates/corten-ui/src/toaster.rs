@@ -24,9 +24,9 @@ pub fn Toast<M: Render>(message: Option<M>) -> impl Patch {
 /// patches replace the [`Toast`] inside it, so each new message is announced (a region inserted,
 /// or shown, together with its message often is not). Render the toaster once in the page's
 /// layout, where an answer without JavaScript can fill it too, and where a redirect's notice
-/// lands (`Toast { message: req.notice() }`; after a client navigation, which does not run the
-/// layout, the runtime's `corten:notice` event fills it). One message shows at a time: a new one
-/// replaces it.
+/// lands (`Toast { message: req.notice() }`: a write's redirect draws the layout again, and when
+/// the page did not draw the notice the runtime's `corten:notice` event fills it). One message
+/// shows at a time: a new one replaces it.
 ///
 /// Its script (`toaster.js`) shows the close button while there is a message, and hides the
 /// message after `seconds` (`0`: until closed), waiting while the pointer is over the toaster,

@@ -90,8 +90,8 @@ pub fn app() -> App {
 }
 
 /// The document around every page, with the toaster: what an answer says (`toast`) or, after a
-/// redirect, what the write said (`req.notice()`), which the runtime hands the toaster on a
-/// navigation, since the layout does not run there.
+/// redirect, what the write said (`req.notice()`), which a write's redirect draws again with the
+/// rest of the layout.
 #[component]
 fn Layout<'a>(req: &'a Req, title: &'a str, toast: Option<&'a str>, children: impl Render) -> impl Document {
     let notice = req.notice();

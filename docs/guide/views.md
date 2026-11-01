@@ -181,9 +181,13 @@ version it can compare. A page that differs in any other
 way around `<main>` loads in full, as a browser without JavaScript loads it: an element more or
 fewer beside one (a banner shown now), an attribute of `<main>` or of an element around it (`lang`,
 a theme on `<html>`), or the layout's own head tags (not the page's values for `style={..}`,
-which are set on what is swapped in). A browser extension that adds to `<head>` or to `<html>`
-before the runtime starts (a dark-mode extension) makes every such write load in full, which is
-right and as slow as without JavaScript. The page a write sends the browser to is
+which are set on what is swapped in). A browser extension that adds to `<head>`, to `<html>` or
+beside `<main>`'s ancestors in `<body>` before the runtime starts (a dark-mode extension) makes
+every such write load in full, which is right and as slow as without JavaScript. A layout element
+whose markup differs on every render (a form with a submit key, a `<corten-live>` with its
+position) is replaced on every such write, losing what scripts did to it; keep it out of the
+layout, or draw it in a component a patch updates. A layout element that shows the redirect's
+notice is drawn again even when its markup is the same, so the same notice twice is shown twice. The page a write sends the browser to is
 fetched as a document, so when it redirects again, `fetch` follows that redirect itself: a
 `#id` on the second one is not kept, and one to another site loads in full.
 

@@ -453,12 +453,13 @@ async function run(browser) {
   await page.keyboard.press("Escape");
   check("Escape closes it", !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
   // A rename that is taken redirects to the draft with a notice (`req.redirect_with_notice`): the
-  // navigation's page does not run the layout, so the runtime hands it to the layout's toaster.
+  // write's page is fetched whole, and its layout draws the notice in the toaster.
   // The notice rides in a Secure cookie, which Playwright's WebKit never sends back over http.
   const noticeChecks = [
     "a redirect's notice reaches the layout's toaster",
     "and the toaster offers to dismiss it",
     "the notice is said once",
+    "the same notice again is shown again",
     "a notice whose page loads in full instead reaches the toaster after the load",
   ];
   if (engine !== "webkit") {
@@ -470,13 +471,25 @@ async function run(browser) {
     check(noticeChecks[1], await page.getByRole("button", { name: "Dismiss" }).isVisible());
     await page.getByRole("button", { name: "Dismiss" }).click();
     check(noticeChecks[2], !(await page.evaluate(async () => (await (await fetch("/")).text()).includes("Renamed to"))));
-    // The navigation's page comes with another layout (here a shell key changed on the way): the
-    // runtime loads it in full, and the notice, whose cookie that answer removed, goes with it.
+    // The layout draws the same toast as before, which the user dismissed: it is shown again.
+    await page.getByRole("button", { name: "Rename draft" }).click();
+    await page.locator("#draft-name").fill("Spring draft");
+    await page.getByRole("button", { name: "Rename", exact: true }).click();
+    const again = await page.waitForFunction(() => {
+      const toast = /** @type {HTMLElement | null} */ (document.querySelector("#ui-toast"));
+      return toast?.textContent === "Renamed to Spring draft." && !toast.hidden && toast.checkVisibility();
+    }, null, { timeout: 5000 }).then(() => true, () => false);
+    check(noticeChecks[3], again, await page.locator("#ui-toast").evaluate((t) => JSON.stringify({ text: t.textContent, hidden: /** @type {HTMLElement} */ (t).hidden })));
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    // The write's page comes with another frame (here an attribute on <html> changed on the way):
+    // the runtime loads it in full, and the notice, whose cookie that answer removed, goes with it.
     await page.route("**/*", async (route) => {
-      if (route.request().method() !== "GET" || route.request().headers()["corten"] !== "nav") return route.fallback();
+      const req = route.request();
+      if (req.method() !== "GET" || req.resourceType() !== "fetch" || req.headers()["corten"]) return route.fallback();
       const res = await route.fetch();
       await page.context().clearCookies({ name: "__Host-corten-notice" });
-      await route.fulfill({ response: res, headers: { ...res.headers(), "corten-shell": "0000000000000000" } });
+      const body = (await res.text()).replace("<html ", '<html data-frame="changed" ');
+      await route.fulfill({ response: res, body });
     });
     await page.evaluate(() => ((/** @type {any} */ (window)).__before = 1));
     await page.getByRole("button", { name: "Rename draft" }).click();
@@ -484,7 +497,7 @@ async function run(browser) {
     await page.getByRole("button", { name: "Rename", exact: true }).click();
     const kept = await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Autumn draft.", null, { timeout: 5000 }).then(() => true, () => false);
     const loaded = await page.evaluate(() => (/** @type {any} */ (window)).__before === undefined);
-    check(noticeChecks[3], kept && loaded && (await page.locator("#ui-toast").isVisible()), `${loaded} ${await page.locator("#ui-toast").textContent()}`);
+    check(noticeChecks[4], kept && loaded && (await page.locator("#ui-toast").isVisible()), `${loaded} ${await page.locator("#ui-toast").textContent()}`);
     await page.unroute("**/*");
   } else for (const name of noticeChecks) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
   // Over plain http from an address that is not loopback (a tool on the LAN) the browser refuses

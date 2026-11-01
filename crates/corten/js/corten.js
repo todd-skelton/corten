@@ -1201,10 +1201,13 @@ let frame = frameOf(document);
  * level up to `<body>`, the elements before and after the one `<main>` is in, compared with what
  * the server sent for each. Each that changed is replaced, keeping what the user typed or opened,
  * as a patch does. Null when only a full load draws the page as the server would: another element
- * around `<main>`, more or fewer elements beside one, or another frame ({@link frameOf}).
- * @param {Document} doc @returns {{ fresh: Element[], apply: () => void } | null}
+ * around `<main>`, more or fewer elements beside one, or another frame ({@link frameOf}). One that
+ * shows the notice the page drew is replaced even when its markup is the same, since the last one
+ * a script hid (a toast) is drawn again by the same text.
+ * @param {Document} doc @param {Notice} notice @returns {{ fresh: Element[], apply: () => void } | null}
  */
-function layoutChanges(doc) {
+function layoutChanges(doc, notice) {
+  const said = notice?.has("d") ? notice.get("m") : null;
   if (frameOf(doc) !== frame) return null;
   /** @type {[Element, Element][]} */
   const changed = [];
@@ -1220,7 +1223,7 @@ function layoutChanges(doc) {
     for (let i = 0; i < mine.length; i++) {
       if (mine[i] === here) continue;
       if (mine[i].localName !== theirs[i].localName) return null;
-      if (drawn.get(mine[i]) !== markupOf(theirs[i])) changed.push([mine[i], theirs[i]]);
+      if (drawn.get(mine[i]) !== markupOf(theirs[i]) || (said && theirs[i].textContent?.includes(said))) changed.push([mine[i], theirs[i]]);
     }
     here = up;
     there = upThere;
@@ -1230,10 +1233,9 @@ function layoutChanges(doc) {
     fresh: changed.map(([, el]) => el),
     apply() {
       for (const [old, el] of changed) {
-        // A patch may have replaced it meanwhile, by its id.
-        const here = old.isConnected ? old : old.id && document.getElementById(old.id);
-        if (!here) continue;
-        replaceKeeping(here, el, null);
+        // One a patch replaced while the page was on its way is newer than the page: it stays.
+        if (!old.isConnected) continue;
+        replaceKeeping(old, el, null);
         setVars(el);
       }
     },
@@ -1253,7 +1255,7 @@ async function swapDocument(html, signal, notice) {
   // Parsed with scripting off, as `parse` does, so a `<noscript>`'s content would be live.
   for (const noscript of Array.from(doc.querySelectorAll("noscript"))) noscript.replaceChildren();
   const main = doc.querySelector("main");
-  const layout = main && layoutChanges(doc);
+  const layout = main && layoutChanges(doc, notice);
   if (!main || !layout) {
     reload(notice);
     return false;
