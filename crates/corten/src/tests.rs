@@ -2575,6 +2575,20 @@ fn a_catch_all_beside_a_route_with_text_in_an_area_does_not_start() {
     let _ = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Rss>(rss).route::<FeedsRest>(rest));
 }
 
+#[derive(crate::Route)]
+#[route("/api/files/{*rest}")]
+struct ApiFilesRest<'a> {
+    rest: &'a str,
+}
+
+#[test]
+#[should_panic(expected = "have a parameter where the other has its catch-all")]
+fn a_route_with_text_beside_a_catch_all_in_an_api_does_not_start() {
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let rest = crate::Methods::reads(get(|| async { "rest" }));
+    let _ = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiFile>(json).route::<ApiFilesRest>(rest));
+}
+
 #[tokio::test]
 async fn a_handler_reads_its_routes_parameters_as_the_link_wrote_them() {
     let router = App::new(params_url::router()).router();

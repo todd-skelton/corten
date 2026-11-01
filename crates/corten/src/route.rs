@@ -2399,9 +2399,10 @@ fn text_after(segment: &str) -> &str {
 /// Two routes of the app (in any module, area or API) that differ only in the text after a
 /// parameter, which axum matches as one path: a startup panic naming both, since only one could
 /// be reached (a `#[corten::routes]` module already refuses them when it compiles). Routes that
-/// differ only in their parameters' names are left to the router, which refuses them itself.
-/// Only a route with text after a parameter can clash, so each of those is compared with the
-/// others, and an app with none compares nothing.
+/// differ only in their parameters' names are left to the router, which refuses them itself. So
+/// is a route with text beside a catch-all where it has its parameter, which axum would refuse
+/// naming the path without the text. Only a route with text after a parameter can clash, so each
+/// of those is compared with the others, and an app with none compares nothing.
 pub(crate) fn assert_no_clash(written: &[&str]) {
     for (i, a) in written.iter().enumerate().filter(|(_, a)| has_text_after(a)) {
         for other in written[..i].iter().chain(&written[i + 1..]) {
@@ -2410,14 +2411,14 @@ pub(crate) fn assert_no_clash(written: &[&str]) {
     }
 }
 
-/// Refuses `a` beside `b`, `b` having text after a parameter: the two differ only in that text,
+/// Refuses `a` beside `b`, one of them having text after a parameter: the two differ only in that text,
 /// or one has a parameter where the other has its catch-all (`/{name}.txt` and `/{*page}`), which
 /// the router would refuse naming `/{name}`.
 fn check(a: &str, b: &str) {
     if clash(a, b) {
         refuse(a, b);
     }
-    if beside_catch_all(a, b) || beside_catch_all(b, a) {
+    if (a.contains("{*") || b.contains("{*")) && (beside_catch_all(a, b) || beside_catch_all(b, a)) {
         panic!(
             "corten: the routes {a:?} and {b:?} have a parameter where the other has its catch-all, which the router cannot hold together: give the parameter's route a segment of its own"
         )
