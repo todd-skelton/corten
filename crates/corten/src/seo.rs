@@ -126,16 +126,20 @@ pub fn sitemap<'a>(urls: impl IntoIterator<Item = SitemapUrl<'a>>) -> Public<Fil
 /// const ORIGIN: &str = "https://shop.example";
 ///
 /// async fn index() -> Public<corten::seo::File> {
-///     let pages: Vec<String> = (1..=3).map(|page| format!("{ORIGIN}{}", url::ItemsPage { page }.href())).collect();
+///     let pages: Vec<String> = (1..=PAGES).map(|page| format!("{ORIGIN}{}", url::ItemsPage { page }.href())).collect();
 ///     corten::seo::sitemap_index(pages.iter().map(String::as_str))
 /// }
 ///
 /// const PER_PAGE: u32 = 2;
 ///
-/// async fn items(at: Params<url::ItemsPage>) -> Public<corten::seo::File> {
-///     let first = (at.page - 1) * PER_PAGE + 1;
+/// const PAGES: u32 = 3;
+///
+/// async fn items(at: Params<url::ItemsPage>) -> corten::Result<Public<corten::seo::File>> {
+///     // `0.xml` and a page past the last are the app's to refuse.
+///     let page = at.page.checked_sub(1).filter(|page| *page < PAGES).ok_or_else(corten::Error::not_found)?;
+///     let first = page * PER_PAGE + 1;
 ///     let locs: Vec<String> = (first..first + PER_PAGE).map(|id| format!("{ORIGIN}{}", url::Item { id }.href())).collect();
-///     corten::seo::sitemap(locs.iter().map(|loc| corten::seo::SitemapUrl { loc, lastmod: None }))
+///     Ok(corten::seo::sitemap(locs.iter().map(|loc| corten::seo::SitemapUrl { loc, lastmod: None })))
 /// }
 ///
 /// async fn item(_: Params<url::Item>) -> &'static str {

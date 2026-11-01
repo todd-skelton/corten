@@ -74,8 +74,9 @@
 //! struct Item { id: u32 }
 //! ```
 //!
-//! Nor does such a route beside a catch-all at its parameter's place, which the router cannot hold
-//! (one deeper, `/docs/{name}.md`, can sit beside `/{*page}`):
+//! Nor does a route with a parameter where another of the module has its catch-all, after the same
+//! segments, which the router cannot hold (`/docs/{name}.md` can sit beside `/{*page}`, which has
+//! its catch-all where the other has `docs`):
 //!
 //! ```compile_fail
 //! use corten::Params;
@@ -1514,6 +1515,16 @@ mod local_tests {
             assert_eq!(super::clash(a, b), want, "{a} {b}");
             assert_eq!(super::clash(b, a), want, "{b} {a}");
         }
+        for (path, other, beside) in [
+            ("/{name}.txt", "/{*page}", true),
+            ("/docs/{name}.md", "/docs/{*rest}", true),
+            ("/{kind}.x/{name}", "/{a}/{*rest}", true),
+            ("/docs/{name}.md", "/{*page}", false),
+            ("/docs/{name}.md", "/blog/{*rest}", false),
+            ("/{*page}", "/{*page}", false),
+        ] {
+            assert_eq!(super::beside_catch_all(path, other), beside, "{path} beside {other}");
+        }
     }
 
     #[test]
@@ -2393,10 +2404,41 @@ fn text_after(segment: &str) -> &str {
 /// others, and an app with none compares nothing.
 pub(crate) fn assert_no_clash(written: &[&str]) {
     for (i, a) in written.iter().enumerate().filter(|(_, a)| has_text_after(a)) {
-        if let Some(other) = written[..i].iter().chain(&written[i + 1..]).find(|b| clash(a, b)) {
-            refuse(other, a);
+        for other in written[..i].iter().chain(&written[i + 1..]) {
+            check(other, a);
         }
     }
+}
+
+/// Refuses `a` beside `b`, `b` having text after a parameter: the two differ only in that text,
+/// or one has a parameter where the other has its catch-all (`/{name}.txt` and `/{*page}`), which
+/// the router would refuse naming `/{name}`.
+fn check(a: &str, b: &str) {
+    if clash(a, b) {
+        refuse(a, b);
+    }
+    if beside_catch_all(a, b) || beside_catch_all(b, a) {
+        panic!(
+            "corten: the routes {a:?} and {b:?} have a parameter where the other has its catch-all, which the router cannot hold together: give the parameter's route a segment of its own"
+        )
+    }
+}
+
+/// Whether `path` has a parameter where `other` has its catch-all, after segments the router
+/// matches alike (the same text, or a parameter in each, with or without text after it).
+pub(crate) fn beside_catch_all(path: &str, other: &str) -> bool {
+    let param = |s: &str| s.starts_with('{');
+    let mut ours = path.split('/');
+    for theirs in other.split('/') {
+        let Some(mine) = ours.next() else { return false };
+        if theirs.starts_with("{*") {
+            return param(mine) && !mine.starts_with("{*");
+        }
+        if !(mine == theirs || param(mine) && param(theirs)) {
+            return false;
+        }
+    }
+    false
 }
 
 /// [`assert_no_clash`] for one route `new`, as an area or an API adds it: against every earlier
@@ -2404,8 +2446,8 @@ pub(crate) fn assert_no_clash(written: &[&str]) {
 /// (`with_text`).
 pub(crate) fn assert_no_clash_with(earlier: &[&str], with_text: &[&str], new: &str) {
     let against = if has_text_after(new) { earlier } else { with_text };
-    if let Some(other) = against.iter().find(|other| clash(other, new)) {
-        refuse(other, new);
+    for other in against {
+        check(other, new);
     }
 }
 
@@ -2440,6 +2482,27 @@ fn refuse(a: &str, b: &str) -> ! {
 ///     const WRITTEN: &'static str = "/feeds/{name}.x/extra";
 ///     fn write_href(&self, out: &mut String, _: bool) {
 ///         out.push_str("/feeds/a.x/extra");
+///     }
+/// }
+///
+/// let app = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Feed>(get(|| async { "feed" })));
+/// # let _ = app.router();
+/// ```
+///
+/// (with `WRITTEN` `"/feeds/{name}.x"` it builds:)
+///
+/// ```
+/// # use corten::prelude::*;
+/// #[derive(Route)]
+/// #[route("/feeds")]
+/// struct Feeds;
+///
+/// struct Feed;
+/// impl corten::Route for Feed {
+///     const PATH: &'static str = "/feeds/{name}";
+///     const WRITTEN: &'static str = "/feeds/{name}.x";
+///     fn write_href(&self, out: &mut String, _: bool) {
+///         out.push_str("/feeds/a.x");
 ///     }
 /// }
 ///

@@ -151,12 +151,11 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
                 ),
             );
         }
-        // The router holds no parameter where another route has its catch-all, and would name
-        // `{page}` for `{page}.xml` in saying so: say it here with the paths as written.
+        // The router holds no parameter where another route has its catch-all (and would name
+        // `{page}` for `{page}.xml` in saying so): say it here, with the paths as written.
         if let Some(b) = routed[..i].iter().find(|b| {
             let theirs = crate::route::suffixed(&b.path).0;
-            (matched != a.path || theirs != b.path)
-                && (beside_catch_all(&matched, &theirs) || beside_catch_all(&theirs, &matched))
+            beside_catch_all(&matched, &theirs) || beside_catch_all(&theirs, &matched)
         }) {
             return err(
                 a.span,
@@ -793,7 +792,6 @@ fn derives_route(attr: &Group) -> bool {
     }
 }
 
-/// Two paths a request matches the same way: equal once each `{param}` is just a parameter.
 /// Whether `path` has a parameter where `other` has its catch-all, after the same segments
 /// (`/{name}` and `/{*page}`), which axum's router refuses to hold together.
 fn beside_catch_all(path: &str, other: &str) -> bool {
@@ -811,6 +809,7 @@ fn beside_catch_all(path: &str, other: &str) -> bool {
     false
 }
 
+/// Two paths a request matches the same way: equal once each `{param}` is just a parameter.
 fn same_pattern(a: &str, b: &str) -> bool {
     fn shape(path: &str) -> String {
         let mut out = String::new();
@@ -846,6 +845,7 @@ mod tests {
             ("/docs/{name}", "/docs/{*rest}", true),
             ("/{kind}/{name}", "/{a}/{*rest}", true),
             ("/{name}/more", "/{*page}", true),
+            ("/{kind}/{name}", "/{*page}", true),
             ("/docs/{name}", "/{*page}", false),
             ("/docs/{name}", "/blog/{*rest}", false),
             ("/docs", "/{*page}", false),

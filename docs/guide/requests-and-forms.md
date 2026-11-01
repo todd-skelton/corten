@@ -168,9 +168,11 @@ The router matches the segment whole, so the route takes every path of its shape
 either (`req.serves` agrees), and the app's middleware sees that 404 with the route's
 `MatchedPath`. Two routes of a module that differ only in that text (`{name}.rss` and
 `{name}.atom`) do not compile, and two in different modules, areas or APIs stop the app at
-startup: give each a segment of its own. Nor does one beside a catch-all at its parameter's place
-(`/{name}.txt` and `/{*page}` in one module), which the router cannot hold; one segment deeper
-(`/docs/{name}.md`) it can. Text before a parameter (`item_{id}`) does not compile either.
+startup: give each a segment of its own. A route with a parameter where another has its catch-all,
+after the same segments (`/{name}.txt` and `/{*page}`), which the router cannot hold, does not
+compile either when both are in one module, and stops the app at startup otherwise;
+`/docs/{name}.md` beside `/{*page}` is fine. Text before a parameter (`item_{id}`) does not
+compile.
 
 Links write a route's parameters by name with `Display`, so `Params` refuses what would read them
 back differently: a `#[serde(..)]` key on the route struct that links do not follow (`alias`,

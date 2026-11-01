@@ -1258,9 +1258,10 @@ Corten is pre-1.0, so any minor version may change the API.
     a 404 before the handler runs, whatever its method (the router matches the segment whole, so
     the route takes every path of its shape, and Corten checks the text), and a value that is not
     the type is a 400 as for any parameter. Two routes of a module that differ only in that text
-    (`{name}.rss`, `{name}.atom`) do not compile, nor does one beside a catch-all at its
-    parameter's place (`/{name}.txt`, `/{*page}`), which the router cannot hold and would refuse
-    naming `/{name}`; `Req::serves` agrees with the router. A
+    (`{name}.rss`, `{name}.atom`) do not compile, nor do two with a parameter where the other has
+    its catch-all (`/{name}.txt`, `/{*page}`, or a plain `/{name}`), which the router cannot hold
+    and would refuse naming `/{name}`; in different modules or areas a route with text stops the
+    app at startup naming both as written. `Req::serves` agrees with the router. A
     field after which text comes needs only `Display` for a link, as any field, and two routes
     anywhere in the app (modules, areas, APIs) that differ only in that text stop it at startup.
     A route without such text generates the code it did (the expanded card-market is identical).
