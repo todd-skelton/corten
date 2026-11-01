@@ -27,7 +27,12 @@ macro_rules! piece {
 
 const KIT: &[Piece] = &[
     piece!("accordion", "Accordion", "sections that open one at a time, on <details name>", ["accordion.rs", "accordion.css"]),
-    piece!("alert", "Alert", "a message the page calls out, neutral or destructive", ["alert.rs", "alert.css"]),
+    piece!(
+        "alert",
+        "Alert",
+        "a message the page calls out, neutral, info, success, warning or destructive",
+        ["alert.rs", "alert.css"]
+    ),
     piece!("avatar", "Avatar", "a person's picture over their initials", ["avatar.rs", "avatar.css"]),
     piece!("badge", "Badge", "a short label: a status, a count, a tag", ["badge.rs", "badge.css"]),
     piece!("breadcrumb", "Breadcrumb", "typed links to the pages above this one", ["breadcrumb.rs", "breadcrumb.css"]),
@@ -75,6 +80,20 @@ const COMPONENTS: &str = "pub const COMPONENTS: &[Component] =";
 
 /// The line in `src/ui.rs` the first `pub mod` goes before.
 const TOKENS_LINE: &str = "corten::style::tokens!(";
+
+/// A theme in the app's own code: a `tokens!` call, however it is imported.
+const TOKENS_CALL: &str = "tokens!(";
+
+/// `src/ui.rs` for an app with a theme of its own, which the components read: no tokens of the kit.
+const OWN_THEME_MODULE: &str = "// corten ui {{version}}
+//! The UI kit: the components `corten ui add` copied into `src/ui/`, reading their colors from the
+//! app's own theme. They are the app's to change; `corten ui list` names the others.
+
+use corten::Component;
+
+/// Each component with a stylesheet: `App::components(ui::COMPONENTS)`.
+pub const COMPONENTS: &[Component] = &[];
+";
 
 /// Above `pub mod ui;` in `src/lib.rs`.
 const MODULE_DOC: &str = "/// The UI kit (`corten ui`): public, so a component not used yet is not a warning.";
@@ -148,23 +167,46 @@ fn init(root: &Path) -> Result<(), String> {
             return Err(format!("{path} exists: the kit is already set up here (corten ui add <name> adds a component)"));
         }
     }
-    let mut files: Vec<(String, String)> = INIT.iter().map(|(path, text)| (path.to_string(), stamped(text))).collect();
-    let mut said: Vec<String> = INIT.iter().map(|(path, _)| format!("  wrote {path}")).collect();
-    let mut todo = Vec::new();
-    match std::fs::read_to_string(root.join("src/lib.rs")).ok().and_then(|text| wire_lib(&text)) {
-        Some(text) => {
-            files.push(("src/lib.rs".into(), text));
-            said.push("  edited src/lib.rs: pub mod ui; and .components(ui::COMPONENTS) on the App".into());
+    let app = sources(root);
+    // An app with colors of its own keeps them: the kit's components read their tokens from its
+    // theme. One whose theme has no colors (spacing alone), or that cannot be read, gets the kit's.
+    let theme =
+        app.iter().filter(|(path, text)| !is_kit_file(path, text) && text.contains(TOKENS_CALL)).find_map(|(path, text)| {
+            match own_theme(root, text) {
+                Some((names, true)) => Some((path.clone(), names)),
+                _ => None,
+            }
+        });
+    let mut files: Vec<(String, String)> = match &theme {
+        None => INIT.iter().map(|(path, text)| (path.to_string(), stamped(text))).collect(),
+        Some(_) => vec![("src/ui.rs".to_string(), stamped(OWN_THEME_MODULE))],
+    };
+    let mut said: Vec<String> = files.iter().map(|(path, _)| format!("  wrote {path}")).collect();
+    let mut todo: Vec<String> = Vec::new();
+    match wire_app(&app) {
+        Ok(edits) => {
+            for (path, text) in edits {
+                said.push(format!("  edited {path}"));
+                files.push((path, text));
+            }
         }
-        None => todo.push("declare pub mod ui; in src/lib.rs and add .components(ui::COMPONENTS) to the App"),
+        Err(why) => todo.push(why),
     }
-    match std::fs::read_to_string(root.join("static/style.css")) {
-        Ok(text) => {
+    match (&theme, std::fs::read_to_string(root.join("static/style.css"))) {
+        (Some(_), _) => {}
+        (None, Ok(text)) if text.contains("color-scheme") => todo.push(
+            "static/style.css sets color-scheme already, so it is left as it is: give the page the theme's colors \
+             (:root { background: var(--background); color: var(--foreground); }) and follow data-theme as kit/page.css does"
+                .to_string(),
+        ),
+        (None, Ok(text)) => {
             let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
             files.push(("static/style.css".into(), format!("{text}{sep}{}", stamped(PAGE_CSS))));
             said.push("  edited static/style.css: the page's colors from the theme".into());
         }
-        Err(_) => todo.push("copy the page colors from corten ui into your page stylesheet (see docs/guide/kit.md)"),
+        (None, Err(_)) => {
+            todo.push("copy the page colors from corten ui into your page stylesheet (see docs/guide/kit.md)".to_string())
+        }
     }
     apply(root, &files)?;
     for line in said {
@@ -173,10 +215,132 @@ fn init(root: &Path) -> Result<(), String> {
     for step in &todo {
         println!("  to do: {step}");
     }
-    println!(
-        "\nThe theme is light and dark (data-theme=\"dark\", or the system's). Add components with corten ui add <name>;\ncorten ui list names them."
-    );
+    match theme {
+        None => println!(
+            "\nThe theme is light and dark (data-theme=\"dark\", or the system's). Add components with corten ui add <name>;\ncorten ui list names them."
+        ),
+        Some((path, names)) => {
+            let missing: Vec<String> = role_tokens().into_iter().filter(|t| !names.contains(t)).collect();
+            if missing.is_empty() {
+                println!("\nThe components read their colors from your theme ({path}), which has every token they read.");
+            } else {
+                println!(
+                    "\nThe components read their colors from your theme ({path}), which lacks these. Declare each at the top\n\
+                     of a token file, most as a reference to one of yours, so it follows your other themes too\n\
+                     (\"card\": {{ \"$type\": \"color\", \"$value\": \"{{color.surface}}\" }}):\n  {}\n\
+                     The app does not start while a component reads one no stylesheet declares, and says which.",
+                    missing.join(", ")
+                );
+            }
+            println!("Add components with corten ui add <name>; corten ui list names them.");
+        }
+    }
     Ok(())
+}
+
+/// The tokens the kit's components read: every one of its theme, in the theme's order.
+fn role_tokens() -> Vec<String> {
+    match crate::json::parse(INIT[0].1) {
+        Ok(crate::json::Value::Object(fields)) => {
+            fields.into_iter().map(|(name, _)| name).filter(|n| !n.starts_with('$')).collect()
+        }
+        _ => unreachable!("the kit's theme is a JSON object"),
+    }
+}
+
+/// What the app's own theme has, read from the files its `tokens!` names (a resolver's sources
+/// too): the names at the top of each file, and whether any token is a color. None when a file
+/// cannot be read or is not JSON, so nothing is guessed.
+fn own_theme(root: &Path, code: &str) -> Option<(Vec<String>, bool)> {
+    let at = code.find(TOKENS_CALL)? + TOKENS_CALL.len();
+    let path = code[at..].trim_start().strip_prefix('"')?.split('"').next()?;
+    let mut names = Vec::new();
+    let mut colors = false;
+    let mut files = vec![root.join(path)];
+    let mut read = Vec::new();
+    while let Some(file) = files.pop() {
+        if read.contains(&file) {
+            continue;
+        }
+        let value = crate::json::parse(&std::fs::read_to_string(&file).ok()?).ok()?;
+        let dir = file.parent()?.to_path_buf();
+        read.push(file);
+        if let crate::json::Value::Object(fields) = &value {
+            names.extend(fields.iter().map(|(k, _)| k.clone()).filter(|k| !k.starts_with('$')));
+        }
+        walk(&value, &mut |key, v| {
+            if key == "$type" && v.as_str() == Some("color") {
+                colors = true;
+            }
+            if key == "$ref"
+                && let Some(to) = v.as_str().filter(|r| !r.starts_with('#'))
+            {
+                files.push(dir.join(to));
+            }
+        });
+    }
+    Some((names, colors))
+}
+
+/// Calls `each` with every key and value in `value`, at any depth.
+fn walk(value: &crate::json::Value, each: &mut impl FnMut(&str, &crate::json::Value)) {
+    match value {
+        crate::json::Value::Object(fields) => {
+            for (k, v) in fields {
+                each(k, v);
+                walk(v, each);
+            }
+        }
+        crate::json::Value::Array(items) => items.iter().for_each(|v| walk(v, each)),
+        _ => {}
+    }
+}
+
+/// `pub mod ui;` in the crate's root (`src/lib.rs`, else `src/main.rs`) and `.components(..)`
+/// on the one `App::new(..)` the crate has, wherever it is: each changed file. An error says
+/// what to do by hand when one cannot be placed; a second run changes nothing.
+fn wire_app(app: &[(String, String)]) -> Result<Vec<(String, String)>, String> {
+    let by_hand = |why: &str| {
+        format!("{why}: declare pub mod ui; in src/lib.rs (or src/main.rs) and add .components(ui::COMPONENTS) to the App")
+    };
+    let root = ["src/lib.rs", "src/main.rs"]
+        .into_iter()
+        .find(|p| app.iter().any(|(path, _)| path == p))
+        .ok_or_else(|| by_hand("there is no src/lib.rs or src/main.rs"))?;
+    let news: Vec<&str> = app
+        .iter()
+        .filter(|(path, text)| !is_kit_file(path, text) && text.lines().any(|l| l.trim_start().starts_with("App::new(")))
+        .map(|(path, _)| path.as_str())
+        .collect();
+    let at = match news[..] {
+        [one] => one,
+        [] => return Err(by_hand("no file in src/ has an App::new( line")),
+        _ => return Err(by_hand(&format!("{} have App::new( lines", news.join(" and ")))),
+    };
+    let text_of = |p: &str| app.iter().find(|(path, _)| path == p).map(|(_, t)| t.clone()).unwrap_or_default();
+    let mut edits: Vec<(String, String)> = Vec::new();
+    let root_text = text_of(root);
+    if let Some(text) = declare_ui(&root_text) {
+        edits.push((root.to_string(), text));
+    } else if !root_text.lines().any(|l| matches!(l.trim(), "mod ui;" | "pub mod ui;")) {
+        return Err(by_hand(&format!("{root} has no mod lines to put pub mod ui; among")));
+    }
+    // A binary's file (`src/main.rs` beside `src/lib.rs`, `src/bin/`) reaches the library by its
+    // crate's name, which is the app's to write.
+    if root == "src/lib.rs" && (at == "src/main.rs" || at.starts_with("src/bin/")) {
+        return Err(by_hand(&format!("{at} builds the App outside the library that declares ui")));
+    }
+    let path = if at == root { "ui::COMPONENTS" } else { "crate::ui::COMPONENTS" };
+    let app_text = edits.iter().find(|(p, _)| p == at).map(|(_, t)| t.clone()).unwrap_or_else(|| text_of(at));
+    if !app_text.contains(".components(ui::COMPONENTS)") && !app_text.contains(".components(crate::ui::COMPONENTS)") {
+        let text =
+            list_on_app(&app_text, path).ok_or_else(|| by_hand(&format!("{at}'s App::new( line goes on past its line")))?;
+        match edits.iter_mut().find(|(p, _)| p == at) {
+            Some(edit) => edit.1 = text,
+            None => edits.push((at.to_string(), text)),
+        }
+    }
+    Ok(edits)
 }
 
 /// Writes every file, or none. Each text is first written to a new file next to its own
@@ -283,21 +447,27 @@ fn rolled_back(error: &str, left: &[PathBuf]) -> String {
     format!("{error}; these could not be put back as they were, so fix them by hand: {}", names.join(", "))
 }
 
-/// Declares `pub mod ui;` among the `mod` lines and lists its components on the `App::new(..)` chain.
-/// None when the file does not have one of each to place them by, or declares it already.
-fn wire_lib(text: &str) -> Option<String> {
+/// The file with `pub mod ui;` among its `mod` lines, in name order as rustfmt sorts them. None
+/// when it declares it already or has no `mod` line to place it by.
+fn declare_ui(text: &str) -> Option<String> {
     if text.lines().any(|l| matches!(l.trim(), "mod ui;" | "pub mod ui;")) {
         return None;
     }
     let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
     let last = lines.iter().rposition(|l| is_mod_line(l))?;
-    // Among the declarations around the last one, in name order, as rustfmt sorts them.
     let mut first = last;
     while first > 0 && is_mod_line(&lines[first - 1]) {
         first -= 1;
     }
     let name = |l: &str| l.trim_start_matches("pub ").trim_start_matches("mod ").trim_end_matches(';').to_string();
     let mod_at = (first..=last).find(|&i| name(&lines[i]).as_str() > "ui").unwrap_or(last + 1);
+    lines.splice(mod_at..mod_at, [MODULE_DOC.to_string(), "pub mod ui;".to_string()]);
+    Some(joined(&lines, text))
+}
+
+/// The file with `.components(<list>)` on its one `App::new(..)` line, which ends on that line.
+fn list_on_app(text: &str, list: &str) -> Option<String> {
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
     let news: Vec<usize> =
         lines.iter().enumerate().filter(|(_, l)| l.trim_start().starts_with("App::new(")).map(|(i, _)| i).collect();
     let [at] = news[..] else { return None };
@@ -307,21 +477,17 @@ fn wire_lib(text: &str) -> Option<String> {
         return None;
     }
     let indent = line.len() - line.trim_start().len();
-    let components = format!("{}.components(ui::COMPONENTS)", " ".repeat(indent + 4));
-    let module = [MODULE_DOC.to_string(), "pub mod ui;".to_string()];
-    // The later line first, so the earlier insertion does not move it.
-    if mod_at > at {
-        lines.splice(mod_at..mod_at, module);
-        lines.insert(at + 1, components);
-    } else {
-        lines.insert(at + 1, components);
-        lines.splice(mod_at..mod_at, module);
-    }
+    lines.insert(at + 1, format!("{}.components({list})", " ".repeat(indent + 4)));
+    Some(joined(&lines, text))
+}
+
+/// The lines as one text, ending as `was` ends.
+fn joined(lines: &[String], was: &str) -> String {
     let mut out = lines.join("\n");
-    if text.ends_with('\n') {
+    if was.ends_with('\n') {
         out.push('\n');
     }
-    Some(out)
+    out
 }
 
 fn is_mod_line(line: &str) -> bool {
@@ -351,6 +517,20 @@ fn add(root: &Path, args: &[String]) -> Result<(), String> {
     };
     let module = std::fs::read_to_string(root.join("src/ui.rs"))
         .map_err(|_| "src/ui.rs is missing: run corten ui init first".to_string())?;
+    let app = sources(root);
+    let clash = clashes(&app, &pieces);
+    if !clash.is_empty() {
+        let mut why = String::from(
+            "a component's classes are named after it, for the whole page, so two with one name and a stylesheet each do not link:\n",
+        );
+        for (path, name, piece) in &clash {
+            why.push_str(&format!("  {path} has {name}, as the kit's {piece} does\n"));
+        }
+        why.push_str(
+            "rename the app's component and run this again, or leave the kit's out (corten ui add with the other names)",
+        );
+        return Err(why);
+    }
     // Every file is checked, and every change worked out, before any is written.
     if !force {
         for piece in &pieces {
@@ -399,13 +579,14 @@ fn add(root: &Path, args: &[String]) -> Result<(), String> {
                 "add corten-ui to Cargo.toml's [dependencies] ({why}): corten_ui::{widget} is what the component styles"
             )),
         }
-        match std::fs::read_to_string(root.join("src/lib.rs")).ok().map(|t| list_ui_widgets(&t)) {
-            Some(Some(text)) if !text.is_empty() => {
-                files.push(("src/lib.rs".into(), text));
-                said.push("  edited src/lib.rs: .components(corten_ui::COMPONENTS) on the App".into());
+        let listed = app.iter().any(|(path, text)| !is_kit_file(path, text) && text.contains("corten_ui::COMPONENTS"));
+        match app.iter().find_map(|(path, text)| Some((path, list_ui_widgets(text)?))) {
+            _ if listed => {}
+            Some((path, text)) => {
+                said.push(format!("  edited {path}: .components(corten_ui::COMPONENTS) on the App"));
+                files.push((path.clone(), text));
             }
-            Some(Some(_)) => {}
-            _ => todo.push("add .components(corten_ui::COMPONENTS) to the App, after .components(ui::COMPONENTS)".to_string()),
+            None => todo.push("add .components(corten_ui::COMPONENTS) to the App, after .components(ui::COMPONENTS)".to_string()),
         }
     }
     apply(root, &files)?;
@@ -524,21 +705,15 @@ fn split_outside_quotes(text: &str, at: char) -> Result<Vec<&str>, String> {
     Ok(parts)
 }
 
-/// `src/lib.rs` with `.components(corten_ui::COMPONENTS)` after `.components(ui::COMPONENTS)`:
-/// Some(empty) when it lists them already, None when there is no line to put it after.
+/// The file with `.components(corten_ui::COMPONENTS)` after its `.components(ui::COMPONENTS)`
+/// (or `crate::ui::COMPONENTS`) line; None when it has no such line.
 fn list_ui_widgets(text: &str) -> Option<String> {
-    if text.contains("corten_ui::COMPONENTS") {
-        return Some(String::new());
-    }
     let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
-    let at = lines.iter().position(|l| l.trim() == ".components(ui::COMPONENTS)")?;
+    let at =
+        lines.iter().position(|l| matches!(l.trim(), ".components(ui::COMPONENTS)" | ".components(crate::ui::COMPONENTS)"))?;
     let indent = lines[at].len() - lines[at].trim_start().len();
     lines.insert(at + 1, format!("{}.components(corten_ui::COMPONENTS)", " ".repeat(indent)));
-    let mut out = lines.join("\n");
-    if text.ends_with('\n') {
-        out.push('\n');
-    }
-    Some(out)
+    Some(joined(&lines, text))
 }
 
 /// For each copied file of the components named (all that `src/ui/` has, by default): whether
@@ -693,9 +868,11 @@ fn list_in(module: &str, piece: &Piece) -> Option<String> {
         Some(&i) => i,
         None => match mods.last() {
             Some(&i) => i + 1,
-            // The first: before the tokens, apart from them.
+            // The first: before the tokens, apart from them, or before the list and its comment.
             None => {
-                let at = lines.iter().position(|l| l.starts_with(TOKENS_LINE))?;
+                let list = lines.iter().position(|l| l.starts_with(COMPONENTS))?;
+                let doc = if list > 0 && lines[list - 1].starts_with("///") { list - 1 } else { list };
+                let at = lines.iter().position(|l| l.starts_with(TOKENS_LINE)).unwrap_or(doc);
                 lines.insert(at, "");
                 at
             }
@@ -727,10 +904,98 @@ fn slash(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+/// Every `.rs` file under `src/`, as (its path from the root, with `/`, and its text), in path
+/// order.
+fn sources(root: &Path) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut dirs = vec![root.join("src")];
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for path in entries.flatten().map(|e| e.path()) {
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().is_some_and(|e| e == "rs")
+                && let (Ok(text), Ok(at)) = (std::fs::read_to_string(&path), path.strip_prefix(root))
+            {
+                out.push((slash(at), text));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// The kit's files in the app: `src/ui.rs` and each copy `corten ui add` wrote, which starts with
+/// its stamp (`// corten ui 0.1.0: button ..`) wherever the app keeps it.
+fn is_kit_file(path: &str, text: &str) -> bool {
+    path == "src/ui.rs" || text.starts_with("// corten ui ")
+}
+
+/// The components a file declares with a stylesheet of their own (`#[component(css)]`, with
+/// `js` or not, by any path to the attribute): each styles the classes its name makes and exports a
+/// symbol of that name, so two of one name in a program fail to link. A part (`css = Owner`)
+/// styles its owner's. Comments (a doc example) are not read.
+fn styled_components(text: &str) -> Vec<String> {
+    let code = |line: &str| line.split("//").next().unwrap_or("").trim().to_string();
+    let mut out = Vec::new();
+    let mut lines = text.lines().map(code);
+    while let Some(line) = lines.next() {
+        let attr = line.strip_prefix("#[").and_then(|l| l.strip_suffix("]")).map(|l| l.trim_start_matches("::"));
+        let Some(args) = attr
+            .and_then(|a| a.strip_prefix("corten::").or(Some(a)))
+            .and_then(|a| a.strip_prefix("component("))
+            .and_then(|a| a.strip_suffix(')'))
+        else {
+            continue;
+        };
+        if !args.split(',').any(|a| a.trim() == "css") {
+            continue;
+        }
+        // The function after its attributes.
+        let Some(item) = lines.find(|l| !l.is_empty() && !l.starts_with("#[")) else { break };
+        let mut rest = item.as_str();
+        if let Some(after) = rest.strip_prefix("pub") {
+            rest = match after.trim_start().strip_prefix('(') {
+                Some(scope) => scope.split_once(')').map_or("", |(_, r)| r),
+                None => after,
+            }
+            .trim_start();
+        }
+        let Some(rest) = rest.strip_prefix("fn ") else { continue };
+        let name: String = rest.trim_start().chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        if !name.is_empty() {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// For each component the pieces bring that an app's own component of the same name, with its
+/// own stylesheet, would clash with: (the app's file, the name, the kit's piece).
+fn clashes(app: &[(String, String)], pieces: &[&Piece]) -> Vec<(String, String, &'static str)> {
+    let mine: Vec<(String, &str)> = app
+        .iter()
+        .filter(|(path, text)| !is_kit_file(path, text))
+        .flat_map(|(path, text)| styled_components(text).into_iter().map(move |name| (name, path.as_str())))
+        .collect();
+    let mut out = Vec::new();
+    for piece in pieces {
+        for (_, text) in piece.files.iter().filter(|(f, _)| f.ends_with(".rs")) {
+            for name in styled_components(text) {
+                for (_, path) in mine.iter().filter(|(n, _)| *n == name) {
+                    out.push((path.to_string(), name.clone(), piece.name));
+                }
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        INIT, KIT, Piece, apply, depend_on_ui, fnv, list_in, list_ui_widgets, report, stamp_of, stamped, unified, wire_lib,
+        INIT, KIT, OWN_THEME_MODULE, Piece, apply, clashes, depend_on_ui, fnv, list_in, list_ui_widgets, own_theme, report,
+        role_tokens, stamp_of, stamped, styled_components, unified, wire_app,
     };
 
     fn piece(name: &str) -> &'static Piece {
@@ -764,16 +1029,108 @@ mod tests {
         assert!(module.ends_with("    toasts::Toasts,\n];\n"), "{module}");
     }
 
+    fn app(files: &[(&str, &str)]) -> Vec<(String, String)> {
+        files.iter().map(|(p, t)| (p.to_string(), t.to_string())).collect()
+    }
+
     #[test]
     fn init_declares_the_module_in_order_and_lists_it_on_the_app() {
         let lib =
             "mod alpha;\nmod views;\n\npub fn app() -> App {\n    App::new(url::router())\n        .assets(views::Static)\n}\n";
-        let text = wire_lib(lib).unwrap();
+        let edits = wire_app(&app(&[("src/lib.rs", lib)])).unwrap();
         assert_eq!(
-            text,
-            "mod alpha;\n/// The UI kit (`corten ui`): public, so a component not used yet is not a warning.\npub mod ui;\nmod views;\n\npub fn app() -> App {\n    App::new(url::router())\n        .components(ui::COMPONENTS)\n        .assets(views::Static)\n}\n"
+            edits,
+            [(
+                "src/lib.rs".to_string(),
+                "mod alpha;\n/// The UI kit (`corten ui`): public, so a component not used yet is not a warning.\npub mod ui;\nmod views;\n\npub fn app() -> App {\n    App::new(url::router())\n        .components(ui::COMPONENTS)\n        .assets(views::Static)\n}\n"
+                    .to_string()
+            )]
         );
-        assert_eq!(wire_lib(&text), None, "a second run changes nothing");
+        assert_eq!(wire_app(&app(&[("src/lib.rs", &edits[0].1)])).unwrap(), [], "a second run changes nothing");
+    }
+
+    /// An app that builds its `App` in another module (`src/app.rs`) gets the module declared in
+    /// its root and the list on that `App`, by its path from there.
+    #[test]
+    fn init_finds_the_app_where_it_is_built() {
+        let main = "mod app;\nmod views;\n\nfn main() {}\n";
+        let built = "use corten::App;\n\npub fn app() -> App {\n    App::new(url::router())\n        .components(corten_ui::COMPONENTS)\n}\n";
+        let files = app(&[("src/app.rs", built), ("src/main.rs", main)]);
+        let edits = wire_app(&files).unwrap();
+        assert_eq!(edits.len(), 2, "{edits:?}");
+        assert!(edits[0].0 == "src/main.rs" && edits[0].1.contains("mod app;\n/// The UI kit"), "{edits:?}");
+        assert!(
+            edits[1].0 == "src/app.rs"
+                && edits[1].1.contains("        .components(crate::ui::COMPONENTS)\n        .components(corten_ui")
+        );
+        let again = app(&[("src/app.rs", &edits[1].1), ("src/main.rs", &edits[0].1)]);
+        assert_eq!(wire_app(&again).unwrap(), [], "a second run changes nothing");
+        let two = app(&[("src/a.rs", built), ("src/b.rs", built), ("src/main.rs", main)]);
+        assert!(wire_app(&two).unwrap_err().contains("src/a.rs and src/b.rs have App::new( lines"));
+        assert!(wire_app(&app(&[("src/main.rs", main)])).unwrap_err().contains("no file in src/ has an App::new( line"));
+        let lib = "mod views;\n";
+        let binary = app(&[("src/lib.rs", lib), ("src/main.rs", built)]);
+        assert!(wire_app(&binary).unwrap_err().contains("src/main.rs builds the App outside the library"), "by hand");
+    }
+
+    /// An app with a theme of its own gets the kit's module without the kit's tokens, and the names
+    /// of the tokens the components read; add lists components in it as in the kit's.
+    #[test]
+    fn an_app_with_its_own_theme_keeps_it() {
+        let names = role_tokens();
+        for name in ["background", "card", "card-foreground", "success", "warning-foreground", "ring", "radius"] {
+            assert!(names.iter().any(|n| n == name), "{names:?}");
+        }
+        assert_eq!(names.len(), 26, "{names:?}");
+        let module = list_in(&stamped(OWN_THEME_MODULE), piece("card")).unwrap();
+        let module = list_in(&module, piece("alert")).unwrap();
+        assert!(module.contains("use corten::Component;\n\npub mod alert;\npub mod card;\n\n/// Each component"), "{module}");
+        assert!(module.contains("pub const COMPONENTS: &[Component] = &[alert::Alert, card::Card];\n"), "{module}");
+        assert!(!module.contains("tokens!"));
+    }
+
+    /// The app's theme is read from the files its `tokens!` names, a resolver's sources included:
+    /// its names, and whether it has colors.
+    #[test]
+    fn init_reads_the_apps_own_theme() {
+        let dir = std::env::temp_dir().join(format!("corten-ui-theme-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("tokens")).unwrap();
+        std::fs::write(dir.join("tokens/base.tokens.json"), r##"{ "color": { "$type": "color", "ink": { "$value": "#000" } }, "card": { "$type": "color", "$value": "{color.ink}" } }"##).unwrap();
+        std::fs::write(dir.join("tokens/theme.resolver.json"), r##"{ "sets": { "base": { "sources": [{ "$ref": "base.tokens.json" }] } }, "resolutionOrder": [{ "$ref": "#/sets/base" }] }"##).unwrap();
+        std::fs::write(
+            dir.join("tokens/space.tokens.json"),
+            r##"{ "space": { "$type": "dimension", "1": { "$value": { "value": 4, "unit": "px" } } } }"##,
+        )
+        .unwrap();
+        let (names, colors) = own_theme(&dir, "corten::style::tokens!(\"tokens/theme.resolver.json\");").unwrap();
+        assert!(colors && names.contains(&"color".to_string()) && names.contains(&"card".to_string()), "{names:?}");
+        assert_eq!(own_theme(&dir, "tokens!(\"tokens/space.tokens.json\");"), Some((vec!["space".to_string()], false)));
+        assert_eq!(own_theme(&dir, "tokens!(\"tokens/missing.json\");"), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A kit component and an app's of one name, each with a stylesheet, would style one class
+    /// prefix and fail to link: add says which before it writes anything. One without a
+    /// stylesheet, a part (`css = Owner`), a doc example and the app's copies of the kit do not count.
+    #[test]
+    fn add_refuses_a_component_the_app_has_by_that_name() {
+        let layout = "use corten::prelude::*;\n\n#[component(css)]\npub fn Field(label: &str) -> impl Render {\n    html! { <div class={Field}></div> }\n}\n\n#[component(js, css)]\n#[allow(unused)]\nfn CardHeader() -> impl Render {}\n";
+        assert_eq!(styled_components(layout), ["Field", "CardHeader"]);
+        let forms = "#[corten::component(css)]\npub(crate) fn Table() {}\n#[::corten::component(js, css)] // the sort\npub(super) fn Tabs() {}\n#[component(css)]\n/// Docs between.\n#[allow(dead_code)]\nfn Badge() {}\n";
+        assert_eq!(styled_components(forms), ["Table", "Tabs", "Badge"]);
+        let copy = stamped(piece("field").files[0].1);
+        let files = app(&[("src/layout.rs", layout), ("src/views/ui/field.rs", &copy), ("src/ui/mine.rs", layout)]);
+        let found = clashes(&files, &[piece("field"), piece("card"), piece("button")]);
+        assert_eq!(
+            found,
+            [
+                ("src/layout.rs".to_string(), "Field".to_string(), "field"),
+                ("src/ui/mine.rs".to_string(), "Field".to_string(), "field")
+            ],
+            "a copy of the kit's is not the app's, wherever it is; an app's own in src/ui/ is; CardHeader is a part of Card"
+        );
+        let plain = "#[component]\npub fn Field() -> impl Render {}\n/// #[component(css)]\n/// fn Button() -> impl Render {}\n#[component(css = Panel)]\nfn Card() {}\n";
+        assert_eq!(clashes(&app(&[("src/a.rs", plain)]), &[piece("field"), piece("button"), piece("card")]), []);
     }
 
     #[test]
@@ -813,7 +1170,11 @@ mod tests {
         let lib = "    App::new(url::router())\n        .components(ui::COMPONENTS)\n        .assets(views::Static)\n";
         let text = list_ui_widgets(lib).unwrap();
         assert!(text.contains(".components(ui::COMPONENTS)\n        .components(corten_ui::COMPONENTS)\n"), "{text}");
-        assert_eq!(list_ui_widgets(&text), Some(String::new()));
+        let elsewhere = list_ui_widgets("    App::new(url::router())\n        .components(crate::ui::COMPONENTS)\n").unwrap();
+        assert!(
+            elsewhere.ends_with(".components(crate::ui::COMPONENTS)\n        .components(corten_ui::COMPONENTS)\n"),
+            "{elsewhere}"
+        );
         assert_eq!(list_ui_widgets("fn app() {}\n"), None);
     }
 
@@ -880,6 +1241,55 @@ mod tests {
                         assert!(dark.contains(&format!("\n  \"{name}\": ")), "{file} reads --{name}, which the dark theme lacks");
                     }
                 }
+            }
+        }
+    }
+
+    /// The theme's text on its backgrounds meets WCAG AA in both themes, as the guide says: each
+    /// `-foreground` on its color (4.5:1), a tone's text on a card (an alert's), the muted text on
+    /// the page and a card, and a field's border on the page (3:1, a control's boundary).
+    #[test]
+    fn the_themes_text_meets_wcag_aa() {
+        let tokens = |path: &str| INIT.iter().find(|(p, _)| *p == path).unwrap().1;
+        for file in ["tokens/ui.tokens.json", "tokens/ui-dark.tokens.json"] {
+            let text = tokens(file);
+            let hex = |name: &str| {
+                let line = text
+                    .lines()
+                    .find(|l| l.starts_with(&format!("  \"{name}\": ")))
+                    .unwrap_or_else(|| panic!("{file} has no {name}"));
+                let at = line.find("\"hex\": \"#").unwrap() + "\"hex\": \"#".len();
+                u32::from_str_radix(&line[at..at + 6], 16).unwrap()
+            };
+            let luminance = |rgb: u32| {
+                let channel = |c: u32| {
+                    let c = f64::from(c & 255) / 255.0;
+                    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+                };
+                0.2126 * channel(rgb >> 16) + 0.7152 * channel(rgb >> 8) + 0.0722 * channel(rgb)
+            };
+            let ratio = |a: &str, b: &str| {
+                let (x, y) = (luminance(hex(a)), luminance(hex(b)));
+                (x.max(y) + 0.05) / (x.min(y) + 0.05)
+            };
+            let mut pairs: Vec<(String, String, f64)> = Vec::new();
+            for line in text.lines() {
+                if let Some(name) =
+                    line.trim_start().strip_prefix('"').and_then(|l| l.split_once("-foreground\"")).map(|(n, _)| n)
+                {
+                    pairs.push((format!("{name}-foreground"), name.to_string(), 4.5));
+                }
+            }
+            for tone in ["info", "success", "warning", "destructive"] {
+                pairs.push((tone.into(), "card".into(), 4.5));
+            }
+            pairs.push(("muted-foreground".into(), "background".into(), 4.5));
+            pairs.push(("muted-foreground".into(), "card".into(), 4.5));
+            pairs.push(("input".into(), "background".into(), 3.0));
+            assert!(pairs.len() > 12, "{file}: {pairs:?}");
+            for (text_color, on, least) in pairs {
+                let r = ratio(&text_color, &on);
+                assert!(r >= least, "{file}: {text_color} on {on} is {r:.2}:1, under {least}:1");
             }
         }
     }

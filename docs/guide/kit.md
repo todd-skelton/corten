@@ -24,8 +24,8 @@ that line; otherwise it says to add it by hand.
 
 | Command | Writes |
 |---|---|
-| `corten ui init` | `tokens/ui.tokens.json` (light), `tokens/ui-dark.tokens.json` and `tokens/ui.resolver.json` (the theme modifier, following the system when the page chose no theme), `src/ui.rs` (the tokens and the `COMPONENTS` list), the page's colors at the end of `static/style.css`; in `src/lib.rs`, `mod ui;` and `.components(ui::COMPONENTS)` on the `App::new(..)` line. It refuses to run twice, and says what to do by hand when `src/lib.rs` or `static/style.css` is not where `corten new` puts them |
-| `corten ui add <name>..`, `--all` | each component's files in `src/ui/`, `pub mod <name>;` and the component in `src/ui.rs`'s `COMPONENTS`, laid out as rustfmt does; for a component that styles a corten-ui widget, `corten-ui` in `Cargo.toml` from where `corten` comes (next to a local `corten`, the same Git repository and revision, else this command's release) and `.components(corten_ui::COMPONENTS)` on the `App`. A file that exists is refused, before anything is written, unless `--force` |
+| `corten ui init` | `tokens/ui.tokens.json` (light), `tokens/ui-dark.tokens.json` and `tokens/ui.resolver.json` (the theme modifier, following the system when the page chose no theme), `src/ui.rs` (the tokens and the `COMPONENTS` list), the page's colors at the end of `static/style.css` (unless it sets `color-scheme` already, when it says what to add); `pub mod ui;` among the crate root's `mod` lines (`src/lib.rs`, else `src/main.rs`) and `.components(ui::COMPONENTS)` on the crate's one `App::new(..)` line, in whichever file builds the `App` (`crate::ui::COMPONENTS` from another module). An app with colors of its own (a `tokens!` theme with a color token) keeps them: `init` writes only `src/ui.rs`, without the kit's tokens, and names the tokens the components read that the theme lacks ([below](#an-apps-own-theme)). A binary that builds its `App` beside a `src/lib.rs` is told to add the line by hand. It refuses to run twice, and says what to do by hand when it cannot place a line |
+| `corten ui add <name>..`, `--all` | each component's files in `src/ui/`, `pub mod <name>;` and the component in `src/ui.rs`'s `COMPONENTS`, laid out as rustfmt does; for a component that styles a corten-ui widget, `corten-ui` in `Cargo.toml` from where `corten` comes (next to a local `corten`, the same Git repository and revision, else this command's release) and `.components(corten_ui::COMPONENTS)` on the `App`, unless a file of the crate lists it already. A file that exists is refused, before anything is written, unless `--force`; so is a component the app has by the same name with a stylesheet of its own (a `Field` in `src/layout.rs`), naming the file, since the two would style one class prefix and the program would not link |
 | `corten ui diff [name]..` | nothing: for each copied file (of the components named, or all of `src/ui/`), whether the app edited it, whether the kit changed it since the copy, and a unified diff from the copy to the kit this command carries. A file the kit changed and the app did not is the kit's to replace (`corten ui add --force`); one both changed is merged by hand |
 
 Each file starts with the kit version it came from and a hash of the file as written
@@ -38,14 +38,51 @@ one the command's version ships.
 The token names are shadcn/ui's, so a theme made for it maps one variable to one token:
 `--background`, `--foreground`, `--card`, `--popover`, `--primary`, `--secondary`, `--muted`,
 `--accent`, `--destructive` (each with a `-foreground` for the text on it), `--border`,
-`--input`, `--ring` and `--radius`. They are tokens at the top of the file, so each is a custom
-property with no Rust enum. To bring a theme over, write each of its colors into
-`ui.tokens.json` (`:root`'s) and `ui-dark.tokens.json` (`.dark`'s) as the [styles
+`--input`, `--ring` and `--radius`, and three tones for status that shadcn/ui leaves to the app,
+`--info`, `--success` and `--warning` (each with a `-foreground`), which `Badge` and `Alert`
+use. They are tokens at the top of the file, so each is a custom property with no Rust enum, and
+none is named as an app's own scales are (`--color-accent`), so the kit's theme and an app's can
+be on one page without one replacing the other's values. To bring a theme over, write each of its
+colors into `ui.tokens.json` (`:root`'s) and `ui-dark.tokens.json` (`.dark`'s) as the [styles
 guide](styles.md#design-tokens) writes colors (sRGB with its hex, or `oklch`); the startup check
 fails, naming the file and property, if a component reads one the theme lacks. The kit's own
-look is warm grays with a weathering-steel orange as `--primary` and `--ring`; each pair of
-text and background meets WCAG AA contrast (4.5:1) in both themes, and `--input` (a field's
-border) 3:1.
+look is warm grays with a weathering-steel orange as `--primary` and `--ring`. Its text meets
+WCAG AA contrast in both themes, which a test of `corten ui` checks: each `-foreground` on its
+color, each tone on a card (an alert's text) and the muted text on the page and on a card 4.5:1,
+and `--input` (a field's border) 3:1 on the page.
+
+### An app's own theme
+
+An app whose `tokens!` theme has colors when it runs `corten ui init` keeps it, and the components
+read their tokens from it: `init` reads the theme's files and writes `src/ui.rs` with no tokens of
+the kit, and names the tokens the components read that the theme lacks. (A theme with no colors, a
+spacing scale alone, gets the kit's theme beside it, as an app with none does.) Declare each at the top of the app's token file, most as a reference to a token
+the app has, so it follows the app's other themes (dark, a density) with nothing more:
+
+```json
+{
+  "color": { "$type": "color", "surface": { "$value": { "colorSpace": "srgb", "components": [1, 1, 1], "hex": "#ffffff" } } },
+  "card": { "$type": "color", "$value": "{color.surface}" }
+}
+```
+
+The app does not start while a component reads a token no stylesheet declares, and the error names
+the stylesheet and the token, so a missing one is found at the first run.
+
+A utility over the kit's tokens, a text color for each tone (`fg_success()`), lists them as its
+values, which gives it a Rust enum as a group does:
+
+```json
+"$extensions": {
+  "run.corten": {
+    "utilities": {
+      "fg": { "property": "color", "values": { "muted": "var(--muted-foreground)", "success": "var(--success)", "warning": "var(--warning)" } }
+    }
+  }
+}
+```
+
+on the token file's root, as the [styles guide](styles.md#design-tokens) places utilities.
 
 ## Components
 
@@ -77,9 +114,9 @@ they are the whole page's.
 | Component | Renders | Variants |
 |---|---|---|
 | `Button` | the look of the `<button>` or `<a>` inside it | `ButtonVariant`: `Primary`, `Secondary`, `Outline`, `Ghost`, `Destructive`, `Link`; `ButtonSize`: `Sm`, `Md`, `Lg`, `Icon` |
-| `Badge` | a `<span>` label | `BadgeVariant`: `Primary`, `Secondary`, `Outline`, `Destructive` |
+| `Badge` | a `<span>` label | `BadgeVariant`: `Primary`, `Secondary`, `Outline`, `Info`, `Success`, `Warning`, `Destructive` |
 | `Card`, `CardHeader`, `CardContent`, `CardFooter` | a surface and its parts; the heading and description in the header are the app's (`<h2>` or `<h3>`, as the page's outline needs, then `<p>`) | |
-| `Alert` | a `role="alert"` box, so a screen reader reads it when a patch brings it in | `AlertVariant`: `Neutral`, `Destructive` |
+| `Alert` | a box whose role follows its variant, so a screen reader interrupts only for what needs the user now: `role="alert"` for `Warning` and `Destructive` (read at once when a patch brings it in), `role="status"` for `Success` (read politely; one brought in with its text is not read by every screen reader, so the result of an action is a toast, corten-ui's `Toaster`), none for `Neutral` and `Info` (read in the page's order) | `AlertVariant`: `Neutral`, `Info`, `Success`, `Warning`, `Destructive` |
 | `Field` | a `<label for={id}>`, the control (a kit control or a corten-ui widget, its parts in one row), then a note: a hint in text, or the server's message for the field (`note={e.message(f.email)}`), drawn destructive | |
 | `Input`, `Textarea`, `Select`, `Slider` | the look of the `<input>`, `<textarea>`, `<select>` or `<input type="range">` inside it, with the destructive border once the user has edited an invalid value (`:user-invalid`) or the server marked it (`aria-invalid`, which `e.aria(field)` writes); `Select` styles the open list where the browser has `appearance: base-select` | |
 | `Checkbox`, `Switch` | a `<label>` with the `<input type="checkbox">` inside and its text after; a switch is `role="switch"` on the checkbox, so it posts as one | |

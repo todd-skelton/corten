@@ -8,6 +8,9 @@ pub enum BadgeVariant {
     Primary,
     Secondary,
     Outline,
+    Info,
+    Success,
+    Warning,
     Destructive,
 }
 
@@ -27,6 +30,9 @@ pub fn Badge<C: Render>(variant: BadgeVariant, children: C) -> impl Render {
         BadgeVariant::Primary => Primary,
         BadgeVariant::Secondary => Secondary,
         BadgeVariant::Outline => Outline,
+        BadgeVariant::Info => Info,
+        BadgeVariant::Success => Success,
+        BadgeVariant::Warning => Warning,
         BadgeVariant::Destructive => Destructive,
     };
     html! { <span class={(Badge, variant)}>{children}</span> }
