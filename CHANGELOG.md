@@ -2529,18 +2529,19 @@ Corten is pre-1.0, so any minor version may change the API.
 91. A failure under `NoStore` is sent with `Cache-Control: no-store`, as its doc says: the error
     page that replaces the failed answer kept the default, `private, no-cache`, which let the
     browser keep an expired code's page or someone else's statement's 404 and restore it from its
-    back/forward cache. A failure whose `Cache-Control` says `no-store` (`NoStore`'s, or one
-    written by hand) now gets an error page sent `no-store` (a JSON failure already kept it). A
+    back/forward cache. A failure whose `Cache-Control` names `no-store` (`NoStore`'s, or one
+    written by hand, however a cache could find it) now gets an error page sent `no-store` (a JSON failure already kept it). A
     request refused before the handler runs, a panic and a deadline never reach `NoStore` and
     keep the default. When Corten decides whether an answer may be shared, a `Cache-Control`
     written by hand now counts for what it plainly says, on any of its lines:
-    `private="set-cookie"`, `no-store=1` and a directive inside a quoted value no longer stand
-    for `private` or `no-store`, and neither does a first line with a byte outside ASCII (it
-    stood for `private`), so an answer that sets a cookie or read a caller with only those is
-    sent `private, no-cache`. A header is left as written only when it is one line of plain text
-    with no quoted value; otherwise a `private` is not trusted, and a `no-store` is sent on one
-    line (several joined, or `no-store` alone beside a quoted value, a byte that is not text or
-    `must-understand`, with which a cache that knows the status may ignore it), so a cache that
+    `private="set-cookie"`, `no-store=1`, a directive inside a quoted value and a `no-store`
+    with `must-understand` (which a cache that knows the status may ignore) no longer stand for
+    `private` or `no-store`, and neither does a first line with a byte outside ASCII (it stood
+    for `private`). An answer that sets a cookie or read a caller with only those is sent
+    `private, no-cache`, or `no-store` if any reader could find one in its header. A plain
+    `no-store` or `private` is trusted as written only on one line of plain text with no quoted
+    value; otherwise a `private` is not trusted, and a `no-store` is sent on one line (several
+    joined, or `no-store` alone beside a quoted value or a byte that is not text), so a cache that
     reads only one line, or a value another way, is told the same.
     Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
     requests over 1,000, median of three and the range of the nine pairs, against main at

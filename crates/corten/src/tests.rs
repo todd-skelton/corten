@@ -3176,11 +3176,13 @@ async fn a_failure_under_no_store_is_not_stored() {
 }
 
 /// A `Cache-Control` whose `private` or `no-store` is not a plain directive (in a quoted value, a
-/// line that is not text, `no-store=1`) is not taken as one: an answer that sets a cookie or read a
-/// caller goes out `private, no-cache`. A header is left as written only on one line of plain text
-/// with no quoted value: otherwise a `no-store` goes out on one line (`no-store` alone beside a
-/// quoted value, a byte that is not text or `must-understand`), and a `private` is not trusted, so
-/// a cache that reads only one line, or a value another way, is told the same.
+/// line that is not text, `no-store=1`, with `must-understand`) is not trusted: an answer that sets
+/// a cookie or read a caller goes out `private, no-cache`, or `no-store` when any reader could find
+/// one in its header. A plain `no-store` or `private` is trusted as written only on one line of
+/// plain text with no quoted value: otherwise a `no-store` goes out on one line (`no-store` alone
+/// beside a quoted value or a byte that is not text), so a cache that reads only one line, or a
+/// value another way, is told the same. `must-understand, no-store` on an answer nothing makes
+/// personal is left as written.
 #[tokio::test]
 async fn a_cache_control_counts_only_for_what_it_plainly_says() {
     let router = Router::new()
@@ -3287,6 +3289,13 @@ async fn a_cache_control_counts_only_for_what_it_plainly_says() {
             }),
         )
         .route(
+            "/must-understand-shared",
+            get(|| async {
+                let line = [(header::CACHE_CONTROL, "max-age=60, must-understand, no-store")];
+                (axum::response::AppendHeaders(line), "kept only by a cache that knows a 200")
+            }),
+        )
+        .route(
             "/must-understand-failure",
             get(|| async {
                 let line = [(header::CACHE_CONTROL, "must-understand, no-store")];
@@ -3333,11 +3342,12 @@ async fn a_cache_control_counts_only_for_what_it_plainly_says() {
     let router = app(router, Some("ann"));
     for (path, want) in [
         ("/odd-line", "private, no-cache"),
-        ("/quoted", "private, no-cache"),
-        ("/quoted-failure", "private, no-cache"),
-        ("/valued", "private, no-cache"),
+        ("/quoted", "no-store"),
+        ("/quoted-failure", "no-store"),
+        ("/valued", "no-store"),
         ("/second-line", "public, max-age=600, no-store"),
-        ("/escaped", "private, no-cache"),
+        ("/escaped", "no-store"),
+        ("/must-understand-shared", "max-age=60, must-understand, no-store"),
         ("/private-then-no-store", "private, max-age=600, no-store"),
         ("/must-understand", "no-store"),
         ("/must-understand-failure", "no-store"),

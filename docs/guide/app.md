@@ -690,9 +690,12 @@ A `Cache-Control` written by hand counts for what it plainly says: a `no-store` 
 lines, and a `private` only when the header is one line of plain text with no quoted value (with
 more lines, a quoted value or a byte that is not text, a cache could read it another way). A
 directive with a value (`private="set-cookie"`, which lets a shared cache keep the rest, or
-`no-store=1`) or inside a quoted value does not count. A `no-store` goes out where every reader
-sees it: several lines are joined into one, and beside a quoted value, a byte that is not text
-or `must-understand` (with which a cache that knows the status may ignore it) it goes out alone.
+`no-store=1`) or inside a quoted value does not count, nor does a `no-store` with
+`must-understand` (a cache that knows the status may ignore it), which is left as written unless
+the answer is personal. A `no-store` goes out where every reader sees it: several lines are
+joined into one, and beside a quoted value or a byte that is not text it goes out alone. An
+answer that sets a cookie or read a caller, whose header does not count, goes out
+`private, no-cache`, or `no-store` if any reader could find one in its header.
 
 An answer at a URL that names its content (a hash of its bytes, as an uploaded picture's can be)
 never changes there. `Public::immutable(answer)` sends it as Corten's versioned files are sent,
@@ -1266,9 +1269,9 @@ The error page keeps the headers the failed response had (a request id, `Retry-A
 `WWW-Authenticate`, `Server-Timing`, `Allow`), so what a handler or a middleware said about a
 failure still reaches the client. The ones that described the old body (`Content-*`, `ETag`,
 `Last-Modified`) and `Cache-Control` are the error page's own, and a header the error page sets
-wins, except a `Cache-Control` with `no-store` (`NoStore`, or one written by hand, on any of its
-lines and whatever else it says): the failure said nothing may keep it, so the error page goes
-out `no-store`.
+wins, except a `Cache-Control` that names `no-store` (`NoStore`, or one written by hand, on any
+of its lines and however a cache could find it): the failure said nothing may keep it, so the
+error page goes out `no-store`.
 
 The error page is an async function of the `Failure` and then extractors, as a handler's
 arguments are, with the state they read given beside it (`()` for none). A layout that shows

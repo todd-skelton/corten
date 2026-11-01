@@ -199,7 +199,9 @@ const NOTICE_GONE: [&[u8]; 2] = [b"__Host-corten-notice=;", b"corten-notice=;"];
 /// of a shared one when the response may differ between users.
 pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     // One lookup for the usual response, which says nothing.
-    let text = match res.headers_mut().entry(header::CACHE_CONTROL) {
+    // `personal`: what an answer that may differ between users is sent instead of a header that
+    // would let a cache keep it.
+    let (text, personal) = match res.headers_mut().entry(header::CACHE_CONTROL) {
         header::Entry::Vacant(entry) => {
             entry.insert(PRIVATE);
             return;
@@ -207,13 +209,14 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
         header::Entry::Occupied(mut entry) => {
             // The directives of every line count, as HTTP joins them (a second line is rare: only
             // a header written by hand has one). Only a plain `private` makes the answer private:
-            // `private="set-cookie"` still lets a shared cache keep the rest. The header is left
-            // as written only when every reader sees it alike: one line of plain text with no
-            // quoted value. Otherwise a `no-store` goes out as one line of plain text (the lines
-            // joined, or `no-store` alone beside a quoted value or a byte that is not text), and
-            // such a `private` is not trusted (an answer that sets a cookie or read a caller
-            // still goes out `private, no-cache` below). With `must-understand`, a cache that
-            // knows the status may ignore `no-store` (RFC 9111 5.2.2.3), so it goes out alone.
+            // `private="set-cookie"` still lets a shared cache keep the rest. A `no-store` or
+            // `private` is trusted as written only when every reader sees it alike: one line of
+            // plain text with no quoted value. Otherwise a `no-store` goes out as one line of
+            // plain text (the lines joined, or `no-store` alone beside a quoted value or a byte
+            // that is not text), and such a `private` is not trusted (an answer that sets a cookie
+            // or read a caller is still made private below). With `must-understand`, a cache that
+            // knows the status may ignore `no-store` (RFC 9111 5.2.2.3): the header is left as
+            // written unless the answer is personal.
             let (mut no_store, mut private, mut must_understand) = (false, false, false);
             let (mut lines, mut quoted, mut text) = (0, false, true);
             for line in entry.iter() {
@@ -226,8 +229,8 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
                 text &= line.to_str().is_ok();
             }
             let plain = lines == 1 && !quoted && text;
-            if no_store {
-                if quoted || !text || must_understand {
+            if no_store && !must_understand {
+                if quoted || !text {
                     entry.insert(NO_STORE);
                 } else if lines > 1 {
                     let mut joined = Vec::new();
@@ -244,7 +247,11 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
             if private && plain {
                 return;
             }
-            entry.get().to_str().unwrap_or("").to_string()
+            // A personal answer whose header is replaced below gets `no-store` if any reader
+            // could find one in it (`no-store=1`, inside a quoted value, with `must-understand`):
+            // stricter than `private, no-cache` for every reading.
+            let personal = if entry.iter().any(|line| mentions_no_store(line.as_bytes())) { NO_STORE } else { PRIVATE };
+            (entry.get().to_str().unwrap_or("").to_string(), personal)
         }
     };
     let typed = res.extensions().get::<Typed>().is_some();
@@ -262,15 +269,15 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     };
     if let Some(bug) = bug {
         if seen.dev {
-            tracing::warn!("corten: {path} is marked for shared caches, but {bug}, so it was sent private, no-cache");
+            tracing::warn!("corten: {path} is marked for shared caches, but {bug}, so it was sent private, no-cache (or no-store, if its header names it)");
         }
-        headers.insert(header::CACHE_CONTROL, PRIVATE);
+        headers.insert(header::CACHE_CONTROL, personal);
         return;
     }
     let named = res.extensions().get::<Named>().is_some();
     let headers = res.headers_mut();
     if seen.caller || (typed && seen.credentials && !named) {
-        headers.insert(header::CACHE_CONTROL, PRIVATE);
+        headers.insert(header::CACHE_CONTROL, personal);
         return;
     }
     if !typed {
@@ -282,6 +289,12 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
     if !named {
         headers.append(header::VARY, HeaderValue::from_static("cookie"));
     }
+}
+
+/// Whether a `Cache-Control` line has `no-store` anywhere in it, as a reader that matches text
+/// would find it (case aside).
+pub(crate) fn mentions_no_store(line: &[u8]) -> bool {
+    line.windows(8).any(|w| w.eq_ignore_ascii_case(b"no-store"))
 }
 
 /// `Cache-Control: no-store`, as `NoStore` writes it.

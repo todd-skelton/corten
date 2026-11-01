@@ -1882,17 +1882,17 @@ fn no_assets(path: &'static str) -> crate::assets::AssetUrl<'static> {
 
 /// `res` with the headers of the failed response it replaces, `kept`, except the ones that
 /// described its body or that Corten sets for the answer it sends (`Cache-Control`, its own
-/// `corten-` headers); a header `res` has already wins. A `Cache-Control` that says `no-store`
-/// (`NoStore`, or one written by hand, on any of its lines) makes `res` `no-store` too: whoever
-/// set it said nothing may keep the answer, a failure included. Its other directives described the
-/// failed answer, so they are not carried.
+/// `corten-` headers); a header `res` has already wins. A `Cache-Control` that names `no-store`
+/// (`NoStore`, or one written by hand, on any of its lines, however a reader could find it) makes
+/// `res` `no-store` too: whoever set it said nothing may keep the answer, a failure included. Its
+/// other directives described the failed answer, so they are not carried.
 fn carried(kept: HeaderMap, mut res: Response) -> Response {
     if kept.is_empty() {
         return res;
     }
     use axum::http::header::Entry;
     let headers = res.headers_mut();
-    if kept.get_all(header::CACHE_CONTROL).iter().any(|line| crate::cache::says(line.as_bytes()).no_store) {
+    if kept.get_all(header::CACHE_CONTROL).iter().any(|line| crate::cache::mentions_no_store(line.as_bytes())) {
         headers.insert(header::CACHE_CONTROL, crate::cache::NO_STORE);
     }
     let mut kept_name = None;
