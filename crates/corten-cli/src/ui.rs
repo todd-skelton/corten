@@ -179,8 +179,10 @@ fn init(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Writes every file, or none. Each text is first written next to its file (`.<name>.corten-ui`),
-/// which touches nothing the app has; only when all are written does each replace its file, and
+/// Writes every file, or none. Each text is first written to a new file next to its own
+/// (`.<name>.corten-ui`; refused if the app has one by that name), which touches nothing the app
+/// has; only when all are written does each replace its file (`rename`, which replaces an
+/// existing file on Windows too), and
 /// when one cannot, those replaced before it are put back as they were (a new one removed), so a
 /// retry starts where the first try did. A file that cannot be put back is named in the error.
 /// Each path is relative to `root`.
@@ -191,13 +193,21 @@ fn apply(root: &Path, files: &[(String, String)]) -> Result<(), String> {
         let path = root.join(path);
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let temp = path.with_file_name(format!(".{name}.corten-ui"));
-        let written = make_dirs(&path, &mut made).and_then(|()| write(&temp, text));
-        if let Err(error) = written {
-            staged.push((path, temp));
+        if let Err(error) = make_dirs(&path, &mut made) {
             let left = undo(&[], &staged, &made);
             return Err(rolled_back(&error, &left));
         }
-        staged.push((path, temp));
+        // Only a file this call created is staged, so only it is removed on the way back.
+        match stage(&temp, text) {
+            Ok(()) => staged.push((path, temp)),
+            Err((error, created)) => {
+                if created {
+                    staged.push((path, temp));
+                }
+                let left = undo(&[], &staged, &made);
+                return Err(rolled_back(&error, &left));
+            }
+        }
     }
     let mut done: Vec<(PathBuf, Option<Vec<u8>>)> = Vec::new();
     for (path, temp) in &staged {
@@ -209,6 +219,21 @@ fn apply(root: &Path, files: &[(String, String)]) -> Result<(), String> {
         done.push((path.clone(), before));
     }
     Ok(())
+}
+
+/// Writes `text` to `temp`, a file that must not exist yet. The error says whether the file was
+/// created (and so is this call's to remove).
+fn stage(temp: &Path, text: &str) -> Result<(), (String, bool)> {
+    use std::io::Write;
+    let mut out = std::fs::OpenOptions::new().write(true).create_new(true).open(temp).map_err(|e| {
+        let why = if e.kind() == std::io::ErrorKind::AlreadyExists {
+            "is in the way of the file this command writes beside its own; move it and run it again".to_string()
+        } else {
+            e.to_string()
+        };
+        (format!("{}: {why}", temp.display()), false)
+    })?;
+    out.write_all(text.as_bytes()).and_then(|()| out.sync_all()).map_err(|e| (format!("{}: {e}", temp.display()), true))
 }
 
 /// Creates the directories `path` needs, adding each one made to `made`, outermost first.
@@ -408,19 +433,21 @@ fn depend_on_ui(text: &str) -> Result<Option<String>, String> {
     }
     let at = section.iter().position(|l| l.trim_start().starts_with("corten ") || l.trim_start().starts_with("corten="));
     let at = start + 1 + at.ok_or("it has no corten line in [dependencies]")?;
-    let corten = lines[at];
-    let dependency = if let Some(path) = field(corten, "path")? {
-        let parent = path.strip_suffix("corten").ok_or("corten's path does not end at the corten crate")?;
-        format!("corten-ui = {{ path = \"{parent}corten-ui\" }}")
-    } else if let Some(git) = field(corten, "git")? {
-        let mut keys = vec![format!("git = \"{git}\"")];
-        for key in ["branch", "tag", "rev"] {
-            if let Some(value) = field(corten, key)? {
-                keys.push(format!("{key} = \"{value}\""));
-            }
-        }
+    let fields = dependency_fields(lines[at])?;
+    let get = |key: &str| fields.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str());
+    let dependency = if let Some(path) = get("path") {
+        // The value as written, quotes and escapes kept: `corten` is its last segment.
+        let (quote, body) = path.split_at(1);
+        let parent = body
+            .strip_suffix(quote)
+            .and_then(|p| p.strip_suffix("corten"))
+            .ok_or("corten's path does not end at the corten crate")?;
+        format!("corten-ui = {{ path = {quote}{parent}corten-ui{quote} }}")
+    } else if let Some(git) = get("git") {
+        let mut keys = vec![format!("git = {git}")];
+        keys.extend(["branch", "tag", "rev"].into_iter().filter_map(|key| get(key).map(|v| format!("{key} = {v}"))));
         format!("corten-ui = {{ {} }}", keys.join(", "))
-    } else if corten.contains("workspace") || corten.contains("registry") {
+    } else if get("workspace").is_some() || get("registry").is_some() {
         return Err("corten comes from the workspace or another registry, so corten-ui must come from the same place".into());
     } else {
         format!("corten-ui = \"{}\"", env!("CARGO_PKG_VERSION"))
@@ -434,21 +461,67 @@ fn depend_on_ui(text: &str) -> Result<Option<String>, String> {
     Ok(Some(text_out))
 }
 
-/// The string value of `key` in a dependency's inline table (`key = "value"`), None when the
-/// table has no such key.
-fn field<'a>(line: &'a str, key: &str) -> Result<Option<&'a str>, String> {
-    let mut rest = line;
-    while let Some(at) = rest.find(key) {
-        let before = rest[..at].chars().next_back();
-        let after = rest[at + key.len()..].trim_start();
-        if matches!(before, Some('{' | ',' | ' ')) && after.starts_with('=') {
-            let value = after[1..].trim_start();
-            let value = value.strip_prefix('"').ok_or_else(|| format!("corten's {key} is not a string"))?;
-            return Ok(Some(value.split_once('"').ok_or_else(|| format!("corten's {key} is not closed"))?.0));
-        }
-        rest = &rest[at + key.len()..];
+/// The keys of a `corten = ..` line, each with its value as written (a string with its quotes):
+/// none for a version alone (`corten = "0.1"`). A comment is not read. An error for what this
+/// does not read exactly, a table that goes on past its line among them, so the caller says to
+/// add `corten-ui` by hand rather than add the wrong one.
+fn dependency_fields(line: &str) -> Result<Vec<(String, String)>, String> {
+    let parts = split_outside_quotes(line, '#')?;
+    let code = parts[0].trim();
+    let value = code.split_once('=').map(|(_, v)| v.trim()).ok_or("corten's line has no value")?;
+    if value.starts_with(['"', '\'']) {
+        return Ok(Vec::new());
     }
-    Ok(None)
+    let inner = value
+        .strip_prefix('{')
+        .and_then(|v| v.strip_suffix('}'))
+        .ok_or("corten's table goes on past its line, or is not an inline table")?;
+    let mut fields = Vec::new();
+    for part in split_outside_quotes(inner, ',')? {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let (key, value) =
+            part.split_once('=').ok_or_else(|| format!("corten's table has {part:?}, which is not key = value"))?;
+        let key = key.trim().trim_matches(['"', '\'']).to_string();
+        fields.push((key, value.trim().to_string()));
+    }
+    Ok(fields)
+}
+
+/// `text` split at each `at` outside a string or an array (`[..]`, as `features` is). An error
+/// when a string is not closed.
+fn split_outside_quotes(text: &str, at: char) -> Result<Vec<&str>, String> {
+    let (mut parts, mut start, mut quote, mut depth) = (Vec::new(), 0, None, 0usize);
+    let mut chars = text.char_indices();
+    while let Some((i, c)) = chars.next() {
+        match (quote, c) {
+            // A basic string's escape: the next character is part of it.
+            (Some('"'), '\\') => {
+                chars.next();
+            }
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => quote = Some(c),
+            (None, '[') => depth += 1,
+            (None, ']') => depth = depth.saturating_sub(1),
+            (None, c) if c == at && depth == 0 => {
+                parts.push(&text[start..i]);
+                start = i + c.len_utf8();
+                if at == '#' {
+                    // A comment runs to the end of the line.
+                    return Ok(parts);
+                }
+            }
+            _ => {}
+        }
+    }
+    if quote.is_some() {
+        return Err("corten's line has a string that is not closed".into());
+    }
+    parts.push(&text[start..]);
+    Ok(parts)
 }
 
 /// `src/lib.rs` with `.components(corten_ui::COMPONENTS)` after `.components(ui::COMPONENTS)`:
@@ -654,13 +727,6 @@ fn slash(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn write(path: &Path, text: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
-    }
-    std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -731,11 +797,45 @@ mod tests {
             depend_on_ui(branch).unwrap().unwrap().contains("corten-ui = { git = \"https://example.com/c\", branch = \"main\" }")
         );
         assert!(depend_on_ui("[dependencies]\ncorten = { workspace = true }\n").is_err());
+        let quoted = "[dependencies]\ncorten = { git = 'https://example.com/c', tag = 'v0.2' } # path = \"nope\"\n";
+        assert!(
+            depend_on_ui(quoted).unwrap().unwrap().contains("\ncorten-ui = { git = 'https://example.com/c', tag = 'v0.2' }\n"),
+            "single quotes, and a comment is not read"
+        );
+        let commented = "[dependencies]\ncorten = \"0.1\" # { git = \"https://example.com/c\" }\n";
+        assert!(depend_on_ui(commented).unwrap().unwrap().contains(&format!("corten-ui = \"{}\"", env!("CARGO_PKG_VERSION"))));
+        // What this does not read exactly is the app's to write, never a guess.
+        let spans = "[dependencies]\ncorten = { git = \"https://example.com/c\",\n    rev = \"abc\" }\n";
+        assert!(depend_on_ui(spans).is_err(), "a table that goes on past its line");
+        assert!(depend_on_ui("[dependencies]\n\n[dependencies.corten]\ngit = \"https://example.com/c\"\n").is_err());
+        let features = "[dependencies]\ncorten = { path = \"../corten\", features = [\"a\", \"b\"] }\n";
+        assert!(depend_on_ui(features).unwrap().unwrap().contains("corten-ui = { path = \"../corten-ui\" }"));
         let lib = "    App::new(url::router())\n        .components(ui::COMPONENTS)\n        .assets(views::Static)\n";
         let text = list_ui_widgets(lib).unwrap();
         assert!(text.contains(".components(ui::COMPONENTS)\n        .components(corten_ui::COMPONENTS)\n"), "{text}");
         assert_eq!(list_ui_widgets(&text), Some(String::new()));
         assert_eq!(list_ui_widgets("fn app() {}\n"), None);
+    }
+
+    #[test]
+    fn a_write_replaces_a_file_that_is_there_and_leaves_nothing_beside_it() {
+        let dir = std::env::temp_dir().join(format!("corten-ui-replace-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.txt"), "old").unwrap();
+        apply(&dir, &[("a.txt".to_string(), "new".to_string()), ("b/c.txt".to_string(), "made".to_string())]).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "new");
+        assert_eq!(std::fs::read_to_string(dir.join("b/c.txt")).unwrap(), "made");
+        let mut names: Vec<String> =
+            std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        assert_eq!(names, ["a.txt", "b"]);
+        // A file of the app's where one is staged is refused, and kept as it was.
+        std::fs::write(dir.join(".a.txt.corten-ui"), "the app's").unwrap();
+        let error = apply(&dir, &[("a.txt".to_string(), "newer".to_string())]).unwrap_err();
+        assert!(error.contains("is in the way") && error.contains("nothing was changed"), "{error}");
+        assert_eq!(std::fs::read_to_string(dir.join(".a.txt.corten-ui")).unwrap(), "the app's");
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "new");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

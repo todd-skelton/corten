@@ -16,9 +16,11 @@ corten ui diff            # how the copies differ from this command's kit
 ```
 
 Each command works out every change first and writes them all or none: each file is written
-beside its place first, and only when all are written does each take its place; when one cannot,
-those placed before it are put back, so running it again starts over (a file that cannot be put
-back is named).
+beside its place first (`.<name>.corten-ui`, refused if the app has a file by that name), and
+only when all are written does each take its place; when one cannot, those placed before it are
+put back, so running it again starts over (a file that cannot be put back is named). It adds
+`corten-ui` from where `corten` comes only when `corten`'s line in `Cargo.toml` says so on
+that line; otherwise it says to add it by hand.
 
 | Command | Writes |
 |---|---|
