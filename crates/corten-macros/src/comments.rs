@@ -53,7 +53,9 @@ const BEFORE_REGEX: &[&str] = &[
 pub fn strip(source: &str) -> String {
     let bytes = source.as_bytes();
     let mut out = String::with_capacity(source.len());
-    let mut at = 0;
+    // A hashbang line (`#!...`) is a comment the scan must not read as code: it is kept as it is.
+    let mut at =
+        if source.starts_with("#!") { source.find(['\n', '\r', '\u{2028}', '\u{2029}']).unwrap_or(source.len()) } else { 0 };
     let mut copied = 0;
     let mut before = Before::Operator;
     let mut opens: Vec<Open> = Vec::new();
@@ -473,12 +475,29 @@ mod tests {
                     let source = std::fs::read_to_string(&path).unwrap();
                     if source.contains("//") || source.contains("/*") {
                         seen += 1;
-                        assert_ne!(strip(&source), source, "{} is served with its comments", path.display());
+                        let stripped = strip(&source);
+                        assert_ne!(stripped, source, "{} is served with its comments", path.display());
+                        assert_eq!(line_ends(&stripped), line_ends(&source), "{} keeps its lines", path.display());
                     }
                 }
             }
         }
         assert!(seen == 0 || seen > 10, "found {seen} scripts");
+    }
+
+    /// The line ends of a script, as JavaScript counts them (CRLF is one).
+    fn line_ends(source: &str) -> usize {
+        source.replace("\r\n", "\n").chars().filter(|c| matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')).count()
+    }
+
+    #[test]
+    fn a_hashbang_line_is_kept_and_not_read_as_code() {
+        assert_eq!(
+            strip("#! /*\nexport const a = 1;\n// */\nexport const b = 2;\n"),
+            "#! /*\nexport const a = 1;\n\nexport const b = 2;\n"
+        );
+        assert_eq!(strip("#!/x `\nexport const a = 1;\nconst b = `//c`;\n"), "#!/x `\nexport const a = 1;\nconst b = `//c`;\n");
+        assert_eq!(strip("#!/usr/bin/env node"), "#!/usr/bin/env node");
     }
 
     #[test]
