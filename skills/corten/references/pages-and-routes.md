@@ -37,7 +37,10 @@ async fn show(req: Req, Params(at): Params<url::Item<'_>>) -> HtmlResult {
    `corten::Elsewhere::at(&uri, "id")`, never a `Location` header set by hand. An area's routes are a module of their own,
    `#[corten::routes(area = Admin, caller = Staff)] mod admin` whose routes name their handlers
    the same way, mounted with `.area(admin::area)`; an API's are a `#[corten::routes(api = ApiRoot)]`
-   module, `.api(api::api)`.
+   module, `.api(api::api)`. APIs nest as areas do: a feature with JSON routes under a shared `/api`
+   gives them their own `#[corten::routes(api = Orders)]` module at `/api/orders`, mounted next to
+   the app's `/api` one, rather than adding them to the app's module or with `Api::route`; every
+   path under `/api/orders` is then that API's.
    A handler's return type is what the route answers: `HtmlResult` (a page, a patch, a
    redirect; failures are the app's error page), `JsonResult<T>` (failures are JSON), or
    `Public<..>` of either for an answer a CDN may share (`NoStore<..>` for one nothing may keep).

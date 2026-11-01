@@ -585,8 +585,9 @@ before it:
 3. The request gets its `Signal`, its nonce and the app.
 4. The deadline and the panic catch start (`Failure::TimedOut`, `Failure::Panicked`).
 5. The app's middleware, in the order given. The route has been matched, so axum's
-   `MatchedPath` names it. Then, for a request under an area's or an API's prefix, its own
-   middleware: an outer area's before an inner one's, each in the order given.
+   `MatchedPath` names it (it is absent for an unknown URL, and for a path under an API's prefix
+   that a route outside the API matched, which answers with an empty `Allow` whatever its method). Then, for a request under an area's or an API's prefix, its own
+   middleware: the areas' (outer first), then the APIs' (outer first), each in the order given.
 6. The handler's extractors (a `Caller` is looked up here, only when read), then the handler.
 7. A failure becomes its route's answer: JSON for a JSON route or a data client, the app's error
    page for a browser.
@@ -905,6 +906,63 @@ An endpoint built from a value rather than a function, the MCP endpoint (`agent:
 added to its API with `Api::route`: `.api(|routes| mcp::api(routes).route::<mcp::Mcp>(tools.route()))`.
 Corten's `get` and the others check its handlers as a routes module does.
 
+APIs nest as areas do, so each feature owns its JSON routes as it owns its pages. A feature's
+module has a prefix under the app's (`/api/forecast-calibration` in `/api`), and both are
+mounted:
+
+```rust
+use corten::prelude::*;
+use std::time::Duration;
+
+// The app's own API: here a relay of what has not moved yet.
+#[corten::routes(api = ApiRoot)]
+mod api {
+    #[route("/api")]
+    pub struct ApiRoot;
+
+    #[route("/api/{*rest}", any = relay)]
+    pub struct Rest<'a> { pub rest: &'a str }
+}
+
+// src/features/forecast/api.rs
+#[corten::routes(api = Forecast)]
+mod forecast {
+    #[route("/api/forecast-calibration", get = report)]
+    pub struct Forecast;
+}
+
+// The path as the client sent it, not the decoded `rest` (below).
+async fn relay(Params(_): Params<api::Rest<'_>>, uri: corten::axum::http::Uri) -> Json<String> {
+    Json(format!("relayed {}", uri.path()))
+}
+async fn report() -> Json<&'static str> { Json("report") }
+
+fn app(pages: Routes) -> App {
+    App::new(pages)
+        .api(|routes| api::api(routes).deadline(Duration::from_secs(15 * 60)))
+        .api(forecast::api)
+}
+# let _ = app(Routes::new()).router();
+```
+
+The inner API keeps its routes, their checks and its `state`, and its own settings; what it leaves
+unset (`deadline`, `errors`) it takes from the API around it, whose middleware runs before its
+own. A setting the inner API gives replaces the outer one; `deadline(None)` removes an inherited
+deadline, but nothing turns an inherited `errors` off: an inner API under an outer API with
+`errors` writes its failures that way, not as Problem Details. Partner sites are the exception: an inner API allows only the origins it names itself
+(`allow_origin`), so nesting a feature under a partner-enabled `/api` grants those partners
+nothing, and a site both serve is named in both. No parameter or
+catch-all route outside the inner API answers a path under its prefix: the outer catch-all
+(`/api/{*rest}`) no longer answers `/api/forecast-calibration/old`, the inner API's 404 does, so
+nothing under the prefix is relayed once the feature owns it. The same holds for every API and a
+page's catch-all (`/{*rest}`): a path under the API's prefix is the API's 404, as JSON. A path is matched as the client sent it: `/api/forecast-calibratio%6E` is not under
+the prefix, and an outer catch-all that relays it decoded reaches the old route, so a relay forwards
+the path as it came. A route the outer API writes under the inner prefix (`/api/forecast-calibration/raw` in
+`api`) does not start, and the message names the API it belongs in; a route of the app's own
+written under an API's prefix is answered with that API's settings and middleware, so it goes in
+the API. The same prefix
+given twice does not start either.
+
 A module costs nothing per request: its `api` function adds the same routes a hand-written
 `Api::route` would. Measured with callgrind (instructions per request, release build, in-process
 `oneshot`, the difference between 1,200 and 200 requests over 1,000, median of three runs;
@@ -1129,6 +1187,11 @@ pub mod url {
     pub struct OldApi<'a> { pub rest: &'a str }
 }
 ```
+
+A catch-all outside an `App::api` does not reach under its prefix: with an API at `/api/v2`,
+`/api/{*rest}` relays `/api/v1/..` and `/api/v2` answers its own unknown URLs with its JSON 404.
+What the old server still serves under the API's prefix is relayed from the API's own module, a
+`#[route("/api/v2/{*rest}", any = relay)]` there, so it meets the API's settings.
 
 ## Who is asking
 

@@ -1361,6 +1361,29 @@ Corten is pre-1.0, so any minor version may change the API.
     body passes on, and the app does not compress it. Before, such a route sent its own JSON as a
     `Relay`, uncompressed. No request path changed
     ([#541 A route that answers its own JSON for some requests and relays the rest to another service has no answer type, so a half-ported route sends its own JSON as a Relay](https://github.com/todd-skelton/corten/issues/541)).
+164. APIs nest as areas do: an API whose prefix is under another's (a feature's
+    `/api/forecast-calibration` in the app's `/api`) keeps its routes, their checks and its `state`,
+    takes the settings it leaves unset (`deadline`, `errors`) from the API around it, and meets
+    that API's middleware before its own; a setting it gives replaces the outer one. Its partner
+    sites are its own alone: the outer API's `allow_origin` grants nothing under the inner prefix,
+    for a request, a preflight or a WebSocket switch. Every path under an API's prefix is its own:
+    a parameter or catch-all route outside it (an outer API's `/api/{*rest}`, a page's `/{slug}` or
+    `/{*rest}`) does not answer one, the API's JSON 404 does. Such a request still meets every middleware a route of the
+    API would, with no `MatchedPath`, and its answer carries an empty `Allow` whatever its method or
+    status (a method the outer route lacked was a 405 with that route's `Allow`); axum's raw path
+    parameters are still the outer route's, so a middleware reads the path, not `RawPathParams`. The same prefix given twice, or an
+    outer API's route written under the inner prefix, is a startup error; before, any two prefixes
+    that overlapped were, so a feature could not own its JSON routes under a shared `/api`
+    (callgrind, release, in-process `oneshot`, the difference between 1,200 and 200 requests
+    over 1,000, three rounds alternating main and the branch; median, then the range of the three
+    runs: with two APIs side by side, `/api/ping` is 17,096, 17,096 to 17,170, against 17,061,
+    17,048 to 17,061 on main; `/v2/items/7` 18,639, 18,627 to 18,639, against 18,604; a page
+    outside every API, `/page`, 19,090, 19,084 to 19,227, against 19,054, 19,052 to 19,189: about 35
+    more a request, 0.2%, where no check runs. The check of which route matched
+    runs only for an API a parameter or catch-all route outside it can reach: nested with no such
+    route, `/api/ping` is 17,189 and `/api/items/7` 18,682; with an outer `/api/{*rest}`, 17,422 and
+    19,034, each the same in every run, a router with one more route as well as the check)
+    ([#539 An API cannot sit inside another API's prefix, so a feature cannot own its JSON routes under a shared /api the way it owns its pages in an area](https://github.com/todd-skelton/corten/issues/539)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -2126,7 +2149,15 @@ Corten is pre-1.0, so any minor version may change the API.
     began writing prices in the reader's locale (ce04961b), which is what benchmark round r7 to r8
     saw. `Currency`'s `Debug` is now its code (`Currency("USD")`, was its bytes)
     ([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
-99. A currency's symbol and fraction digits are found in the locale tables by a number, the
+99. An `App::api` in an area that sets a deadline, with none of its own, takes the area's, as the
+    area's pages do; before, it took the app's
+    ([#539 An API cannot sit inside another API's prefix, so a feature cannot own its JSON routes under a shared /api the way it owns its pages in an area](https://github.com/todd-skelton/corten/issues/539)).
+100. A parameter or catch-all route outside an `App::api` (a page's `/{slug}`, a relay's
+    `/api/{*rest}`) no longer answers a path under the API's prefix; the API's JSON 404 does, as the
+    API's docs said. A relay of the old server's paths under an API's prefix moves into the API's
+    module (`#[route("/api/v2/{*rest}", any = relay)]`), where it meets the API's settings
+    ([#539 An API cannot sit inside another API's prefix, so a feature cannot own its JSON routes under a shared /api the way it owns its pages in an area](https://github.com/todd-skelton/corten/issues/539)).
+101. A currency's symbol and fraction digits are found in the locale tables by a number, the
     code's three bytes, which `Currency` already holds; `scripts/locale-data.mjs` writes it beside
     each code. Before, `t.money`, `t.signed_money` and `Currency::parse` turned the table's code
     text into that number on each probe of the binary search, and `t.parse_money` and a script's
