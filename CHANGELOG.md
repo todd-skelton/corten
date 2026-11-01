@@ -1361,6 +1361,29 @@ Corten is pre-1.0, so any minor version may change the API.
     body passes on, and the app does not compress it. Before, such a route sent its own JSON as a
     `Relay`, uncompressed. No request path changed
     ([#541 A route that answers its own JSON for some requests and relays the rest to another service has no answer type, so a half-ported route sends its own JSON as a Relay](https://github.com/todd-skelton/corten/issues/541)).
+164. APIs nest as areas do: an API whose prefix is under another's (a feature's
+    `/api/forecast-calibration` in the app's `/api`) keeps its routes, their checks and its `state`,
+    takes the settings it leaves unset (`deadline`, `errors`) from the API around it, and meets
+    that API's middleware before its own; a setting it gives replaces the outer one. Its partner
+    sites are its own alone: the outer API's `allow_origin` grants nothing under the inner prefix,
+    for a request, a preflight or a WebSocket switch. Every path under an API's prefix is its own:
+    a parameter or catch-all route outside it (an outer API's `/api/{*rest}`, a page's `/{slug}` or
+    `/{*rest}`) does not answer one, the API's JSON 404 does. Such a request still meets every middleware a route of the
+    API would, with no `MatchedPath`, and its answer carries an empty `Allow` whatever its method or
+    status (a method the outer route lacked was a 405 with that route's `Allow`); axum's raw path
+    parameters are still the outer route's, so a middleware reads the path, not `RawPathParams`. The same prefix given twice, or an
+    outer API's route written under the inner prefix, is a startup error; before, any two prefixes
+    that overlapped were, so a feature could not own its JSON routes under a shared `/api`
+    (callgrind, release, in-process `oneshot`, the difference between 1,200 and 200 requests
+    over 1,000, three rounds alternating main and the branch; median, then the range of the three
+    runs: with two APIs side by side, `/api/ping` is 17,096, 17,096 to 17,170, against 17,061,
+    17,048 to 17,061 on main; `/v2/items/7` 18,639, 18,627 to 18,639, against 18,604; a page
+    outside every API, `/page`, 19,090, 19,084 to 19,227, against 19,054, 19,052 to 19,189: about 35
+    more a request, 0.2%, where no check runs. The check of which route matched
+    runs only for an API a parameter or catch-all route outside it can reach: nested with no such
+    route, `/api/ping` is 17,189 and `/api/items/7` 18,682; with an outer `/api/{*rest}`, 17,422 and
+    19,034, each the same in every run, a router with one more route as well as the check)
+    ([#539 An API cannot sit inside another API's prefix, so a feature cannot own its JSON routes under a shared /api the way it owns its pages in an area](https://github.com/todd-skelton/corten/issues/539)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -2126,7 +2149,29 @@ Corten is pre-1.0, so any minor version may change the API.
     began writing prices in the reader's locale (ce04961b), which is what benchmark round r7 to r8
     saw. `Currency`'s `Debug` is now its code (`Currency("USD")`, was its bytes)
     ([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
-99. The page a `data-patch` write redirects to is fetched whole (`Mode::Document`, as a full load
+99. An `App::api` in an area that sets a deadline, with none of its own, takes the area's, as the
+    area's pages do; before, it took the app's
+    ([#539 An API cannot sit inside another API's prefix, so a feature cannot own its JSON routes under a shared /api the way it owns its pages in an area](https://github.com/todd-skelton/corten/issues/539)).
+100. A parameter or catch-all route outside an `App::api` (a page's `/{slug}`, a relay's
+    `/api/{*rest}`) no longer answers a path under the API's prefix; the API's JSON 404 does, as the
+    API's docs said. A relay of the old server's paths under an API's prefix moves into the API's
+    module (`#[route("/api/v2/{*rest}", any = relay)]`), where it meets the API's settings
+    ([#539 An API cannot sit inside another API's prefix, so a feature cannot own its JSON routes under a shared /api the way it owns its pages in an area](https://github.com/todd-skelton/corten/issues/539)).
+101. A currency's symbol and fraction digits are found in the locale tables by a number, the
+    code's three bytes, which `Currency` already holds; `scripts/locale-data.mjs` writes it beside
+    each code. Before, `t.money`, `t.signed_money` and `Currency::parse` turned the table's code
+    text into that number on each probe of the binary search, and `t.parse_money` and a script's
+    money format compared text. What they write is the same: the generator still checks 1,902,560
+    values against Intl, and the i18n tests pass. Measured with callgrind (release, three rounds
+    each): card-market's item page from memory (in-process `oneshot`, the difference between 1,200
+    and 200 requests over 1,000) is 90,101 instructions a request here (89,166 to 90,101) against
+    92,366 on main at 3b197114 (91,439 to 92,414), 2.5% fewer; `t.money` alone, written with
+    `write!` into a reused `String` (so `std::fmt` is counted, unlike entry 98), is 780
+    instructions a value in `en` USD against 852, `fr` USD 848 against 931, `en` EUR 811 against
+    881 and `fr` JPY 951 against 1,036. Most of the page's rise in the issue is card-market writing
+    more prices, which stays
+    ([#545 The item page's user-mode instructions rose 14.8% between benchmark rounds r7 and r10 (95,949 to 110,172) while its CPU time per page fell](https://github.com/todd-skelton/corten/issues/545)).
+102. The page a `data-patch` write redirects to is fetched whole (`Mode::Document`, as a full load
     reads it) and the runtime draws again each element around `<main>` the server now draws
     otherwise, so a layout value the write changed (a cart count, a warning) is current with
     JavaScript as it is without; before, the navigation kept the layout the full load drew. An
@@ -2755,17 +2800,16 @@ Corten is pre-1.0, so any minor version may change the API.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
 6. The full-stack benchmark tables in the README and `bench/fullstack`, server and browser, are
-   from round r8 (2026-10-30, one c-8 droplet, Xeon Platinum 8168, the tree at `2976f15`); its
-   instruction counts are r7's (2026-10-28, Xeon Platinum 8280, `a9b1163`), since r8's droplet
-   locked up at the counting step; `bench/live` is still r3 (Xeon Platinum 8280). r7's results are kept without a
-   browser pass. Corten serves 15,747 item pages and 24,652 JSON responses a second from memory at
-   64 users (r7: 18,758 and 24,976), and 3,616 item-API pages against ASP.NET Core's 1,065 (r7:
-   3,540 and 1,157). Its page from memory fell 16.1% while the other apps moved by a median of
-   -2.0%, after a 19.9% fall from r6 to r7. A page costs 95,949 user instructions and the JSON
-   69,572 in r7. A page from memory costs 63 µs of CPU (15,890 per CPU-second; ASP.NET Core 4,184),
-   300 pages a second take 4.7% of a core (ASP.NET Core 25%), and each MiB serves 960 pages a
-   second (ASP.NET Core 48). Next.js and Laravel failed as before. The item page loads 10.2 KB of
-   JavaScript (gzip; r7 9.3 KB).
+   from round r10 (2026-11-01, one c-8 droplet, Xeon Platinum 8280, the tree at `f5c76a0`);
+   `bench/live` is still r3 (Xeon Platinum 8280). r8 is kept without instruction counts and r7
+   without a browser pass; r9 measured nothing. Corten serves 23,898 item pages and 32,155 JSON
+   responses a second from memory at 64 users (r8: 15,747 and 24,652), and 4,283 item-API pages
+   against ASP.NET Core's 1,255 (r8: 3,616 and 1,065), while the other apps that passed rose by a
+   median of 9-15% on r10's droplet. A page costs 110,172 user instructions and the JSON 69,968 (r7: 95,949
+   and 69,572). A page from memory costs 41 µs of CPU (24,459 per CPU-second; ASP.NET Core 4,648),
+   300 pages a second take 4.0% of a core (ASP.NET Core 19%), and each MiB serves 1,457 pages a
+   second (ASP.NET Core 54). Next.js and Laravel failed as before. The item page loads 10.6 KB of
+   JavaScript (gzip; r8 10.2 KB).
 7. `Form` in the prelude is `corten::Form` (Added 20), and a route's parameters its `Params`. Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
@@ -2981,6 +3025,32 @@ Corten is pre-1.0, so any minor version may change the API.
     example rather than a test. Corten adds no test mode or rollback helper: the driver's are the one
     way
     ([#506 No story for tests that need a database or a live service: #[ignore] runs both, and a live recorder ran with the database tests](https://github.com/todd-skelton/corten/issues/506)).
+42. The requests and forms guide has a section on work on something the app's data already names
+    that must not run twice (postage for an order, a batch over the same rows): inside
+    `Signal::finish` with a time budget, for each item a lock in the store every instance shares (a
+    Postgres advisory lock held in a transaction committed with the item's record), under it a check
+    of what is done already, a 502 that keeps what was bought when the provider fails, and a 409
+    showing the current state while another request holds the lock; and what it does not cover,
+    which is the app's to design for its provider (a call whose record is lost, answered by the
+    provider's idempotency key), with the timeouts and the shutdown grace the work needs. The app
+    guide's On a schedule has a job claim its run by its mark in the shared store, so it does not
+    run twice across instances while every instance claims and ticks on the marks (a clock ahead of
+    the others makes runs come early). `App::task` and `SubmitKey` say that a loop, a `Mutex` or a
+    static lock holds within one process, which a blue/green release or a scaled-out app is not;
+    `Signal::finish` and the cancellation guide say that a paid call is checked against the signal
+    before it starts rather than stopped midway, and `Refusal::Conflict` covers another request
+    acting on the same thing now
+    ([#537 The guide's one-at-a-time patterns (a schedule's loop, a shared Mutex) hold within one process, so a second instance during a blue/green release runs the work again, and a paid handler action has no pattern at all](https://github.com/todd-skelton/corten/issues/537)).
+43. The app guide (Numbers in JSON) and `ToJson` for floats say how numbers are written in a JSON
+    response, a feed's rows and an agent tool's output: as serde_json writes them (a whole float as
+    `2.0` where `JSON.stringify` writes `2`, and where each switches to an exponent), which readers
+    that type a number by its text read differently; a value a client should read as an integer is
+    an integer field, text that must match another service's byte for byte is `Raw`, and a shared
+    checksum is over canonical JSON (RFC 8785). Corten keeps one number format for these rather than
+    a second one for JavaScript parity, which would make a `ToJson` disagree with the `serde_json`
+    fields inside it, feeds and agent output, and would still not give canonical bytes (design.md,
+    Limits 16)
+    ([#540 Json writes a whole f64 as 2.0 where JSON.stringify writes 2, so a route ported from a Node service changes its numbers' text and how clients read them](https://github.com/todd-skelton/corten/issues/540)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

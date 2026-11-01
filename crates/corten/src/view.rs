@@ -1069,7 +1069,7 @@ fn may_tie(value: f64) -> bool {
 /// Writes `value` as its `Display` does (unless `may_tie`): the shortest digits that read back
 /// as the same value, never an exponent, no `.0` on a whole number, `NaN`, `inf` and `-inf`.
 /// The digits come from zmij (already in axum's tree, through serde_json), several times faster
-/// than `core::fmt`'s float path; zmij writes `1e21` and `3.0` where `Display` writes
+/// than `core::fmt`'s float path; zmij writes `1e+21` and `3.0` where `Display` writes
 /// `1000000000000000000000` and `3`, so the digits are laid out again here.
 fn push_float(value: f64, out: &mut String) {
     let mut buffer = zmij::Buffer::new();

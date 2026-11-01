@@ -47,8 +47,10 @@ pub enum ToolError {
     /// The arguments are wrong; the message goes back to the agent so it can correct them.
     Invalid(String),
     /// The arguments are fine, but what they act on has moved on (a stale revision, a record
-    /// deleted meanwhile: [`Errors::refuse`](crate::Errors::refuse)); the message goes back to the
-    /// agent so it reads the current state before trying again.
+    /// deleted meanwhile) or other work on it is under way
+    /// ([`Errors::refuse`](crate::Errors::refuse)); the message goes back to the agent so it
+    /// reads the current state (or, as the message says, waits for that work) before trying
+    /// again.
     Refused(String),
     /// A service the tool calls failed ([`Refusal::Upstream`](crate::Refusal::Upstream)); the
     /// message goes back to the agent, which may try again later.
@@ -69,7 +71,8 @@ impl ToolError {
 }
 
 /// Validation errors go back to the agent as one message per field, so it can correct them; a
-/// refusal for a state that moved on ([`Errors::refuse`](crate::Errors::refuse)) as that.
+/// refusal for a state that moved on or work under way ([`Errors::refuse`](crate::Errors::refuse))
+/// as that.
 impl From<crate::Errors> for ToolError {
     fn from(errors: crate::Errors) -> Self {
         match errors.refusal() {

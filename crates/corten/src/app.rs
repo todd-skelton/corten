@@ -175,8 +175,9 @@ impl<P: Prefix> Area<P> {
     /// [`App::deadline`]: `.deadline(Duration::from_secs(120))` for reports that take a while, so
     /// every other page keeps the app's. Past it the answer is the 503 error page and the
     /// request's [`crate::Signal`] aborts with [`crate::Abort::Deadline`], as at the app's. In
-    /// nested areas the innermost that sets one decides. `None` removes it, for routes that bound
-    /// themselves.
+    /// nested areas the innermost that sets one decides. An [`App::api`] under the prefix with no
+    /// deadline of its own, nor one from an API around it, takes it too, answered with the JSON
+    /// 503. `None` removes it, for routes that bound themselves.
     pub fn deadline(mut self, deadline: impl Into<Option<Duration>>) -> Self {
         self.deadline = Some(deadline.into());
         self
@@ -467,8 +468,18 @@ impl<M: Middleware> App<M> {
     /// `.api(|routes| api::api(routes).allow_origin(..))`. The
     /// routes keep their full paths (`/api/items/{id}`), so a `#[derive(Route)]` struct names the
     /// same URL in the router and in links, and a route outside the prefix does not compile. A
-    /// prefix is `"/"` or a path as [`App::area`] takes; API prefixes that overlap are a startup
-    /// error.
+    /// prefix is `"/"` or a path as [`App::area`] takes, given once.
+    ///
+    /// APIs nest, as areas do: one whose prefix is under another's (a feature's `/api/orders` in
+    /// the app's `/api`) keeps its own routes and settings, takes those it leaves unset
+    /// ([`Api::deadline`], [`Api::errors`]) from the API around it, and meets that API's
+    /// middleware before its own. One it gives replaces the outer's; it cannot go back to Problem
+    /// Details once the outer sets [`Api::errors`]. Its [`Api::allow_origin`] sites are its own
+    /// alone: nesting grants the outer API's partners nothing under the inner prefix, so a site both
+    /// serve is named in both. No parameter or catch-all route outside an API (the outer `/api/{*rest}`, a
+    /// page's `/{*rest}`) answers a path under its prefix: the API's 404 does, and a route the
+    /// outer API writes under the inner prefix does not start. An API that sets no deadline, in
+    /// no API that does, takes that of the innermost area around it that sets one.
     ///
     /// Under the prefix every failure is an RFC 9457 Problem Details document
     /// (`application/problem+json`, `{"title","status","detail"}`), whatever the
@@ -484,10 +495,7 @@ impl<M: Middleware> App<M> {
             )
         };
         let prefix = P::PREFIX;
-        let under = crate::api::under;
-        if let Some((other, ..)) = self.apis.iter().find(|(m, ..)| under(&m.prefix, prefix) || under(prefix, &m.prefix)) {
-            panic!("corten: the API prefixes {:?} and {prefix:?} overlap", other.prefix);
-        }
+        assert!(!self.apis.iter().any(|(mount, ..)| mount.prefix == prefix), "corten: the API {prefix:?} is given twice");
         let api = build(Api::new());
         self.api_paths.extend(&api.written);
         self.apis.push((Mount::new(prefix.to_string(), &api), api.routes));
@@ -731,6 +739,15 @@ impl<M: Middleware> App<M> {
     /// Daily at 03:30 UTC is `next_mark(HOUR * 7 / 2, 24 * HOUR)`; at 03:30 in a zone with
     /// daylight saving time takes a time-zone library, which is the app's. Jobs in separate tasks
     /// that must not overlap share a `tokio::sync::Mutex`.
+    ///
+    /// The loop and the `Mutex` hold within one process. An app that runs as several (a blue/green
+    /// release while the old and the new both run, an app scaled out) runs each task in each of
+    /// them: a job that must not run twice across them claims each run in the store they share (a
+    /// row for the job and its mark, added by one instance only) and skips a run another instance
+    /// claimed (instances that all claim and whose intervals start on the clock's marks; a clock
+    /// ahead of the others makes runs come early by as much, and shortens or lengthens the gap when
+    /// the instance that runs changes); a lock alone would let the next instance's tick run it
+    /// again (the app guide, On a schedule).
     pub fn task<F, Fut>(mut self, name: &'static str, task: F) -> Self
     where
         F: FnOnce(Signal) -> Fut + Send + 'static,
@@ -742,8 +759,9 @@ impl<M: Middleware> App<M> {
 
     /// How long [`serve`] waits, once shutdown begins, for the app's [tasks](App::task) to
     /// return, and for work its handlers finish ([`crate::Signal::finish`]) whose handler is gone
-    /// (5 seconds unless set). Keep it under the time the platform waits before it kills
-    /// the process (`docker stop`: 10 seconds; Kubernetes: 30).
+    /// (5 seconds unless set). Keep the platform's wait before it kills the process above the
+    /// longer of this and the deadline (`docker stop`: 10 seconds unless Compose's
+    /// `stop_grace_period` sets it; Kubernetes: 30, `terminationGracePeriodSeconds`).
     pub fn shutdown_grace(mut self, grace: Duration) -> Self {
         self.grace = grace;
         self
@@ -799,8 +817,33 @@ impl<M: Middleware> App<M> {
     /// The finished router: the app's routes with everything around them, its
     /// [layers](App::layer) included. For tests (`app.router().oneshot(request)`) and for serving
     /// it another way; it starts none of the app's [tasks](App::task).
-    pub fn router(self) -> Router {
+    pub fn router(mut self) -> Router {
         let dev = self.dev.unwrap_or_else(|| std::env::var_os("CORTEN_DEV").is_some());
+        // An API inside another takes what it leaves unset from the nearest one around it, which
+        // took its own first (outermost first); then the innermost comes first, so the first
+        // whose prefix holds a path is the request's.
+        self.apis.sort_by_key(|(mount, _)| mount.prefix.len());
+        // A route an API writes under a longer API's prefix would be answered with that API's
+        // settings, not its own: named with the innermost API that holds it.
+        for (at, (outer, _)) in self.apis.iter().enumerate() {
+            for path in &outer.written {
+                let holder = self.apis[at + 1..].iter().rev().find(|(inner, _)| crate::api::under(&inner.prefix, path));
+                if let Some((inner, _)) = holder {
+                    panic!(
+                        "corten: the route {path:?} of App::api({:?}) is under App::api({:?}), whose settings would answer it; move it to that API (its routes module, or its .route)",
+                        outer.prefix, inner.prefix
+                    );
+                }
+            }
+        }
+        for at in 1..self.apis.len() {
+            let (outer, inner) = self.apis.split_at_mut(at);
+            let mount = &mut inner[0].0;
+            if let Some((around, _)) = outer.iter().rev().find(|(around, _)| crate::api::under(&around.prefix, &mount.prefix)) {
+                mount.inherit(around);
+            }
+        }
+        self.apis.reverse();
         for area in &self.areas {
             if let Some((mount, ..)) = self.apis.iter().find(|(mount, ..)| mount.contains(area.prefix)) {
                 panic!("corten: the area {:?} is under App::api({:?}), whose routes answer only JSON", area.prefix, mount.prefix);
@@ -912,8 +955,14 @@ impl<M: Middleware> App<M> {
         // The routes of the APIs and areas: each is under its prefix, which the compiler checked.
         let mut owned = Vec::with_capacity(self.apis.len() + self.areas.len());
         let mut mounts = Vec::with_capacity(self.apis.len());
-        for (mount, api) in self.apis {
-            if !mount.origins().is_empty() {
+        let any_origins = self.apis.iter().any(|(mount, _)| !mount.origins().is_empty());
+        for (mut mount, api) in self.apis {
+            // Only the startup checks above read it.
+            mount.written = Vec::new();
+            mount.exposed = written.iter().any(|route| crate::api::reaches(route, &mount.prefix));
+            // Every API once any allows a site, innermost first, so one that allows none under
+            // another that does is found first, as for its writes.
+            if any_origins {
                 shared.api_origins.push((mount.prefix.clone(), mount.origins().to_vec()));
             }
             owned.push(api);
@@ -946,6 +995,12 @@ impl<M: Middleware> App<M> {
         for mount in &mut mounts {
             if let Some((_, around)) = area_middleware.iter().find(|(prefix, _)| crate::api::under(prefix, &mount.prefix)) {
                 mount.middleware = around.iter().chain(mount.middleware.iter()).cloned().collect();
+            }
+            // Nor it, nor an API around it, set a deadline: the innermost area's around it, as
+            // for the area's pages.
+            if mount.deadline.is_none() {
+                mount.deadline =
+                    area_deadlines.iter().find(|(prefix, _)| crate::api::under(prefix, &mount.prefix)).map(|(_, d)| *d);
             }
         }
         owned.extend(self.areas.into_iter().map(|area| area.routes));
@@ -1297,6 +1352,15 @@ impl Own {
     }
 }
 
+/// Whether the route axum matched (`matched`) is outside `mount`. Under `Router::nest` the
+/// matched path carries the outer router's prefix and the request's path does not: it is taken
+/// off first.
+fn outside(mount: &crate::api::Mount, matched: &str, req: &Request) -> bool {
+    let nested = req.extensions().get::<axum::extract::NestedPath>();
+    let matched = nested.and_then(|nested| matched.strip_prefix(nested.as_str().trim_end_matches('/'))).unwrap_or(matched);
+    !mount.contains(matched)
+}
+
 /// Paths no page is at, however the app's routes match them: Corten's own and the APIs'.
 #[derive(Default)]
 pub(crate) struct NotPages {
@@ -1360,7 +1424,7 @@ impl<S: Steps> tower_service::Service<Request> for Wrapped<S> {
 pub(crate) struct Next<'a, S: Steps> {
     steps: &'a S,
     scope: S::Scope<'a>,
-    route: Route,
+    route: Option<Route>,
 }
 
 impl<'a, S: Steps> Next<'a, S> {
@@ -1380,7 +1444,12 @@ pub(crate) trait Steps: Send + Sync + 'static {
 
     fn scope<'a>(&'a self, mount: Option<&'a Mount>, own: bool, path: &str) -> Self::Scope<'a>;
 
-    fn run<'a>(&'a self, req: Request, route: Route, scope: Self::Scope<'a>) -> impl Future<Output = Response> + Send + 'a;
+    fn run<'a>(
+        &'a self,
+        req: Request,
+        route: Option<Route>,
+        scope: Self::Scope<'a>,
+    ) -> impl Future<Output = Response> + Send + 'a;
 }
 
 /// The app's middleware alone: no area or API has any.
@@ -1393,7 +1462,7 @@ impl<M: Middleware> Steps for Plain<M> {
     fn scope<'a>(&'a self, _: Option<&'a Mount>, _: bool, _: &str) {}
 
     #[inline]
-    fn run<'a>(&'a self, req: Request, route: Route, (): ()) -> impl Future<Output = Response> + Send + 'a {
+    fn run<'a>(&'a self, req: Request, route: Option<Route>, (): ()) -> impl Future<Output = Response> + Send + 'a {
         self.0.call(req, crate::middleware::Handle(route))
     }
 }
@@ -1417,7 +1486,12 @@ impl<M: Middleware> Steps for Scoped<M> {
     }
 
     #[inline]
-    fn run<'a>(&'a self, req: Request, route: Route, stack: Self::Scope<'a>) -> impl Future<Output = Response> + Send + 'a {
+    fn run<'a>(
+        &'a self,
+        req: Request,
+        route: Option<Route>,
+        stack: Self::Scope<'a>,
+    ) -> impl Future<Output = Response> + Send + 'a {
         use futures_util::future::Either;
         match stack {
             [] => Either::Left(self.app.call(req, crate::middleware::Handle(route))),
@@ -1508,10 +1582,32 @@ impl<S: Steps> Layer<S> {
             refused.headers_mut().insert(header::CACHE_CONTROL, cache::PRIVATE);
             return refused;
         }
+        // Every path under an API's prefix is its own: a parameter or a catch-all of a route
+        // outside it (a page's `/{*rest}`, or the API around it's `/api/{id}` for `/api/items`)
+        // does not answer it. The request meets everything a route of the API would, and the API's
+        // 404 answers in its place.
+        // Only an API such a route can reach pays for the check.
+        let foreign = mount.is_some_and(|mount| {
+            mount.exposed
+                && req
+                    .extensions()
+                    .get::<axum::extract::MatchedPath>()
+                    .is_some_and(|matched| outside(mount, matched.as_str(), &req))
+        });
+        let route = (!foreign).then_some(route);
+        if foreign {
+            // It is an unknown URL of the API's, for middleware that reads the route too.
+            req.extensions_mut().remove::<axum::extract::MatchedPath>();
+        }
         let cors = mount.and_then(|mount| mount.allowed_origin(req.headers()));
         let credentials = cache::credentials(req.headers());
         let path = self.shared.dev.then(|| req.uri().path().to_string());
         let (mut res, caller, mode) = self.run(req, route, mount, deadline, scope).await;
+        // The outer route's `Allow` (axum adds it to a method that route lacks) would list methods
+        // the path does not have: none has any here, whatever answered.
+        if foreign {
+            res.headers_mut().insert(header::ALLOW, axum::http::HeaderValue::from_static(""));
+        }
         // First: the security headers reserve room for `Cache-Control` and `Vary` too.
         self.policy.headers(&mut res, nonce.as_ref(), csp);
         let seen = Seen {
@@ -1545,7 +1641,7 @@ impl<S: Steps> Layer<S> {
     async fn run<'a>(
         &'a self,
         mut req: Request,
-        route: Route,
+        route: Option<Route>,
         api: Option<&Mount>,
         deadline: Option<Duration>,
         scope: S::Scope<'a>,

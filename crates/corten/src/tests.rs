@@ -2148,6 +2148,455 @@ async fn an_area_or_an_api_sets_its_own_deadline() {
     assert_eq!(status("/api/slow").await, StatusCode::OK, "None removes it for the API");
 }
 
+#[cfg(feature = "json")]
+paths! {
+    Zone = "/zone",
+    ZoneApi = "/zone/api",
+    ZoneApiPing = "/zone/api/ping",
+    ZoneMid = "/zone/api/mid",
+    ZoneMidPost = "/zone/api/mid/post",
+    ZoneIn = "/zone/api/mid/in",
+    ZoneInPing = "/zone/api/mid/in/ping",
+    Everything = "/",
+    EverythingPing = "/ping",
+}
+
+#[cfg(feature = "json")]
+#[derive(crate::Route)]
+#[route("/{*rest}")]
+struct EverythingRest<'a> {
+    rest: &'a str,
+}
+
+/// A request with one more header, or several.
+#[cfg(feature = "json")]
+async fn call_with_header(
+    router: Router,
+    method: &str,
+    path: &str,
+    header: (&str, &str),
+) -> (StatusCode, axum::http::HeaderMap, String) {
+    call_with_headers(router, method, path, &[header]).await
+}
+
+#[cfg(feature = "json")]
+async fn call_with_headers(
+    router: Router,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+) -> (StatusCode, axum::http::HeaderMap, String) {
+    let mut req = Request::builder().method(method).uri(path);
+    for (name, value) in headers {
+        req = req.header(*name, *value);
+    }
+    let (parts, body) = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap().into_parts();
+    (parts.status, parts.headers, String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap())
+}
+
+/// Three APIs nested in an area, each taking what it leaves unset from the nearest around it and
+/// keeping what it sets; their middleware runs area, outer, middle, inner (#539).
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn nested_apis_take_what_they_leave_unset_from_the_nearest() {
+    let steps = || {
+        crate::Methods::reads(get(|headers: axum::http::HeaderMap| async move {
+            tokio::time::sleep(Duration::from_millis(if headers.contains_key("x-slow") { 200 } else { 0 })).await;
+            headers.get("x-steps").map_or(String::new(), |v| v.to_str().unwrap().to_string())
+        }))
+    };
+    let shape = |status: StatusCode, message: &str| ShapedError {
+        r#type: "error",
+        error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+    };
+    let shaped = |code: u16, message: &str| format!(r#"{{"type":"error","error":{{"code":{code},"message":{message:?}}}}}"#);
+    let router = App::new(Routes::new())
+        .middleware(Step("app", false))
+        .api::<ZoneIn>(|inner| inner.route::<ZoneInPing>(steps()).middleware(Step("in", false)))
+        .area::<Zone>(|zone| zone.middleware(Step("zone", false)).deadline(Duration::from_millis(50)))
+        .api::<ZoneMid>(|mid| {
+            mid.route::<ZoneMidPost>(crate::Methods::writes(axum::routing::post(|| async { "posted" })))
+                .middleware(Step("mid", false))
+                .allow_origin("https://mid.example")
+        })
+        .api::<ZoneApi>(|api| {
+            api.route::<ZoneApiPing>(steps()).middleware(Step("api", false)).errors(shape).allow_origin("https://outer.example")
+        })
+        .router();
+    let send = |method: &'static str, path: &'static str, headers: &'static [(&'static str, &'static str)]| {
+        let router = router.clone();
+        async move {
+            let mut req = Request::builder().method(method).uri(path);
+            for (name, value) in headers {
+                req = req.header(*name, *value);
+            }
+            let (parts, body) = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap().into_parts();
+            (parts.status, parts.headers, String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap())
+        }
+    };
+    assert_eq!(send("GET", "/zone/api/mid/in/ping", &[]).await.2, "app zone api mid in", "area, then outermost API first");
+    assert_eq!(send("GET", "/zone/api/ping", &[]).await.2, "app zone api");
+    let (status, _, body) = send("GET", "/zone/api/mid/in/ping", &[("x-slow", "1")]).await;
+    assert_eq!((status.as_u16(), body), (503, shaped(503, "Service Unavailable")), "the area's deadline, the outer API's shape");
+    let (status, _, body) = send("GET", "/zone/api/mid/in/nope", &[]).await;
+    assert_eq!((status.as_u16(), body), (404, shaped(404, "Not Found")), "an unknown URL under the inner prefix");
+    let preflight = |origin: &'static str| -> &'static [(&'static str, &'static str)] {
+        match origin {
+            "mid" => &[("origin", "https://mid.example"), ("access-control-request-method", "GET")],
+            _ => &[("origin", "https://outer.example"), ("access-control-request-method", "GET")],
+        }
+    };
+    // Origins are each API's own: the inner API names none, so neither the middle's nor the outer's
+    // partner may call it, and the middle's list is not the outer's.
+    for (path, origin) in [("/zone/api/mid/in/ping", "mid"), ("/zone/api/mid/in/ping", "outer"), ("/zone/api/mid/post", "outer")]
+    {
+        let (_, headers, _) = send("OPTIONS", path, preflight(origin)).await;
+        assert!(!headers.contains_key("access-control-allow-origin"), "{path} from {origin}");
+    }
+    let (status, headers, _) = send("OPTIONS", "/zone/api/mid/post", preflight("mid")).await;
+    assert_eq!(
+        (status, headers.get("access-control-allow-origin").map(|v| v.to_str().unwrap())),
+        (StatusCode::NO_CONTENT, Some("https://mid.example")),
+        "an API's own origin"
+    );
+    let inner_cross: &[(&str, &str)] = &[("origin", "https://mid.example"), ("sec-fetch-site", "cross-site")];
+    assert_eq!(
+        send("POST", "/zone/api/mid/in/ping", inner_cross).await.0,
+        StatusCode::FORBIDDEN,
+        "nor its writes under the inner prefix"
+    );
+    let cross: &[(&str, &str)] = &[("origin", "https://mid.example"), ("sec-fetch-site", "cross-site")];
+    assert_eq!(send("POST", "/zone/api/mid/post", cross).await.2, "posted", "a write from its own origin");
+    let evil: &[(&str, &str)] = &[("origin", "https://outer.example"), ("sec-fetch-site", "cross-site")];
+    let (status, _, body) = send("POST", "/zone/api/mid/post", evil).await;
+    assert_eq!(
+        (status.as_u16(), body),
+        (403, shaped(403, "Cross-site request refused.")),
+        "the outer's origin is not the middle's"
+    );
+
+    // A "/" API around another: the inner one's routes meet the outer's middleware first.
+    let router = App::new(Routes::new())
+        .api::<Everything>(|all| all.route::<EverythingPing>(steps()).middleware(Step("all", false)))
+        .api::<ApiRoot>(|api| api.route::<ApiSlow>(steps()).middleware(Step("api", false)))
+        .router();
+    assert_eq!(call_with(router.clone(), "GET", "/api/slow", None, None).await.2, "all api");
+    assert_eq!(call_with(router, "GET", "/ping", None, None).await.2, "all");
+    // A "/" API's catch-all does not answer under another API's prefix.
+    let router = App::new(Routes::new())
+        .api::<Everything>(|all| all.route::<EverythingRest>(steps()))
+        .api::<ApiRoot>(|api| api.route::<ApiSlow>(steps()))
+        .router();
+    assert_eq!(call_with(router.clone(), "GET", "/elsewhere", None, None).await.0, StatusCode::OK);
+    assert_eq!(call_with(router, "GET", "/api/elsewhere", None, None).await.0, StatusCode::NOT_FOUND);
+}
+
+#[cfg(feature = "json")]
+paths! {
+    Outer = "/outer",
+    OuterIn = "/outer/in",
+    OuterInSlow = "/outer/in/slow",
+    OuterInNone = "/outer/none",
+    OuterInNoneSlow = "/outer/none/slow",
+    Walled = "/walled",
+    WalledApi = "/walled/api",
+    WalledApiIn = "/walled/api/in",
+    WalledApiInSlow = "/walled/api/in/slow",
+}
+
+#[cfg(feature = "json")]
+#[derive(crate::Route)]
+#[route("/outer/{id}")]
+struct OuterAny<'a> {
+    id: &'a str,
+}
+
+/// What an inner API sets is its own over the outer's (its error shape, its deadline, `None`
+/// included), an outer API's deadline over an area's around both, and an outer parameter route
+/// never answers a path under the inner prefix (#539).
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn an_inner_apis_settings_are_its_own() {
+    let slow = || {
+        crate::Methods::reads(get(|| async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            "done"
+        }))
+    };
+    let outer_shape = |status: StatusCode, message: &str| ShapedError {
+        r#type: "outer",
+        error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+    };
+    let inner_shape = |status: StatusCode, message: &str| ShapedError {
+        r#type: "inner",
+        error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+    };
+    let page = Router::new().route("/{*rest}", get(|| async { "page" }));
+    let router = App::new(Routes::from(page))
+        .deadline(Duration::from_millis(50))
+        .api::<Outer>(|outer| outer.route::<OuterAny>(crate::Methods::reads(get(|| async { "outer" }))).errors(outer_shape))
+        .api::<OuterIn>(|inner| inner.route::<OuterInSlow>(slow()).errors(inner_shape).deadline(Duration::from_secs(10)))
+        .api::<OuterInNone>(|none| none.route::<OuterInNoneSlow>(slow()).deadline(None))
+        .area::<Walled>(|walled| walled.deadline(Duration::from_millis(20)))
+        .api::<WalledApi>(|api| api.deadline(Duration::from_secs(10)))
+        .api::<WalledApiIn>(|inner| inner.route::<WalledApiInSlow>(slow()))
+        .router();
+    let call = |path: &'static str| {
+        let router = router.clone();
+        async move {
+            let (status, _, body) = call_with(router, "GET", path, None, None).await;
+            (status.as_u16(), body)
+        }
+    };
+    assert_eq!(call("/outer/7").await, (200, "outer".to_string()), "the outer parameter route outside the inner prefixes");
+    let inner_404 = (404, r#"{"type":"inner","error":{"code":404,"message":"Not Found"}}"#.to_string());
+    assert_eq!(call("/outer/in").await, inner_404, "not the outer /outer/{{id}}: the inner API's 404, in its shape");
+    assert_eq!(call("/outer/in/other").await, inner_404);
+    assert_eq!(call("/elsewhere").await, (200, "page".to_string()), "the app's catch-all page outside the APIs");
+    assert_eq!(call("/outer/in/a/b").await, inner_404, "not the app's catch-all page either");
+    assert_eq!(call("/outer/in/slow").await, (200, "done".to_string()), "the inner API's longer deadline");
+    assert_eq!(call("/outer/none/slow").await, (200, "done".to_string()), "an inner None removes the outer's");
+    let (status, body) = call("/outer/none/x").await;
+    assert_eq!(
+        (status, &body[..]),
+        (404, r#"{"type":"outer","error":{"code":404,"message":"Not Found"}}"#),
+        "the shape it left unset"
+    );
+    assert_eq!(call("/walled/api/in/slow").await, (200, "done".to_string()), "the nearest API's deadline over the area's");
+}
+
+#[cfg(feature = "json")]
+paths! {
+    Apis = "/apis",
+    ApisPing = "/apis/ping",
+    WalledOwn = "/walled/own",
+    WalledOwnSlow = "/walled/own/slow",
+}
+
+/// `/apis` is beside `/api`, not in it: it takes nothing from it and its routes are its own; and
+/// an API in an area that sets a deadline, in no API, takes the area's (#539).
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn an_api_beside_another_takes_nothing_from_it() {
+    let slow = || {
+        crate::Methods::reads(get(|| async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            "done"
+        }))
+    };
+    let shape = |status: StatusCode, message: &str| ShapedError {
+        r#type: "error",
+        error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+    };
+    let router = App::new(Routes::new())
+        .api::<ApiRoot>(|api| api.route::<ApiRest>(crate::Methods::reads(get(|| async { "api" }))).errors(shape))
+        .api::<Apis>(|apis| apis.route::<ApisPing>(crate::Methods::reads(get(|| async { "apis" }))))
+        .area::<Walled>(|walled| walled.deadline(Duration::from_millis(20)))
+        .api::<WalledOwn>(|own| own.route::<WalledOwnSlow>(slow()))
+        .router();
+    let call = |path: &'static str| {
+        let router = router.clone();
+        async move {
+            let (status, _, body) = call_with(router, "GET", path, None, None).await;
+            (status.as_u16(), body)
+        }
+    };
+    assert_eq!(call("/apis/ping").await, (200, "apis".to_string()));
+    let (status, body) = call("/apis/nope").await;
+    assert_eq!(status, 404);
+    assert!(body.contains(r#""title":"Not Found""#), "its own Problem Details, not /api's shape: {body}");
+    assert_eq!(call("/api/x").await, (200, "api".to_string()));
+    assert_eq!(call("/walled/own/slow").await.0, 503, "the area's deadline");
+}
+
+/// Under a nested API, a WebSocket handshake from another site is held to that API's origins,
+/// not the outer one's.
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn an_upgrade_under_a_nested_api_takes_its_origins() {
+    use crate::upgrade::Upgrade;
+    async fn nothing(_: crate::upgrade::Stream, _: crate::Signal) {}
+    let router = App::new(Routes::new())
+        .api::<ApiRoot>(|api| api.allow_origin("https://outer.example"))
+        .api::<ApiItems>(|items| {
+            items
+                .route::<ApiItem>(crate::Methods::reads(get(|upgrade: Upgrade| async move { upgrade.websocket(nothing) })))
+                .allow_origin("https://inner.example")
+        })
+        .router();
+    let status = |origin: &'static str| {
+        let router = router.clone();
+        async move {
+            let req = Request::get("/api/items/7")
+                .header("origin", origin)
+                .header("sec-fetch-site", "cross-site")
+                .header("connection", "upgrade")
+                .header("upgrade", "websocket")
+                .header("sec-websocket-version", "13")
+                .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+                .body(Body::empty())
+                .unwrap();
+            router.oneshot(req).await.unwrap().status()
+        }
+    };
+    assert_eq!(status("https://inner.example").await, StatusCode::UPGRADE_REQUIRED, "allowed: a oneshot cannot switch");
+    assert_eq!(status("https://outer.example").await, StatusCode::FORBIDDEN, "the outer API's origin is not the inner's");
+    // An inner API that allows no site: the outer's partner may not switch under it either.
+    let router = App::new(Routes::new())
+        .api::<ApiRoot>(|api| api.allow_origin("https://outer.example"))
+        .api::<ApiItems>(|items| {
+            items.route::<ApiItem>(crate::Methods::reads(get(|upgrade: Upgrade| async move { upgrade.websocket(nothing) })))
+        })
+        .router();
+    let req = Request::get("/api/items/7")
+        .header("origin", "https://outer.example")
+        .header("sec-fetch-site", "cross-site")
+        .header("connection", "upgrade")
+        .header("upgrade", "websocket")
+        .header("sec-websocket-version", "13")
+        .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(router.oneshot(req).await.unwrap().status(), StatusCode::FORBIDDEN);
+}
+
+/// A route an outer API writes under an inner API's prefix would answer with the inner one's
+/// settings: the app does not start.
+#[test]
+#[should_panic(expected = "move it to that API")]
+fn an_outer_apis_route_under_an_inner_prefix_does_not_start() {
+    let reads = || crate::Methods::reads(get(|| async { "x" }));
+    let _ = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiItem>(reads())).api::<ApiItems>(|items| items).router();
+}
+
+/// Three deep, the message names the innermost API that holds the route.
+#[cfg(feature = "json")]
+#[test]
+#[should_panic(expected = r#"is under App::api("/zone/api/mid/in")"#)]
+fn the_route_is_named_with_the_innermost_api_that_holds_it() {
+    let reads = || crate::Methods::reads(get(|| async { "x" }));
+    let _ = App::new(Routes::new())
+        .api::<ZoneApi>(|api| api.route::<ZoneInPing>(reads()))
+        .api::<ZoneMid>(|mid| mid)
+        .api::<ZoneIn>(|inner| inner)
+        .router();
+}
+
+#[cfg(feature = "json")]
+#[derive(crate::Route)]
+#[route("/api/{*rest}")]
+struct ApiRest<'a> {
+    rest: &'a str,
+}
+
+/// An API inside another (a feature's `/api/items` in the app's `/api`, which relays the rest)
+/// keeps its own routes, takes the settings it leaves unset from the outer one, and meets the
+/// outer one's middleware first; a request under its prefix is its own, whichever route answers
+/// it (#539).
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn an_api_nests_in_another() {
+    let steps = || {
+        crate::Methods::reads(get(|headers: axum::http::HeaderMap| async move {
+            tokio::time::sleep(Duration::from_millis(if headers.contains_key("x-slow") { 200 } else { 0 })).await;
+            headers.get("x-steps").map_or(String::new(), |v| v.to_str().unwrap().to_string())
+        }))
+    };
+    let shape = |status: StatusCode, message: &str| ShapedError {
+        r#type: "error",
+        error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+    };
+    // Given inner first: the order they are given in does not matter.
+    let router = App::new(Routes::new())
+        .middleware(Step("app", false))
+        .api::<ApiItems>(|items| items.route::<ApiItem>(steps()).middleware(Step("items", true)).middleware(Saw))
+        .api::<ApiRoot>(|api| {
+            api.route::<ApiRest>(steps())
+                .route::<ApiSlow>(steps())
+                .middleware(Step("api", false))
+                .deadline(Duration::from_millis(50))
+                .errors(shape)
+                .allow_origin("https://partner.example")
+        })
+        .router();
+    let get_with = |path: &'static str, header: Option<(&'static str, &'static str)>| {
+        let router = router.clone();
+        async move {
+            let mut req = Request::get(path);
+            if let Some((name, value)) = header {
+                req = req.header(name, value);
+            }
+            let (parts, body) = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap().into_parts();
+            (parts.status, parts.headers, String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap())
+        }
+    };
+    assert_eq!(get_with("/api/items/7", None).await.2, "app api items", "the outer API's middleware, then the inner's");
+    assert_eq!(get_with("/api/slow", None).await.2, "app api", "the outer API's own routes meet its own alone");
+    assert_eq!(get_with("/api/other/thing", None).await.2, "app api", "and its catch-all, outside the inner prefix");
+    for path in ["/api/items/7/more", "/api/items"] {
+        let (status, _, body) = get_with(path, None).await;
+        assert_eq!(
+            (status.as_u16(), &body[..]),
+            (404, r#"{"type":"error","error":{"code":404,"message":"Not Found"}}"#),
+            "{path}: a path under the inner prefix is the inner API's, never the outer catch-all's"
+        );
+        let (status, _, _) = get_with(path, Some(("x-flood", "1"))).await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{path}: and meets the inner API's middleware first");
+    }
+    assert_eq!(get_with("/api/items/7", Some(("x-flood", "1"))).await.0, StatusCode::TOO_MANY_REQUESTS);
+    // Every step runs for it, the app's first, and none is told a route matched it.
+    let (_, headers, _) = get_with("/api/items/7/more", None).await;
+    assert_eq!(
+        (&headers["x-saw-steps"], headers.get("x-saw-route")),
+        (&"app api items".parse::<axum::http::HeaderValue>().unwrap(), None)
+    );
+    let (_, headers, _) = get_with("/api/items/7", None).await;
+    assert_eq!(headers.get("x-saw-route").map(|v| v.to_str().unwrap()), Some("/api/items/{id}"), "a route of its own is named");
+    // A method the outer catch-all lacks (a 405 of the outer route's, before) is a 404 too, and
+    // whatever answers it says no method is allowed: the inner middleware's 429 as well.
+    let (status, headers, _) = call_with_header(router.clone(), "POST", "/api/items/7/more", ("x-flood", "1")).await;
+    assert_eq!((status, headers.get("allow").map(|v| v.to_str().unwrap())), (StatusCode::TOO_MANY_REQUESTS, Some("")));
+    // A preflight there is the inner API's, which allows no other site: the outer's partner is
+    // not let in under the inner prefix, nor on the inner API's routes.
+    for path in ["/api/items/7/more", "/api/items/7"] {
+        let (_, headers, _) = call_with_headers(
+            router.clone(),
+            "OPTIONS",
+            path,
+            &[("origin", "https://partner.example"), ("access-control-request-method", "GET")],
+        )
+        .await;
+        assert!(!headers.contains_key("access-control-allow-origin"), "{path}");
+    }
+    let (_, headers, _) = call_with_headers(
+        router.clone(),
+        "OPTIONS",
+        "/api/other",
+        &[("origin", "https://partner.example"), ("access-control-request-method", "GET")],
+    )
+    .await;
+    assert_eq!(
+        headers.get("access-control-allow-origin").map(|v| v.to_str().unwrap()),
+        Some("https://partner.example"),
+        "the outer API's own"
+    );
+    // And a HEAD: the inner API's 404, with no method allowed.
+    for method in ["POST", "HEAD"] {
+        let (status, headers, _) = call_with(router.clone(), method, "/api/items/7/more", None, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method}");
+        assert_eq!(headers.get("allow").map(|v| v.to_str().unwrap()), Some(""), "{method}: not the outer route's methods");
+    }
+    let (status, headers, body) = get_with("/api/items/7", Some(("x-slow", "1"))).await;
+    assert_eq!(
+        (status, &body[..]),
+        (StatusCode::SERVICE_UNAVAILABLE, r#"{"type":"error","error":{"code":503,"message":"Service Unavailable"}}"#),
+        "the outer API's deadline and error shape"
+    );
+    assert_eq!(headers["content-type"], "application/json");
+    let (status, headers, _) = get_with("/api/items/7", Some(("origin", "https://partner.example"))).await;
+    assert_eq!((status, headers.get("access-control-allow-origin")), (StatusCode::OK, None), "no partner of the outer's");
+}
+
 /// A layout's read started ahead by an extractor (`crate::Ahead`): under a path ending `/panics`
 /// it panics, and `AHEAD_FINISHED` counts the reads that ran to their end.
 struct StartedAhead(crate::Ahead<u32>);
@@ -2193,6 +2642,81 @@ async fn a_read_started_ahead_is_the_requests() {
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert_eq!(AHEAD_FINISHED.load(std::sync::atomic::Ordering::SeqCst), before, "the deadline stopped the read");
+}
+
+/// Which routes outside an API can match a path under it, so only those APIs check per request.
+#[test]
+fn a_route_reaches_an_api_through_a_parameter_before_it() {
+    use crate::api::reaches;
+    for route in ["/{*rest}", "/{id}", "/api/{id}", "/api/{*rest}"] {
+        assert!(reaches(route, "/api/items"), "{route}");
+    }
+    for route in ["/page", "/api/ping", "/v2/items/{id}", "/apis/{id}", "/api/items/{id}", "/api/items"] {
+        assert!(!reaches(route, "/api/items"), "{route}");
+    }
+    assert!(!reaches("/{*rest}", "/"), "nothing is outside the root");
+}
+
+/// A top-level API owns its prefix too: a page's catch-all does not answer a path under it (#539).
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn a_page_catch_all_does_not_answer_under_an_api() {
+    let everything = Routes::new().__route::<EverythingRest>(crate::Methods::reads(get(|| async { "page" })));
+    let router = App::new(everything)
+        .api::<ApiItems>(|items| items.route::<ApiItem>(crate::Methods::reads(get(|| async { "item" }))))
+        .router();
+    assert_eq!(call_with(router.clone(), "GET", "/elsewhere", None, None).await.2, "page");
+    let (status, headers, body) = call_with(router.clone(), "GET", "/api/items/7/more", None, None).await;
+    assert_eq!(
+        (status, &headers["content-type"]),
+        (StatusCode::NOT_FOUND, &"application/problem+json".parse::<axum::http::HeaderValue>().unwrap()),
+        "{body}"
+    );
+    assert_eq!(call_with(router, "GET", "/api/items/7", None, None).await.2, "item");
+}
+
+/// Served under another router's `Router::nest`, an API's routes are still its own, and a path
+/// outside them still gets its 404.
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn an_api_answers_under_router_nest() {
+    let everything = Routes::new().__route::<EverythingRest>(crate::Methods::reads(get(|| async { "page" })));
+    let app = App::new(everything)
+        .api::<ApiRoot>(|api| api.route::<ApiRest>(crate::Methods::reads(get(|| async { "rest" }))))
+        .api::<ApiItems>(|items| items.route::<ApiItem>(crate::Methods::reads(get(|| async { "item" }))))
+        .router();
+    let router = Router::new().nest("/outer", app);
+    assert_eq!(call_with(router.clone(), "GET", "/outer/api/items/7", None, None).await.2, "item");
+    assert_eq!(call_with(router.clone(), "GET", "/outer/api/other", None, None).await.2, "rest");
+    assert_eq!(call_with(router, "GET", "/outer/api/items/7/more", None, None).await.0, StatusCode::NOT_FOUND);
+    // Nested at a path that is also an API's prefix: the nest's part is taken off before the
+    // matched route is compared, so a catch-all outside the API still does not answer under it.
+    let app = App::new(Routes::new())
+        .api::<Everything>(|root| root.route::<EverythingRest>(crate::Methods::reads(get(|| async { "root" }))))
+        .api::<ApiRoot>(|api| api)
+        .router();
+    let router = Router::new().nest("/api", app);
+    assert_eq!(call_with(router.clone(), "GET", "/api/elsewhere", None, None).await.2, "root");
+    assert_eq!(call_with(router, "GET", "/api/api/other", None, None).await.0, StatusCode::NOT_FOUND);
+}
+
+/// Copies the steps the request met and the route axum matched (`MatchedPath`) onto the answer.
+struct Saw;
+
+impl crate::Middleware for Saw {
+    async fn call(&self, req: Request<Body>, next: impl crate::Next) -> axum::response::Response {
+        let steps = req.headers().get("x-steps").cloned();
+        let route =
+            req.extensions().get::<axum::extract::MatchedPath>().map(|m| m.as_str().parse::<axum::http::HeaderValue>().unwrap());
+        let mut res = next.run(req).await;
+        if let Some(steps) = steps {
+            res.headers_mut().insert("x-saw-steps", steps);
+        }
+        if let Some(route) = route {
+            res.headers_mut().insert("x-saw-route", route);
+        }
+        res
+    }
 }
 
 /// Writes its name into `x-steps` on the way in, so a test reads the order middleware ran in;

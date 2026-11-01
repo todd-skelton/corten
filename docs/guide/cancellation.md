@@ -34,7 +34,7 @@ app keeps its short one:
 
 | Requests to | Deadline |
 |---|---|
-| an API's routes | `Api::deadline` if it set one, else `App::deadline` |
+| an API's routes | its own `Api::deadline`, else that of the nearest API around it that set one, else the innermost area around it that set `Area::deadline`, else `App::deadline` |
 | an area's routes | the innermost area that set `Area::deadline`, else `App::deadline` |
 | everything else | `App::deadline` |
 
@@ -85,3 +85,9 @@ serves its router another way (`axum::serve`) runs the work to its end, but it i
 shutdown or waited for. The work takes what it uses by value (it is `Send +
 'static`). Keep only what must finish in it: the rest of the handler is still dropped when the
 client leaves, which is what stops it.
+
+A step that stopping midway would lose (a paid call whose answer is not recorded yet) is not stopped
+on the signal: the work checks the signal before it starts one, and bounds each with a timeout so
+that one call, its record and the commit end within a grace set above them; a call cut off by that
+timeout is the provider's idempotency key's to answer ([Work that must not run twice at
+once](requests-and-forms.md#work-that-must-not-run-twice-at-once)).
