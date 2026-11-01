@@ -179,27 +179,83 @@ fn init(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Writes every file, or none: when one cannot be written, those written before it are put back
-/// as they were (a new one removed), so a retry starts where the first try did. Each path is
-/// relative to `root`.
+/// Writes every file, or none. Each text is first written next to its file (`.<name>.corten-ui`),
+/// which touches nothing the app has; only when all are written does each replace its file, and
+/// when one cannot, those replaced before it are put back as they were (a new one removed), so a
+/// retry starts where the first try did. A file that cannot be put back is named in the error.
+/// Each path is relative to `root`.
 fn apply(root: &Path, files: &[(String, String)]) -> Result<(), String> {
-    let mut done: Vec<(PathBuf, Option<Vec<u8>>)> = Vec::new();
+    let mut made: Vec<PathBuf> = Vec::new();
+    let mut staged: Vec<(PathBuf, PathBuf)> = Vec::new();
     for (path, text) in files {
         let path = root.join(path);
-        let before = std::fs::read(&path).ok();
-        if let Err(error) = write(&path, text) {
-            done.push((path, before));
-            for (path, before) in done.into_iter().rev() {
-                let _ = match before {
-                    Some(bytes) => std::fs::write(&path, bytes),
-                    None => std::fs::remove_file(&path),
-                };
-            }
-            return Err(format!("{error}; the files written before it were put back, so nothing changed"));
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let temp = path.with_file_name(format!(".{name}.corten-ui"));
+        let written = make_dirs(&path, &mut made).and_then(|()| write(&temp, text));
+        if let Err(error) = written {
+            staged.push((path, temp));
+            let left = undo(&[], &staged, &made);
+            return Err(rolled_back(&error, &left));
         }
-        done.push((path, before));
+        staged.push((path, temp));
+    }
+    let mut done: Vec<(PathBuf, Option<Vec<u8>>)> = Vec::new();
+    for (path, temp) in &staged {
+        let before = std::fs::read(path).ok();
+        if let Err(error) = std::fs::rename(temp, path) {
+            let left = undo(&done, &staged, &made);
+            return Err(rolled_back(&format!("{}: {error}", path.display()), &left));
+        }
+        done.push((path.clone(), before));
     }
     Ok(())
+}
+
+/// Creates the directories `path` needs, adding each one made to `made`, outermost first.
+fn make_dirs(path: &Path, made: &mut Vec<PathBuf>) -> Result<(), String> {
+    let Some(parent) = path.parent() else { return Ok(()) };
+    let mut missing: Vec<PathBuf> =
+        parent.ancestors().take_while(|d| !d.as_os_str().is_empty() && !d.exists()).map(Path::to_path_buf).collect();
+    missing.reverse();
+    for dir in missing {
+        std::fs::create_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        made.push(dir);
+    }
+    Ok(())
+}
+
+/// Puts back each replaced file (`done`, with what it held), removes the staged texts and the
+/// directories made for them, and returns the paths it could not restore.
+fn undo(done: &[(PathBuf, Option<Vec<u8>>)], staged: &[(PathBuf, PathBuf)], made: &[PathBuf]) -> Vec<PathBuf> {
+    let mut left = Vec::new();
+    for (path, before) in done.iter().rev() {
+        let back = match before {
+            Some(bytes) => std::fs::write(path, bytes),
+            None => std::fs::remove_file(path),
+        };
+        if back.is_err() {
+            left.push(path.clone());
+        }
+    }
+    for (_, temp) in staged {
+        if temp.exists() && std::fs::remove_file(temp).is_err() {
+            left.push(temp.clone());
+        }
+    }
+    for dir in made.iter().rev() {
+        if dir.exists() && std::fs::remove_dir(dir).is_err() {
+            left.push(dir.clone());
+        }
+    }
+    left
+}
+
+fn rolled_back(error: &str, left: &[PathBuf]) -> String {
+    if left.is_empty() {
+        return format!("{error}; nothing was changed");
+    }
+    let names: Vec<String> = left.iter().map(|p| p.display().to_string()).collect();
+    format!("{error}; these could not be put back as they were, so fix them by hand: {}", names.join(", "))
 }
 
 /// Declares `pub mod ui;` among the `mod` lines and lists its components on the `App::new(..)` chain.
@@ -337,9 +393,11 @@ fn add(root: &Path, args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// `Cargo.toml` with `corten-ui` after `corten` in `[dependencies]`, from the same place: the
-/// `corten-ui` next to a local `corten` (`--corten-path`), else this command's release, which
-/// `corten`'s is too. None when it is there already; an error saying why it cannot be placed.
+/// `Cargo.toml` with `corten-ui` after `corten` in `[dependencies]`, from the same place, as the
+/// two must be one source for their `Component`s to be one type: the `corten-ui` next to a local
+/// `corten` (`--corten-path`), the same repository and revision as a Git `corten`, else this
+/// command's release, which `corten`'s is too. None when it is there already; an error saying
+/// why it cannot be placed.
 fn depend_on_ui(text: &str) -> Result<Option<String>, String> {
     let lines: Vec<&str> = text.lines().collect();
     let start = lines.iter().position(|l| l.trim() == "[dependencies]").ok_or("it has no [dependencies]")?;
@@ -351,13 +409,21 @@ fn depend_on_ui(text: &str) -> Result<Option<String>, String> {
     let at = section.iter().position(|l| l.trim_start().starts_with("corten ") || l.trim_start().starts_with("corten="));
     let at = start + 1 + at.ok_or("it has no corten line in [dependencies]")?;
     let corten = lines[at];
-    let dependency = match corten.split_once("path = \"") {
-        Some((_, rest)) => {
-            let path = rest.split_once('"').ok_or("corten's path is not closed")?.0;
-            let parent = path.strip_suffix("corten").ok_or("corten's path does not end at the corten crate")?;
-            format!("corten-ui = {{ path = \"{parent}corten-ui\" }}")
+    let dependency = if let Some(path) = field(corten, "path")? {
+        let parent = path.strip_suffix("corten").ok_or("corten's path does not end at the corten crate")?;
+        format!("corten-ui = {{ path = \"{parent}corten-ui\" }}")
+    } else if let Some(git) = field(corten, "git")? {
+        let mut keys = vec![format!("git = \"{git}\"")];
+        for key in ["branch", "tag", "rev"] {
+            if let Some(value) = field(corten, key)? {
+                keys.push(format!("{key} = \"{value}\""));
+            }
         }
-        None => format!("corten-ui = \"{}\"", env!("CARGO_PKG_VERSION")),
+        format!("corten-ui = {{ {} }}", keys.join(", "))
+    } else if corten.contains("workspace") || corten.contains("registry") {
+        return Err("corten comes from the workspace or another registry, so corten-ui must come from the same place".into());
+    } else {
+        format!("corten-ui = \"{}\"", env!("CARGO_PKG_VERSION"))
     };
     let mut out: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
     out.insert(at + 1, dependency);
@@ -366,6 +432,23 @@ fn depend_on_ui(text: &str) -> Result<Option<String>, String> {
         text_out.push('\n');
     }
     Ok(Some(text_out))
+}
+
+/// The string value of `key` in a dependency's inline table (`key = "value"`), None when the
+/// table has no such key.
+fn field<'a>(line: &'a str, key: &str) -> Result<Option<&'a str>, String> {
+    let mut rest = line;
+    while let Some(at) = rest.find(key) {
+        let before = rest[..at].chars().next_back();
+        let after = rest[at + key.len()..].trim_start();
+        if matches!(before, Some('{' | ',' | ' ')) && after.starts_with('=') {
+            let value = after[1..].trim_start();
+            let value = value.strip_prefix('"').ok_or_else(|| format!("corten's {key} is not a string"))?;
+            return Ok(Some(value.split_once('"').ok_or_else(|| format!("corten's {key} is not closed"))?.0));
+        }
+        rest = &rest[at + key.len()..];
+    }
+    Ok(None)
 }
 
 /// `src/lib.rs` with `.components(corten_ui::COMPONENTS)` after `.components(ui::COMPONENTS)`:
@@ -479,8 +562,12 @@ fn unified(old: &str, new: &str) -> String {
             k += 1;
         }
         let end = (end + 4).min(ops.len());
-        let line = |kind: char| 1 + ops[..start].iter().filter(|(op, _)| *op == ' ' || *op == kind).count();
         let count = |kind: char| ops[start..end].iter().filter(|(op, _)| *op == ' ' || *op == kind).count();
+        // A side's first line; for a side with no lines, the line before the hunk, as diff writes it.
+        let line = |kind: char| {
+            let before = ops[..start].iter().filter(|(op, _)| *op == ' ' || *op == kind).count();
+            before + usize::from(count(kind) > 0)
+        };
         out.push_str(&format!("@@ -{},{} +{},{} @@\n", line('-'), count('-'), line('+'), count('+')));
         for (op, text) in &ops[start..end] {
             out.push_str(&format!("{op}{text}\n"));
@@ -633,6 +720,17 @@ mod tests {
         let text = depend_on_ui(release).unwrap().unwrap();
         assert!(text.contains(&format!("corten-ui = \"{}\"\n\n[dev-dependencies]", env!("CARGO_PKG_VERSION"))), "{text}");
         assert!(depend_on_ui("[dependencies]\nserde = \"1\"\n").is_err());
+        let git = "[dependencies]\ncorten = { git = \"https://github.com/todd-skelton/corten\", rev = \"abc123\", features = [\"compress\"] }\n";
+        let text = depend_on_ui(git).unwrap().unwrap();
+        assert!(
+            text.ends_with("}\ncorten-ui = { git = \"https://github.com/todd-skelton/corten\", rev = \"abc123\" }\n"),
+            "a Git corten brings corten-ui from the same revision: {text}"
+        );
+        let branch = "[dependencies]\ncorten = { git = \"https://example.com/c\", branch = \"main\" }\n";
+        assert!(
+            depend_on_ui(branch).unwrap().unwrap().contains("corten-ui = { git = \"https://example.com/c\", branch = \"main\" }")
+        );
+        assert!(depend_on_ui("[dependencies]\ncorten = { workspace = true }\n").is_err());
         let lib = "    App::new(url::router())\n        .components(ui::COMPONENTS)\n        .assets(views::Static)\n";
         let text = list_ui_widgets(lib).unwrap();
         assert!(text.contains(".components(ui::COMPONENTS)\n        .components(corten_ui::COMPONENTS)\n"), "{text}");
@@ -652,10 +750,20 @@ mod tests {
             ("taken".to_string(), "y".to_string()),
         ];
         let error = apply(&dir, &files).unwrap_err();
-        assert!(error.contains("nothing changed"), "{error}");
+        assert!(error.contains("nothing was changed"), "{error}");
         assert_eq!(std::fs::read_to_string(dir.join("old.txt")).unwrap(), "old");
         assert!(!dir.join("made.txt").exists());
         assert!(dir.join("taken").is_dir());
+        // A file that cannot be staged (its directory is a file): nothing is replaced, and the
+        // directory made for an earlier one is gone.
+        let files = [("new/a.txt".to_string(), "x".to_string()), ("old.txt/b".to_string(), "y".to_string())];
+        let error = apply(&dir, &files).unwrap_err();
+        assert!(error.contains("nothing was changed"), "{error}");
+        assert!(!dir.join("new").exists());
+        let mut names: Vec<String> =
+            std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        assert_eq!(names, ["old.txt", "taken"], "no staged text is left behind");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -729,5 +837,7 @@ mod tests {
         let new = old.replace("b\n", "B\n").replace("m\n", "");
         assert_eq!(unified(old, &new), "@@ -1,5 +1,5 @@\n a\n-b\n+B\n c\n d\n e\n@@ -10,5 +10,4 @@\n j\n k\n l\n-m\n n\n");
         assert_eq!(unified("x\n", "x\n"), "");
+        assert_eq!(unified("", "a\n"), "@@ -0,0 +1,1 @@\n+a\n", "an empty side starts at line 0");
+        assert_eq!(unified("a\n", ""), "@@ -1,1 +0,0 @@\n-a\n");
     }
 }
