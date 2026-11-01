@@ -350,37 +350,39 @@ saying no: "The policy was retired meanwhile.") is the form's own message:
 `role="alert"` paragraph that is announced when the patch arrives. JSON clients get it first in
 `message` and as `form`; an agent tool gets it first in its error.
 
-A submit refused for the state it was made against rather than its input (a stale revision, a
-step already taken or out of order, a record deleted meanwhile) is
+A submit refused for the state it was made against rather than its input (a stale revision, a step
+already taken or out of order, a record deleted meanwhile), or while another request acts on the
+same thing ([below](#work-that-must-not-run-twice-at-once)), is
 `errors.refuse(Refusal::Conflict, text)` (`Refusal::Gone` for a deleted one). It is the form's
-message, and `req.invalid` answers it with 409 (410) in every mode instead of 422: the form
-drawn again with what the user typed, the page without JavaScript, the Problem Details document
-for a data client. A service the handler calls for the submit that failed or did not answer
-(a carrier, a payment provider, another app) is `errors.refuse(Refusal::Upstream, text)`: 502,
-the same three answers, with the form drawn again so the user can send it once more. The
-service may have applied it, so the retry must be the same submission: the runtime keeps the
-form's `SubmitKey` (below) over whatever key the patch drew, and the form drawn for the page
-without JavaScript writes the posted key again, `input.submit.again(f.submit)` where it would
-write `SubmitKey::field(f.submit)`. A proxy in front of the app that swaps 5xx bodies for a page
-of its own (nginx's `proxy_intercept_errors`, a CDN's error pages) hides the redrawn form; let
-the app's 502 through. A failure of the
-app itself (its database) is no refusal: it is `?`'d, and the error page answers it. A post
-that can be refused is a `data-patch` form: a plain post's refusal
-draws the whole page and leaves the address at the action's URL, whose GET may not exist. The
-one exception is a download, which must be a plain post ([below](#files)): its refusal redirects
-to the page that says why.
+message, and `req.invalid` answers it with 409 (410) in every mode instead of 422: the form drawn
+again with what the user typed, the page without JavaScript, the Problem Details document for a data
+client. A service the handler calls for the submit that failed or did not answer (a carrier, a
+payment provider, another app) is `errors.refuse(Refusal::Upstream, text)`: 502, the same three
+answers, with the form drawn again so the user can send it once more. The service may have applied
+it, so the retry must be recognized as the same work: by its `SubmitKey`, or the handler checks
+what is done already under a lock and sends the service a key made from what it acts on
+([below](#work-that-must-not-run-twice-at-once)). The runtime keeps the
+form's `SubmitKey` (below) over whatever key the patch drew, and the form drawn for the page without
+JavaScript writes the posted key again, `input.submit.again(f.submit)` where it would write
+`SubmitKey::field(f.submit)`. A proxy in front of the app that swaps 5xx bodies for a page of its
+own (nginx's `proxy_intercept_errors`, a CDN's error pages) hides the redrawn form; let the app's
+502 through. A failure of the app itself (its database) is no refusal: it is `?`'d, and the error
+page answers it. A post that can be refused is a `data-patch` form: a plain post's refusal draws the
+whole page and leaves the address at the action's URL, whose GET may not exist. The one exception is
+a download, which must be a plain post ([below](#files)): its refusal redirects to the page that
+says why.
 
-A write that must not apply twice (an order, a payment, a message sent) carries a `SubmitKey`.
 A 502 or a dropped connection can hide a write that committed, and the user, the browser or the
 runtime then sends it again. Add a `SubmitKey` field to the form struct and draw it with
 `SubmitKey::field`, a hidden input with a fresh random UUID v4. A UUID is what most APIs take as
-an idempotency key, so the app passes the key on as it is:
+an idempotency key, so the app passes the key on as it is for a write that belongs to this
+submission:
 
 ```rust,ignore
 #[derive(Deserialize, Fields)]
 struct OrderInput { quantity: u32, submit: SubmitKey }
 
-html! { <form method="post" action={url::Order { id }} data-patch>{SubmitKey::field(f.submit)} .. </form> }
+html! { <form method="post" action={url::Orders} data-patch>{SubmitKey::field(f.submit)} .. </form> }
 
 async fn order(req: Req, State(db): State<Db>, Form(input): Form<OrderInput>) -> HtmlResult {
     // In the same transaction as the write: a key seen before answers with the first outcome.
@@ -388,6 +390,12 @@ async fn order(req: Req, State(db): State<Db>, Form(input): Form<OrderInput>) ->
     req.redirect(&url::Order { id: placed.id })
 }
 ```
+
+A write that only the submission identifies (placing a new order, sending a message) carries a
+`SubmitKey`. Work on something the app's data already names (one label per order, one charge
+per invoice) takes a lock and leaves out what is done already instead, with no `SubmitKey`, and
+gives the provider a key made from what it names
+([below](#work-that-must-not-run-twice-at-once)).
 
 The same key is sent for as long as the submission has no answer: a page reloaded after a post
 posts it again, and the runtime sends a `data-patch` form again with it after a network error, a
@@ -402,6 +410,10 @@ change made while its write is out waits for the answer instead, and goes under 
 no store); `corten_cluster::begin` takes it as its idempotency key. A field that is not a UUID v4
 (in either case; it is kept lowercase) is a 422 that names it. Make the field
 `Option<SubmitKey>` when data clients post the same form without one.
+
+A key makes one submission apply once. It does not keep two submissions apart: two tabs that
+each press "Buy postage" send two keys, and both run. That takes a lock and a check of what is
+done already ([below](#work-that-must-not-run-twice-at-once)).
 
 The key is a form field and not the `Idempotency-Key` header that some HTTP APIs read. A browser
 without JavaScript cannot set a header, so a field is the one way that works for every client,
@@ -498,6 +510,282 @@ the error names the kind of part that is not a patch (`ComponentOrExpressionNotA
 the view's top-level parts. A `corten::live`
 fragment is already text, so debug builds check it when it is sent instead (it panics, naming the
 element).
+
+## Work that must not run twice at once
+
+Some work on something the app's data already names must not run while the same work is running, or
+run again once it is done: a paid call for it (postage for an order, a charge for an invoice), a
+batch over the same rows. A `SubmitKey` does not cover it, since two submissions (two tabs, two
+people) have two keys. A write only the submission identifies (placing a new order, sending a
+message) has nothing to leave out, and takes a `SubmitKey` instead ([above](#forms)). The handler
+takes a lock, and under it reads what the work changes and leaves out what is done already. The lock
+alone keeps two runs apart only while they overlap: a second submit made after the first finished
+finds it free.
+
+The lock lives where every instance of the app sees it. A `Mutex` or an `AtomicBool` in a static
+holds within one process, and an app is often more than one: a blue/green or rolling release runs
+the old and the new side by side while traffic moves, and an app scaled out runs several. A click
+each of them answers takes each process's lock, and both buy. In Postgres the lock is an advisory
+lock taken in a transaction kept open for the work. It ends with the transaction (a commit, a
+rollback, a statement that failed, a connection that closed), and the check and the record of what
+was bought run on that transaction, so they commit with the lock's release:
+
+```rust,ignore
+/// A kind of work that must not overlap: the first half of Postgres's two-part advisory lock
+/// key. One enum numbers them all, so two kinds cannot share a number (the compiler refuses it).
+#[derive(Clone, Copy)]
+#[repr(i32)]
+pub enum OneAtATime {
+    BuyingPostage = 1,
+}
+
+/// Held while the work runs. Dropping it rolls the transaction back on a task sqlx spawns, so the
+/// lock ends a moment later: end it with `release` or `abandon` before it is taken again.
+pub struct Held(Transaction<'static, Postgres>);
+
+impl OneAtATime {
+    /// `None` while a request in this process or another holds it for `key` (a seller's id).
+    /// All of it, the wait for a connection included, takes at most `CALL` (the budget below
+    /// counts on it); the pool's `acquire_timeout` is every page's (sqlx's default is 30 s).
+    pub async fn take(self, pool: &PgPool, key: i32) -> sqlx::Result<Option<Held>> {
+        // Past it, an I/O timeout: the lock or the database was slow, not only the pool.
+        let late = |_| sqlx::Error::Io(std::io::ErrorKind::TimedOut.into());
+        timeout(CALL, self.take_now(pool, key)).await.map_err(late)?
+    }
+
+    async fn take_now(self, pool: &PgPool, key: i32) -> sqlx::Result<Option<Held>> {
+        // Each statement sees what committed before it, so the check sees the last holder's
+        // record whatever the database's default is.
+        let mut tx = pool.begin_with("BEGIN ISOLATION LEVEL READ COMMITTED").await?;
+        // Postgres cancels a statement after 5 s. A statement that fails aborts the transaction,
+        // which releases the lock at once (and undoes these `SET LOCAL`s), so the work stops at
+        // any database error (`?`), never catching one and carrying on. A transaction left
+        // waiting 10 s between statements (above one carrier call) ends with its session, and
+        // the lock with it: a host cut off.
+        sqlx::query("SET LOCAL statement_timeout = '5s'").execute(&mut *tx).await?;
+        sqlx::query("SET LOCAL idle_in_transaction_session_timeout = '10s'").execute(&mut *tx).await?;
+        let taken: bool = sqlx::query_scalar("SELECT pg_try_advisory_xact_lock($1, $2)")
+            .bind(self as i32)
+            .bind(key)
+            .fetch_one(&mut *tx)
+            .await?;
+        Ok(taken.then_some(Held(tx)))
+    }
+}
+
+impl Held {
+    /// The transaction the lock is in: the work's reads and writes go here.
+    pub fn conn(&mut self) -> &mut PgConnection {
+        &mut self.0
+    }
+
+    /// Ends the hold, keeping what it wrote.
+    pub async fn release(self) -> sqlx::Result<()> {
+        self.0.commit().await
+    }
+
+    /// Ends the hold now, keeping nothing it wrote.
+    pub async fn abandon(self) -> sqlx::Result<()> {
+        self.0.rollback().await
+    }
+}
+
+/// How a buy went. Each label the carrier returned is recorded, unless the database fails (case 1
+/// below).
+enum Bought {
+    /// Every order has a label: bought now, or already.
+    All,
+    /// Stopped with orders left: the budget was spent, or the signal aborted (the client left,
+    /// shutdown began).
+    Unfinished,
+    /// The carrier failed or did not answer for an order.
+    Failed,
+    /// Another request holds the lock (before the first order, or between two).
+    Busy,
+}
+
+/// How long a buy starts work on orders for, and how long one carrier call may take. No order and
+/// no call starts with less than `CALL` left, so the calls end within `BUDGET`. On a live
+/// connection the last call's record and commit take at most a statement timeout each (5 s); an
+/// order started near the end takes at most all of `take` (`CALL`), then the check and the end of
+/// the hold at their statement timeout, before the next stops. Either way 25 s in all, which leaves
+/// 5 s of the route's 30 s deadline for the rest of the request (the body, the caller, the answer's
+/// read).
+const BUDGET: Duration = Duration::from_secs(15);
+const CALL: Duration = Duration::from_secs(5);
+
+async fn buy(
+    req: Req,
+    signal: Signal,
+    Caller(seller): Caller<Seller>,
+    State(db): State<Db>,
+    Form(input): Form<BuyInput>,
+) -> HtmlResult {
+    let (shared, orders, seller) = (db.clone(), input.orders.clone(), seller.id);
+    // On a task that finishes if the client leaves: a label bought but not recorded is paid for
+    // and lost. Its signal stops it starting calls, never a call under way, and it commits what
+    // it bought.
+    let bought = signal
+        .finish(move |signal| async move {
+            let end = Instant::now() + BUDGET;
+            let stop = || signal.is_aborted() || end.saturating_duration_since(Instant::now()) < CALL;
+            for order in &orders {
+                if stop() {
+                    return Ok(Bought::Unfinished);
+                }
+                // A lock for each order, committed with its record: a run that ends anywhere (a
+                // lost connection, a killed process) loses at most the record of the call under
+                // way. Keyed by what must not overlap (the seller whose orders these are), taken
+                // from what the server checked (the caller), never from an unchecked form value.
+                let Some(mut held) = OneAtATime::BuyingPostage.take(&shared.pool, seller).await? else {
+                    return Ok(Bought::Busy);
+                };
+                // Under the lock: whether this order is the seller's and has no label yet (one
+                // statement, as `record` is). Every hold is ended before the run goes on or
+                // answers: a dropped one ends a moment later, and the next `take` (this run's, or
+                // the user's resend) could find it still held and refuse.
+                if !shared.unlabeled(held.conn(), seller, order).await? {
+                    held.release().await?;
+                    continue;
+                }
+                if stop() {
+                    held.abandon().await?;
+                    return Ok(Bought::Unfinished);
+                }
+                // The carrier is sent the order's id as its idempotency key (below).
+                match timeout(CALL, shared.carrier.label(order)).await {
+                    Ok(Ok(label)) => shared.record(held.conn(), order, &label).await?,
+                    // Here every carrier error stops the batch as a failure to answer; what it
+                    // bought before is committed. A carrier that answers no (a bad address) is
+                    // better the app's own 422, `errors.add_form` naming the order, since a resend
+                    // would fail the same way.
+                    Ok(Err(_)) | Err(_) => {
+                        held.abandon().await?;
+                        return Ok(Bought::Failed);
+                    }
+                }
+                held.release().await?;
+            }
+            Ok::<_, Error>(Bought::All)
+        })
+        .await?;
+    let (why, text) = match bought {
+        Bought::All => return req.redirect(&url::Labels),
+        // Not a failure: what is left goes out with the next submit.
+        Bought::Unfinished => {
+            let left = "Some orders are left to buy. Send them again.";
+            return req.redirect_with_notice(&url::Buy, left);
+        }
+        Bought::Busy => (
+            Refusal::Conflict,
+            "Postage for this account is being bought. \
+             Send this again once it is done to buy what it left.",
+        ),
+        Bought::Failed => (
+            Refusal::Upstream,
+            "The carrier did not answer for every order. \
+             The orders below show what has a label; send this again to buy the rest.",
+        ),
+    };
+    let mut errors = Errors::new();
+    errors.refuse(why, text);
+    req.invalid_with(
+        &errors,
+        |form| async {
+            let orders = db.orders(seller, &input.orders).await?; // as committed now
+            form.draw(BuyPanel { orders: &orders, errors: &errors })
+        },
+        || page(&req, &db, &errors),
+    )
+    .await
+}
+```
+
+What it gives:
+
+1. Two buys for one seller never buy at once, on any instance, while the lock is held (its session
+   outlives a host cut off from the database by at most the idle timeout after its last whole
+   statement, 10 seconds, kept above `CALL` so a call still running there ends first; one cut off in
+   the middle of a statement holds it until the network gives up, which the server's TCP keepalives
+   bound, or on Postgres 17 a `SET LOCAL transaction_timeout` set above the work's own bound; case 1
+   below), and one after another the second leaves out what the first recorded. Each order is bought
+   under its own hold of the lock and committed with its label, so a run that ends anywhere loses at
+   most the record of the call under way. A repeat (a second tab after the first finished, a retry
+   whose answer was lost) finds nothing to buy and goes to the labels once the first is done (while
+   it runs, whichever of the two meets the other's lock stops with the 409 below, and neither buys
+   an order twice), so the form needs no `SubmitKey`.
+2. A busy lock is `Refusal::Conflict`: a 409 whose form shows the orders as committed, which
+   leaves out what the other buy has not committed yet, so the message asks for a resend once it
+   is done; the resend buys only what is left. A buy that meets the other between two orders stops
+   there, with the labels it bought committed.
+3. A carrier that fails or does not answer for an order ends the batch there: the labels bought
+   before it commit, and the answer is `Refusal::Upstream` ([above](#forms)), a 502 whose form shows
+   what has a label, so the seller sends the rest again. A batch that stops for time (its budget
+   spent, the client gone, shutdown) commits what it bought too, and is no failure: a redirect back
+   to the form with a notice, where the form lists the orders still without a label. A batch that
+   does not fit one request in the normal case goes to [a queue](app.md#a-queue-a-request-fills)
+   instead. A failure of the app itself (its database) is `?`'d to the error page, and rolls back
+   the order under way (case 1 below).
+
+What it does not give, which is the app's to design for its provider:
+
+1. **A call whose record is lost.** A call that failed or timed out may still have been applied by
+   the provider, and its order stays without a label; a database failure after a paid call rolls
+   back that order's record; and the lock ends with its connection (a network fault, the
+   transaction's timeouts) or its process (killed at shutdown) while a call can still be under way,
+   and that call's record rolls back. The next buy then calls again for that order. What answers it
+   is the provider's idempotency key, made from what is bought (the order), not from the submission,
+   so the call made again is the same purchase. How long a provider keeps a key, and what it does
+   with one sent again after a failure, with changed details or while the first call still runs, is
+   the provider's; the app makes its keys to fit. A provider with no keys (most email and SMS
+   services) cannot be made to send exactly once: the app chooses at most once (a row claimed and
+   committed before each call, the call only where the claim was new) or at least once.
+2. **Timeouts beyond its own.** The work's worst case on a live connection (the budget, then the
+   last record and the commit at their statement timeout: 25 seconds here) is under the route's
+   deadline (`App::deadline`, 30 seconds unless set; an [area](app.md#areas) of its own sets
+   another), past which the client gets the 503 page while the work goes on, so what the request
+   does outside the work (reading the body, the caller, the read the refusal draws) fits in what is
+   left, bounded as the app's other reads are. The wait for a connection counts against the budget,
+   so `take` bounds all of it itself: the pool's `acquire_timeout` (sqlx's default is 30 seconds) is
+   every page's, and an order started late would wait past the deadline. `statement_timeout` bounds
+   the database's work, not the app's wait for an answer: a connection lost mid-statement waits
+   until the network gives up, and is case 1.
+3. **Shutdown.** `serve` waits for a handler whose client is still there up to its deadline, and for
+   work whose handler is gone until `App::shutdown_grace` has passed since shutdown began (5 seconds
+   unless set, shared with the app's tasks). Shutdown aborts the work's signal, so it starts no more
+   calls and, on a live connection, ends within one call, a record and the commit (15 seconds here)
+   once a call has started; before a call, nothing paid is under way, and an order's lock and check
+   end within their own timeouts. An app with this work sets the grace above that
+   (`.shutdown_grace(Duration::from_secs(20))`) and the platform's wait before it kills the process
+   above the longer of the deadline and the grace (`docker stop` waits 10 seconds, set by Compose's
+   `stop_grace_period`; Kubernetes 30, `terminationGracePeriodSeconds`). A process killed sooner is
+   case 1.
+
+Notes:
+
+1. The second part of the key names what must not overlap: a seller's id lets two sellers buy at
+   once, and 0 is one lock for all. A key that is not an `int4` (a `bigint` id, a UUID, a name)
+   is `hashtext($2::text)`, an internal Postgres function whose 32 bits can collide, which now and
+   then refuses a submit that would not have overlapped.
+2. The lock's transaction is one pooled connection for as long as an order's work runs, and the
+   work uses it rather than taking more. Work that takes a second connection while it holds the lock
+   (a claim committed apart from it) holds two, and when concurrent buys' first connections take
+   the whole pool, each waits for a second that none can get; a semaphore with fewer permits than
+   the pool has connections, taken before the first, leaves room for the seconds. The same
+   semaphore, well under the pool's size, keeps a few buys at once from leaving the app's pages
+   waiting for a connection (or the work takes a small pool of its own). Work that runs
+   for minutes takes a leased row instead, the claim [the queue](app.md#a-queue-a-request-fills)
+   shows: taken while its lease is past, renewed while the work runs, and taken over by another
+   process once a dead one's lease runs out.
+3. Another store's lock is a lease (Redis: `SET name token NX PX 30000`, released only by the
+   token's holder), which expires under longer work unless it is renewed, as the queue renews its
+   claim. The lock is the app's, over its own store and driver, as its other reads and writes
+   are: about thirty lines that only apps with such work need, so Corten gives no lock.
+   A schedule that must run once across instances claims each run instead
+   ([On a schedule](app.md#on-a-schedule)).
+4. The lock holds only between instances that all take it. The release that brings it in (and one
+   that changes a lock's kind or key) overlaps instances that do not, so it goes out without the
+   old and the new running side by side: the old drained first.
 
 ## Files
 

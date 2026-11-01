@@ -1248,16 +1248,20 @@ pub enum Refusal {
     /// 422: the input breaks a rule ([`Errors::add`], [`Errors::add_form`]).
     #[default]
     Invalid,
-    /// 409: the submit was made against a state that has moved on (a stale revision, a step
-    /// already taken or out of order). Sending the same input again would be refused again; the
-    /// user needs the current state first.
+    /// 409: the submit conflicts with the state of what it acts on. Either that state has moved
+    /// on (a stale revision, a step already taken or out of order), and the same input would be
+    /// refused again, so the user needs the current state first; or another request is acting
+    /// on it now (work that must not run twice at once, under a lock), and the same input goes
+    /// through once that one is done.
     Conflict,
     /// 410: what the submit acts on is gone (deleted meanwhile).
     Gone,
     /// 502: a service the handler calls for the submit (a payment provider, a carrier, another
     /// app) failed or did not answer. Nothing the user sent is at fault, and the same submit may
-    /// succeed later. Whether the service applied it is not known, so the runtime keeps the
-    /// form's [`SubmitKey`](crate::SubmitKey): a retry is the same submission.
+    /// succeed later. Whether the service applied it is not known, so a retry must be recognized
+    /// as the same work: the runtime keeps the form's [`SubmitKey`](crate::SubmitKey), or the
+    /// handler checks what is done already under a lock and sends the service a key made from
+    /// what it acts on (the requests and forms guide, Work that must not run twice at once).
     Upstream,
 }
 
@@ -1517,7 +1521,15 @@ impl<I: Id, P: Place> Render for FieldMessage<'_, I, P> {
 ///
 /// Put a `SubmitKey` field in the form struct and draw it with [`SubmitKey::field`]: a hidden
 /// input with a fresh random UUID v4 (122 random bits), named by the field's [`FieldName`]. A
-/// UUID because that is what APIs take as an idempotency key, so the app sends it on unchanged.
+/// UUID because that is what APIs take as an idempotency key, so the app sends it on unchanged
+/// for a write that belongs to this submission.
+///
+/// A key makes one submission apply once; it does not keep two submissions apart (two tabs, two
+/// people), whose keys differ. Work on something the app's data already names (postage for an
+/// order, a charge for an invoice) that must not run twice takes a lock in the store every
+/// instance of the app shares and, under it, leaves out what is done already, with no `SubmitKey`
+/// (the requests and forms guide, Work that must not run twice at once): a lock in a static holds
+/// within one process only. A write only the submission identifies (a new order) keeps its key.
 ///
 /// ```
 /// use corten::prelude::*;
