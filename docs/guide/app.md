@@ -688,10 +688,12 @@ can name, and if anything read a caller the answer is private whatever its heade
 
 A `Cache-Control` written by hand counts for what it plainly says: a `no-store` on any of its
 lines, and a `private` only when the header is one line of plain text with no quoted value (with
-more lines, a quoted value or a byte that is not text, a cache could read it another way). A
+more lines, a quoted value or a byte that is not text, a cache could read it another way) and
+no `no-store` with `must-understand` beside it (a browser that knows the status could still keep
+the answer). A
 directive with a value (`private="set-cookie"`, which lets a shared cache keep the rest, or
 `no-store=1`) or inside a quoted value does not count, nor does a `no-store` with
-`must-understand` (a cache that knows the status may ignore it), which is left as written unless
+`must-understand`, whatever its value (a cache that knows the status may ignore it), which is left as written unless
 the answer is personal. A `no-store` goes out where every reader sees it: several lines are
 joined into one, and beside a quoted value or a byte that is not text it goes out alone (its
 other directives dropped, so no reader can find anything else). A personal answer (it sets a

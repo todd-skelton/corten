@@ -3182,7 +3182,7 @@ async fn a_failure_under_no_store_is_not_stored() {
 /// plain text with no quoted value: otherwise a `no-store` goes out on one line (`no-store` alone
 /// beside a quoted value or a byte that is not text), so a cache that reads only one line, or a
 /// value another way, is told the same. `must-understand, no-store` on an answer nothing makes
-/// personal is left as written.
+/// personal is left as written, and a `private` beside them is not trusted.
 #[tokio::test]
 async fn a_cache_control_counts_only_for_what_it_plainly_says() {
     let router = Router::new()
@@ -3310,6 +3310,13 @@ async fn a_cache_control_counts_only_for_what_it_plainly_says() {
             }),
         )
         .route(
+            "/private-valued-must-understand",
+            get(|| async {
+                let lines = [(header::CACHE_CONTROL, "private, no-store=1, must-understand"), (header::SET_COOKIE, "seen=1")];
+                (axum::response::AppendHeaders(lines), "private")
+            }),
+        )
+        .route(
             "/upper-valued",
             get(|| async {
                 let lines = [(header::CACHE_CONTROL, "public, max-age=600, No-Store=1"), (header::SET_COOKIE, "seen=1")];
@@ -3371,6 +3378,7 @@ async fn a_cache_control_counts_only_for_what_it_plainly_says() {
         ("/must-understand-shared", "max-age=60, must-understand, no-store"),
         ("/must-understand-valued", "no-store"),
         ("/private-must-understand", "no-store"),
+        ("/private-valued-must-understand", "no-store"),
         ("/upper-valued", "no-store"),
         ("/private-then-no-store", "private, max-age=600, no-store"),
         ("/must-understand", "no-store"),

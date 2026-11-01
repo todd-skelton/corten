@@ -215,8 +215,9 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
             // plain text (the lines joined, or `no-store` alone beside a quoted value or a byte
             // that is not text), and such a `private` is not trusted (an answer that sets a cookie
             // or read a caller is still made private below). With `must-understand`, a cache that
-            // knows the status may ignore `no-store` (RFC 9111 5.2.2.3): the header is left as
-            // written unless the answer is personal.
+            // knows the status may ignore `no-store` (RFC 9111 5.2.2.3), whatever the directive's
+            // value: the header is left as written unless the answer is personal, and a `private`
+            // beside them is not trusted.
             let (mut no_store, mut private, mut must_understand) = (false, false, false);
             let (mut lines, mut quoted, mut text) = (0, false, true);
             for line in entry.iter() {
@@ -244,7 +245,9 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
                 }
                 return;
             }
-            if private && plain && !(no_store && must_understand) {
+            // With `must-understand`, a `no-store` any reader could find (`no-store=1` too) is one a
+            // cache that knows the status may ignore: `private` alone does not keep the browser out.
+            if private && plain && !(must_understand && entry.iter().any(|line| mentions_no_store(line.as_bytes()))) {
                 return;
             }
             // A personal answer whose header is replaced below gets `no-store` if any reader

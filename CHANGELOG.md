@@ -2531,19 +2531,20 @@ Corten is pre-1.0, so any minor version may change the API.
     browser keep an expired code's page or someone else's statement's 404 and restore it from its
     back/forward cache. A failure whose `Cache-Control` names `no-store` (`NoStore`'s, or one
     written by hand, however a cache could find it) now gets an error page sent `no-store` (a
-    JSON failure already kept it). A request refused before the handler runs, a panic and a deadline never reach `NoStore` and
-    keep the default. When Corten decides whether an answer may be shared, a `Cache-Control`
-    written by hand now counts for what it plainly says, on any of its lines:
-    `private="set-cookie"`, `no-store=1`, a directive inside a quoted value and a `no-store`
-    with `must-understand` (which a cache that knows the status may ignore) no longer stand for
-    `private` or `no-store`, and neither does a first line with a byte outside ASCII (it stood
-    for `private`). A personal answer (it sets a cookie, read a caller, has the CSP nonce, or is
-    a `Cache` answer to a request with credentials) with only those is sent `private, no-cache`,
-    or `no-store` if any reader could find one in its header. A plain
-    `no-store` or `private` is trusted as written only on one line of plain text with no quoted
-    value; otherwise a `private` is not trusted, and a `no-store` is sent on one line (several
-    joined, or `no-store` alone beside a quoted value or a byte that is not text), so a cache that
-    reads only one line, or a value another way, is told the same.
+    JSON failure already kept it). A request refused before the handler runs, a panic and a
+    deadline never reach `NoStore` and keep the default. When Corten decides whether an answer
+    may be shared, a `Cache-Control` written by hand now counts for what it plainly says, on any
+    of its lines: `private="set-cookie"`, `no-store=1`, a directive inside a quoted value and a
+    `no-store` with `must-understand` (whatever its value; a cache that knows the status may
+    ignore the `no-store`) no longer stand for `private` or `no-store`, and neither does a first
+    line with a byte outside ASCII (it stood for `private`). A personal answer (it sets a cookie,
+    read a caller, has the CSP nonce, or is a `Cache` answer to a request with credentials) with
+    only those is sent `private, no-cache`, or `no-store` if any reader could find one in its
+    header. A plain `no-store` or `private` is trusted as written only on one line of plain text
+    with no quoted value, and a `private` not beside a `no-store` with `must-understand`;
+    otherwise a `private` is not trusted, and a `no-store` is sent on one line (several joined,
+    or `no-store` alone beside a quoted value or a byte that is not text), so a cache that reads
+    only one line, or a value another way, is told the same.
     Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
     requests over 1,000, median of three and the range of the nine pairs, against main at
     a83452c9): a `NoStore` failure as an HTML error page runs 31,990 instructions a request
