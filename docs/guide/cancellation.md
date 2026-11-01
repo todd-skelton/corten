@@ -34,7 +34,7 @@ app keeps its short one:
 
 | Requests to | Deadline |
 |---|---|
-| an API's routes | `Api::deadline` if it set one, else `App::deadline` |
+| an API's routes | its own `Api::deadline`, else that of the nearest API around it that set one, else the innermost area around it that set `Area::deadline`, else `App::deadline` |
 | an area's routes | the innermost area that set `Area::deadline`, else `App::deadline` |
 | everything else | `App::deadline` |
 
