@@ -67,6 +67,28 @@ pub enum Mode {
     Data,
 }
 
+impl Mode {
+    /// The runtime swaps this answer into the page it has ([`Mode::Navigation`], [`Mode::Action`]):
+    /// a page renders only its title, head tags and `<main>`, and the layout around `<main>` (the
+    /// header, a cart's count in it) stays as the full load drew it. A value only the layout shows
+    /// need not be read then:
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    ///
+    /// async fn cart_count(req: &Req) -> Option<u32> {
+    ///     if req.mode.swaps() {
+    ///         return None;
+    ///     }
+    ///     Some(3) // the app's read: carts.count(viewer).await
+    /// }
+    /// ```
+    #[inline]
+    pub const fn swaps(self) -> bool {
+        matches!(self, Mode::Navigation | Mode::Action)
+    }
+}
+
 pub(crate) fn mode_of(headers: &HeaderMap) -> Mode {
     match headers.get(MODE_HEADER).map(HeaderValue::as_bytes) {
         Some(b"nav") => Mode::Navigation,
@@ -997,7 +1019,7 @@ impl Req {
         // The last size of each part, so the buffer is allocated once.
         static FULL: AtomicUsize = AtomicUsize::new(16 * 1024);
         static SWAP: AtomicUsize = AtomicUsize::new(16 * 1024);
-        let swap = matches!(self.mode, Mode::Navigation | Mode::Action);
+        let swap = self.mode.swaps();
         let (part, size) = if swap { (Part::Swap, &SWAP) } else { (Part::Full, &FULL) };
         let mut out = String::with_capacity(size.load(Ordering::Relaxed));
         HEAD_AT.set(None);
@@ -1280,7 +1302,7 @@ impl Req {
                 res.headers_mut().append(header::SET_COOKIE, plain.header());
             }
             self.signal.mark_personal();
-            let swap = matches!(self.mode, Mode::Navigation | Mode::Action);
+            let swap = self.mode.swaps();
             #[cfg(debug_assertions)]
             if matches!(self.mode, Mode::Document) && !self.signal.notice_drawn() {
                 tracing::warn!(

@@ -1310,6 +1310,20 @@ Corten is pre-1.0, so any minor version may change the API.
     [#408 Kit components: styled Tabs, Dropdown Menu, Combobox and Toast over corten-ui](https://github.com/todd-skelton/corten/issues/408),
     [#409 The component kit has no test that every component compiles in an app and works in each browser](https://github.com/todd-skelton/corten/issues/409),
     [#410 An app cannot see what changed in a kit component since it copied it](https://github.com/todd-skelton/corten/issues/410)).
+160. `Mode::swaps()`: true for a navigation and a `data-patch` action, whose answer the runtime
+    swaps into the page it has, so the layout around `<main>` does not render. A value only the
+    layout shows that needs a read of its own (a cart's count) is read only when it is false, in
+    the function that builds the layout's props: a full load and a page without JavaScript have it
+    in the HTML, and a click between pages does not read it. The views guide shows the pattern and
+    the write side (for its `data-patch` answer the write reads the value and patches the badge;
+    a redirect alone leaves the old value). The two places the renderer chose a swap
+    now call it: an item-like page measured with callgrind (release, in-process `oneshot`, the
+    difference between 1,200 and 200 requests over 1,000, median of three and the range of the
+    nine pairs, against main at bfdb1fe1) runs 22,371 instructions as a full document (22,368 to
+    22,385) against 22,371 (22,368 to 22,386), and 22,012 as a navigation (21,953 to 22,270)
+    against 21,994 (21,921 to 21,997): the runs vary more than the builds differ, so no
+    measurable change
+    ([#523 A layout value that needs an async read (a cart count) can only be read by every handler on every navigation, or fetched by the browser after load](https://github.com/todd-skelton/corten/issues/523)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
