@@ -567,11 +567,17 @@ const rust = (s) => {
 const field = ([kind, a, b]) =>
   kind === "Text" ? `F::Text(${rust(a)})` : kind === "Hour" ? `F::Hour(${a}, ${b})` : a === undefined ? `F::${kind}` : `F::${kind}(${a})`;
 const seps = (s) => `::corten::i18n::__private::Separators { decimal: ${rust(s.decimal)}, group: ${rust(s.group)}, grouping: [${s.grouping.join(", ")}] }`;
+// A currency's code as `Currency::key` numbers it (its three bytes, big-endian), so a lookup
+// compares one number per probe.
+const codeKey = (code) => {
+  if (!/^[A-Z]{3}$/.test(code)) throw new Error(`a currency code is three letters: ${code}`);
+  return [...code].reduce((key, ch) => key * 256 + ch.charCodeAt(0), 0);
+};
 const tokens = (d) =>
   [
     `::corten::i18n::__private::LocaleData { tag: ${rust(d.tag)}, zero: '${d.zero}', plain: ${seps(d.plain)}, money_separators: ${seps(d.ofMoney)}, percent_separators: ${seps(d.ofPercent)},`,
     ` number: [${d.number.map(rust).join(", ")}], percent: [${d.percent.map(rust).join(", ")}], money: [${d.money.map(rust).join(", ")}],`,
-    ` currencies: &[${d.symbols.map(([c, p, n]) => `(${rust(c)}, ${rust(p)}, ${rust(n)})`).join(", ")}],`,
+    ` currencies: &[${d.symbols.map(([c, p, n]) => `(${codeKey(c)}, ${rust(p)}, ${rust(n)})`).join(", ")}],`,
     ` names: &[${d.names.map(rust).join(", ")}],`,
     ` dates: { use ::corten::i18n::__private::Field as F; [${d.dates.map((fs) => `&[${fs.map(field).join(", ")}]`).join(", ")}] },`,
     ` utc: ${rust(d.utc)}, gmt: [${d.gmt.map(rust).join(", ")}],`,
@@ -604,9 +610,10 @@ writeFileSync(
   join(root, "crates/corten/src/i18n/display_digits.rs"),
   `${header}
 
-/// The fraction digits an amount in the currency is shown with, where it is not 2, by code.
-pub(super) const DISPLAY_DIGITS: &[(&str, u8)] = &[
-${display.map(([c, n]) => `    ("${c}", ${n}),`).join("\n")}
+/// The fraction digits an amount in the currency is shown with, where it is not 2, by its
+/// \`Currency::key\` (the code's three bytes), in order.
+pub(super) const DISPLAY_DIGITS: &[(u32, u8)] = &[
+${display.map(([c, n]) => `    (${codeKey(c)}, ${n}), // ${c}`).join("\n")}
 ];
 `,
 );
