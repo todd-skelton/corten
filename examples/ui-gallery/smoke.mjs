@@ -301,7 +301,9 @@ async function run(browser) {
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForTimeout(300);
   check("a group with no box checked stops the form at its first box, with the app's message", shipMessage === "Choose where you ship." && !(await sellValid()) && (await page.textContent("#result")) === lastResult, shipMessage);
-  await page.getByRole("checkbox", { name: "Canada" }).check();
+  // From the keyboard: Firefox's message for the refused box sits over the next box, and a click
+  // there only closes the message, as it would for a user.
+  await page.getByRole("checkbox", { name: "Canada" }).press("Space");
   check("one box checked, the group is valid", (await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) === "");
   // RequiredWhen: the lowest offer applies only to offers.
   const floor = page.getByLabel("Lowest offer");
@@ -820,8 +822,11 @@ async function run(browser) {
   const plainSheet = plain.locator('dialog[aria-label="Last sale"]');
   check("no script: the address opens the sheet", await plainSheet.isVisible());
   // The sheet slides in; without the page's script Chromium does not tell Playwright the link has
-  // stopped moving, so the click waits for the slide itself to end.
-  await plainSheet.evaluate((sheet) => Promise.all(sheet.getAnimations().map((a) => a.finished)));
+  // stopped moving, so the click waits for the slide itself to end. Asked again until it has (a
+  // promise does not settle in Firefox's page without script), for at most the 200 ms slide many
+  // times over.
+  const sliding = () => plainSheet.evaluate((sheet) => sheet.getAnimations().some((a) => a.playState === "running"));
+  for (let tries = 0; tries < 40 && (await sliding()); tries++) await plain.waitForTimeout(50);
   await Promise.all([plain.waitForURL((url) => !url.searchParams.has("sale")), plain.getByRole("link", { name: "Close" }).click()]);
   check("no script: its link closes it", (await plainSheet.count()) === 0);
   await plain.goto(`${base}/`);
