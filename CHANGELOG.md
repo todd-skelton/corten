@@ -1324,6 +1324,20 @@ Corten is pre-1.0, so any minor version may change the API.
     against 21,994 (21,921 to 21,997): the runs vary more than the builds differ, so no
     measurable change
     ([#523 A layout value that needs an async read (a cart count) can only be read by every handler on every navigation, or fetched by the browser after load](https://github.com/todd-skelton/corten/issues/523)).
+161. `corten::route::FromQuery`: a `#[route(query)]` set whose value is a rule over what was
+    sent (a value sent twice that must agree, a flag any `dimension.*` sets), which a derived
+    set cannot be. Two derived sets of the same names carry it: `Link` writes its links as
+    narrow as the value, and `Read` reads every value sent, which `from_query` turns into the
+    value, so handlers get the rule applied and no name is a string. A `Link` and a `Read`
+    with different names do not compile, a route checks the set's names against its own as
+    before, and a derived set cannot implement it too. Derived sets read as before:
+    measured with callgrind (release, in-process `oneshot`, a route with a derived set of a search, a page and two
+    `dimension.*` options, the difference between 1,200 and 200 requests over 1,000, median of
+    three and the range of the nine pairs), 34,274 instructions a request (34,139 to 34,276)
+    against 34,267 on main at daaf983f (34,147 to 34,287). The same query read through a
+    `FromQuery` set whose `Read` has `Vec` fields runs 35,232 (35,155 to 35,243): the lists and
+    the rule cost about 960 more, paid only by such a set
+    ([#530 A #[route(query)] set that reads itself from the whole query has no public reader since Params reads sets field by field](https://github.com/todd-skelton/corten/issues/530)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

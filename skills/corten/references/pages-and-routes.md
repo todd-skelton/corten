@@ -73,7 +73,12 @@ async fn show(req: Req, Params(at): Params<url::Item<'_>>) -> HtmlResult {
 Routes that carry the same query parameters (a list's filters on its live, bulk and confirm
 routes) share one `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` as a
 `#[route(query)] filters: ItemQuery` field; handlers read it as their route's `Params` field (`at.filters`). Never repeat the
-filter fields in each route. Parameters whose names are data (an option per dimension) are a
+filter fields in each route. A set whose value is a rule over what
+was sent (every `listing` sent must agree, a flag set by any `dimension.*`) implements
+`corten::route::FromQuery` with two derived sets of the same names: `type Link<'a>` (writes links,
+as narrow as the value, via `link`) and `type Read` (owned, `Vec` fields, read back and turned into
+the value by `from_query`); never implement `QueryParams` by hand or reach into
+`corten::route::__private`, and keep a set of plain fields derived. Parameters whose names are data (an option per dimension) are a
 `#[route(prefix = "dimension.")] dimensions: &BTreeMap<String, String>` field, never a query string
 built by hand. A parameter whose URL name is not the field's (`?priceMin=`) is renamed with serde
 (`#[serde(rename_all = "camelCase")]` or `#[serde(rename = "..")]`), which the link follows; never
