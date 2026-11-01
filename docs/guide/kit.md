@@ -12,15 +12,18 @@ and the tokens an ordinary `tokens!` file, so nothing here is a second way to wr
 corten ui init            # the theme tokens and src/ui.rs
 corten ui add button card # src/ui/button.rs, button.css, card.rs, card.css
 corten ui list            # every component the kit has
+corten ui diff            # how the copies differ from this command's kit
 ```
 
 | Command | Writes |
 |---|---|
 | `corten ui init` | `tokens/ui.tokens.json` (light), `tokens/ui-dark.tokens.json` and `tokens/ui.resolver.json` (the theme modifier, following the system when the page chose no theme), `src/ui.rs` (the tokens and the `COMPONENTS` list), the page's colors at the end of `static/style.css`; in `src/lib.rs`, `mod ui;` and `.components(ui::COMPONENTS)` on the `App::new(..)` line. It refuses to run twice, and says what to do by hand when `src/lib.rs` or `static/style.css` is not where `corten new` puts them |
 | `corten ui add <name>..`, `--all` | each component's files in `src/ui/`, `pub mod <name>;` and the component in `src/ui.rs`'s `COMPONENTS`, laid out as rustfmt does. A file that exists is refused, before anything is written, unless `--force` |
+| `corten ui diff [name]..` | nothing: for each copied file (of the components named, or all of `src/ui/`), whether the app edited it, whether the kit changed it since the copy, and a unified diff from the copy to the kit this command carries. A file the kit changed and the app did not is the kit's to replace (`corten ui add --force`); one both changed is merged by hand |
 
-Each file starts with the kit version it came from (`// corten ui 0.1.0: button`). The files
-are embedded in the `corten` binary, so adding one needs no network, and a component is the
+Each file starts with the kit version it came from and a hash of the file as written
+(`// corten ui 0.1.0: button 71f206bc167066a1`), which is how `corten ui diff` tells the app's edits
+from the kit's changes; a file without the line is compared whole. The files are embedded in the `corten` binary, so adding one needs no network, and a component is the
 one the command's version ships.
 
 ## Theme

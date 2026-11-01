@@ -1258,7 +1258,9 @@ Corten is pre-1.0, so any minor version may change the API.
     listing the kit's components, and the page's colors in `static/style.css`, and lists
     `ui::COMPONENTS` on the `App`. `corten ui add <name>..` (or `--all`) copies a component into
     `src/ui/` with the kit version it came from, refusing to replace a file unless `--force`, and
-    lists it; `corten ui list` names them. The components are `Button` (six variants, four
+    lists it; `corten ui list` names them; `corten ui diff` says, for each copy, whether the app
+    edited it and whether the kit changed it since (from the version and hash on its first line),
+    with the lines that differ. The components are `Button` (six variants, four
     sizes), `Badge`, `Card` with its header, content and footer, `Alert`, `Field`, `Input`,
     `Textarea`, `Select`, `Slider`, `Checkbox`, `Switch`, `RadioGroup`, `Separator`, `Skeleton`,
     `Table`, `Breadcrumb` and `Pagination` (typed route links), `Avatar`, `Dialog` and `Sheet`
@@ -1273,7 +1275,8 @@ Corten is pre-1.0, so any minor version may change the API.
     [#405 corten ui add: no command copies a component's source into an app](https://github.com/todd-skelton/corten/issues/405),
     [#406 Kit components: styled plain elements and native controls](https://github.com/todd-skelton/corten/issues/406),
     [#407 Kit components: Dialog, Sheet, Popover and Accordion on the platform's elements](https://github.com/todd-skelton/corten/issues/407),
-    [#408 Kit components: styled Tabs, Dropdown Menu, Combobox and Toast over corten-ui](https://github.com/todd-skelton/corten/issues/408)).
+    [#408 Kit components: styled Tabs, Dropdown Menu, Combobox and Toast over corten-ui](https://github.com/todd-skelton/corten/issues/408),
+    [#410 An app cannot see what changed in a kit component since it copied it](https://github.com/todd-skelton/corten/issues/410)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

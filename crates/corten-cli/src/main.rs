@@ -44,6 +44,9 @@ Usage:
                    Copy kit components into src/ui/, where they are yours to change, and
                    list them in src/ui.rs. Refuses to replace a file without --force.
   corten ui list   The kit's components.
+  corten ui diff [name]..
+                   How each copied component differs from this command's kit: whether you
+                   edited it, whether the kit changed it since, and the lines. Writes nothing.
   corten help      This text.
   corten --version The version, and the commit the command was built from. dev, fmt and
                    check say when the app's Cargo.lock pins another corten, and how to
