@@ -118,9 +118,12 @@ struct Inner {
     /// The page rendered the request's notice ([`crate::Req::notice`]), so a navigation's answer
     /// does not send it to the runtime as well.
     notice_drawn: AtomicBool,
-    /// The first callers marked, so the error page, which looks them up again, does not mark one
-    /// twice (the key mixes them by XOR, so a second mark would take it out).
+    /// The first callers marked, so the error page, which looks a [`crate::ClientIp`] up again,
+    /// does not mark one twice (the key mixes them by XOR, so a second mark would take it out).
     marked: [AtomicU64; 4],
+    /// Each caller type's lookup ([`crate::Caller`]), kept for the request: its handler, its
+    /// middleware, a caller type that is a rule over another and its error page share one.
+    found: std::sync::Mutex<axum::http::Extensions>,
     /// The app's, for a request it serves: carried here rather than as a request extension of
     /// its own, so the request's extensions stay within their first allocation.
     shared: Option<Arc<crate::page::Shared>>,
@@ -335,6 +338,16 @@ impl Signal {
         }
         self.0.personal.store(true, Ordering::Relaxed);
         self.0.callers.fetch_xor(hash, Ordering::Relaxed);
+    }
+
+    /// The lookup kept for its type, if any.
+    pub(crate) fn found<T: Clone + Send + Sync + 'static>(&self) -> Option<T> {
+        self.0.found.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get::<T>().cloned()
+    }
+
+    /// Keeps a lookup for the rest of the request.
+    pub(crate) fn keep_found<T: Clone + Send + Sync + 'static>(&self, found: T) {
+        self.0.found.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(found);
     }
 
     /// Marks the answer as differing by something of the visitor's that does not change the page

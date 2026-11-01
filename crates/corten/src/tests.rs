@@ -2921,6 +2921,32 @@ async fn a_caller_is_looked_up_only_by_the_handlers_that_read_it_and_once() {
     assert_eq!((body.as_str(), LOOKUPS.with(|n| n.get())), ("ada", 1), "two readers, one lookup");
 }
 
+/// A caller type that is a rule over another (`Staff` reads `Viewer` with `Caller::find`)
+/// shares its lookup, in whichever order the handler takes them.
+#[tokio::test]
+async fn a_caller_type_over_another_shares_its_lookup() {
+    let routes =
+        Router::new()
+            .route(
+                "/staff-first",
+                get(|Caller(Staff(_)): Caller<Staff>, viewer: Option<Caller<Viewer>>| async move {
+                    viewer.map_or("", |Caller(v)| v.0)
+                }),
+            )
+            .route(
+                "/viewer-first",
+                get(|viewer: Option<Caller<Viewer>>, Caller(Staff(_)): Caller<Staff>| async move {
+                    viewer.map_or("", |Caller(v)| v.0)
+                }),
+            );
+    let router = app(routes, Some("ada"));
+    for uri in ["/staff-first", "/viewer-first"] {
+        LOOKUPS.with(|n| n.set(0));
+        let (_, _, body) = call_with(router.clone(), "GET", uri, None, None).await;
+        assert_eq!((body.as_str(), LOOKUPS.with(|n| n.get())), ("ada", 1), "{uri}: one lookup for both types");
+    }
+}
+
 #[cfg(feature = "json")]
 #[derive(crate::ToJson)]
 struct ShapedError {
@@ -4966,7 +4992,7 @@ struct Staff(&'static str);
 
 impl<S: Sync> crate::Identify<S> for Staff {
     async fn identify(parts: &axum::http::request::Parts, state: &S) -> std::result::Result<Self, crate::Refused> {
-        let Viewer(name) = <Viewer as crate::Identify<S>>::identify(parts, state).await?;
+        let Caller(Viewer(name)) = Caller::<Viewer>::find(parts, state).await?;
         match name {
             "ada" | "bob" => Ok(Staff(name)),
             _ => Err(crate::Refused::forbidden()),
@@ -5217,9 +5243,11 @@ async fn the_error_page_shows_who_is_asking() {
     let (status, _, body) = guarded(&router, "GET", "/nope", None, &[html[0]]).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(!body.contains("Signed in"), "no one: {body}");
+    LOOKUPS.with(|n| n.set(0));
     let (status, _, body) = guarded(&router, "GET", "/admin", Some("eve"), &[("cookie", "viewer=eve"), html[0]]).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert!(body.contains("Not allowed") && body.contains("Signed in as eve"), "a refusal, for who was refused: {body}");
+    assert_eq!(LOOKUPS.with(|n| n.get()), 1, "the error page reads the viewer the refused handler's Staff found");
     let (status, _, body) = guarded(&router, "GET", "/nope", None, &[("cookie", "viewer=down"), html[0]]).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "a lookup that fails draws the page signed out: {body}");
     assert!(body.contains("Not found") && !body.contains("Signed in"), "{body}");

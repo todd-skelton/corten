@@ -1393,6 +1393,11 @@ Corten is pre-1.0, so any minor version may change the API.
     (the app's `Field` beside the kit's), naming the app's file, before it writes anything: the two
     would style one class prefix, and the program would not link
     ([#550 A kit component and an app component with the same name fail at link time, and corten ui add does not warn](https://github.com/todd-skelton/corten/issues/550)).
+169. `Caller::<T>::find(parts, state)` reads who is asking as `T` from the request's one lookup of
+    `T`, for an `Identify` that is a rule over another type (a seller is a viewer who may sell):
+    the session is read once in the request whichever of the two types the handler, a middleware
+    and the error page take
+    ([#581 Caller is looked up once per type, so a caller type that is a rule over another asks the session store again in the same request](https://github.com/todd-skelton/corten/issues/581)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -2194,6 +2199,12 @@ Corten is pre-1.0, so any minor version may change the API.
     stylesheet that sets `color-scheme` as it is, saying what to add; `corten ui add` lists
     `corten_ui::COMPONENTS` beside the kit's list wherever it is, and not again when a file has it
     ([#551 corten ui init on an app that already has tokens adds a second theme instead of mapping onto the app's](https://github.com/todd-skelton/corten/issues/551)).
+108. The error page's `Caller` is the one its failed request found: a handler refused (or failed)
+    after reading who is asking no longer has the session looked up again for the error page.
+    The lookup is kept on the request's `Signal`, which the error page shares, rather than in
+    the request's extensions, which the handler took. A middleware's own extensions still do not
+    reach the error page (keeping them would copy every request's)
+    ([#582 The error page's extractors get none of the failed request's extensions, so a caller the handler found is looked up again and middleware state is gone](https://github.com/todd-skelton/corten/issues/582)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
