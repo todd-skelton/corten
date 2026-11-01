@@ -176,15 +176,25 @@ A refusal that belongs to no field (a cross-field rule, or the backend saying no
 `errors.add_form(text)`, shown once at the top of the form with `{form.errors.form_message()}`.
 Never attach it to an arbitrary field, and never pass it beside `Errors` in a separate prop: data
 clients and agents only see what is in `Errors`. A refusal for a stale state (another save came
-first, a step out of order) is `errors.refuse(Refusal::Conflict, text)`, a 409 from
-`req.invalid`; a service the handler calls that failed (a carrier, a payment provider) is
-`Refusal::Upstream`, a 502 with the form drawn again; never set a status on the response by hand. Make such a form `data-patch`
-(a download is the exception: a plain post whose refusal redirects to the page with the reason).
-A field helper several forms share takes `e: &corten::Within<'_, I>`.
+first, a step out of order, or another request acting on it now) is
+`errors.refuse(Refusal::Conflict, text)`, a 409 from `req.invalid`; a service the handler calls that
+failed (a carrier, a payment provider) is `Refusal::Upstream`, a 502 with the form drawn again;
+never set a status on the response by hand. Make such a form `data-patch` (a download is the
+exception: a plain post whose refusal redirects to the page with the reason). A field helper several
+forms share takes `e: &corten::Within<'_, I>`.
 
-A write that must apply once (an order, a payment) takes a `submit: SubmitKey` field, drawn with
-`{SubmitKey::field(f.submit)}`; the app stores the key with the write and answers a repeat with the
-first outcome. The runtime keeps the key until the submit has an answer below 500, then renews it.
+A write only the submission identifies (placing an order, sending a message) takes a
+`submit: SubmitKey` field, drawn with `{SubmitKey::field(f.submit)}`; the app stores the key with
+the write and answers a repeat with the first outcome. The runtime keeps the key until the submit
+has an answer below 500, then renews it. A key does not keep two submissions apart: work on
+something the app's data already names that must not run twice (postage for an order) takes, for
+each item inside `signal.finish(..)`, a lock in the shared store, a check under it of what is done
+already, and commits the item's record with it; it refuses with `Refusal::Conflict` (the form
+showing the current state) while another request holds the lock; a provider that fails or times
+out ends the batch, whose bought items are committed, and answers `Refusal::Upstream`, and a batch
+that stops for time redirects back with a notice. A
+provider call whose record is lost is covered by the provider's idempotency key, made from what is
+bought rather than the submission. A lock in a static holds in one process only.
 
 A press while the form's write is pending waits for its answer, then goes out from the form as
 the answer left it (found by its `id`: give a form a patch redraws one), after a 2xx or a 422.
