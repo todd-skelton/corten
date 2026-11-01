@@ -20,8 +20,8 @@
 //!     </table>
 //! </Table>
 //! ```
-use corten::prelude::*;
 use corten::Href;
+use corten::prelude::*;
 
 /// A part without a rule does not compile:
 ///
@@ -59,7 +59,12 @@ pub enum Sort {
 /// state, not an arrow's name. `class` is the header's look (`TableNumeric {}` over a number
 /// column, `()` for none).
 #[component(css = Table)]
-pub fn SortHeader<'a, L: Render, C: ClassList>(label: L, sort: Option<Sort>, link: &'a dyn Href, class: C) -> impl Render {
+pub fn SortHeader<'a, L: Render, C: ClassList>(
+    label: L,
+    sort: Option<Sort>,
+    link: &'a dyn Href,
+    class: C,
+) -> impl Render {
     let (aria, arrow) = match sort {
         Some(Sort::Ascending) => (Some("ascending"), Some(Up)),
         Some(Sort::Descending) => (Some("descending"), Some(Down)),
@@ -67,7 +72,9 @@ pub fn SortHeader<'a, L: Render, C: ClassList>(label: L, sort: Option<Sort>, lin
     };
     html! {
         <th scope="col" class={class} aria-sort={aria}>
-            <a class={Sorter} href={link}>{label}<span class={(Arrow, arrow)} aria-hidden="true"></span></a>
+            <a class={Sorter} href={link}>
+                {label}<span class={(Arrow, arrow)} aria-hidden="true"></span>
+            </a>
         </th>
     }
 }
