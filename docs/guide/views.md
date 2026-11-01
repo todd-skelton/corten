@@ -309,7 +309,7 @@ the same way, a plus sign on a gain and none on what rounds to zero (`+$3.20`, `
 with the sign where the locale puts it, so a page never builds a sign by hand. `t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
 a bare integer (it could be either, so it does not compile), with the digits the currency is
 shown with (0 for JPY, 3 for KWD), which a `Currency` carries from when it is made (at compile
-time for a `const` one), so writing an amount looks nothing up. A price a person types into a form is read back the same way:
+time for a `const` one), so they are not looked up for each amount. A price a person types into a form is read back the same way:
 `t.parse_money(&input.price, USD)` is `Some(Minor(129950))` for `$1,299.50` in en and for
 `1 299,50 $US` or `1299,5` in fr (with or without the symbol, the code, the groups or the
 fraction, and without the direction marks some locales write), and `None` for a sign, a group of
