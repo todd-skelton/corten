@@ -60,10 +60,12 @@ async fn show(req: Req, Params(at): Params<url::Item<'_>>) -> HtmlResult {
 3. A client navigation gets only the `<title>`, the head tags and `<main>`'s children; the rest of
    the layout renders on full loads. A value only the layout shows that needs its own read (a
    cart count) is read only when `!req.mode.swaps()`, in the function that builds the layout's
-   props, and a write that changes it patches it; never fetch it from the browser after load.
-   Write each nav link from one mention of its route,
-   `<a {..req.nav(&url::Item { id })}>` (`href`, `data-nav` and `aria-current` on its own page;
-   `req.nav_section(..)` for a section), never `href` and `aria-current` separately.
+   props; never fetch it from the browser after load. A `data-patch` write that changes it reads
+   it directly and answers `req.patch_or(Badge { .. }, || async { req.redirect(..) })` (a
+   redirect alone leaves the old value), or the form drops `data-patch`. Write each nav link from
+   one mention of its route, `<a {..req.nav(&url::Item { id })}>` (`href`, `data-nav` and
+   `aria-current` on its own page; `req.nav_section(..)` for a section), never `href` and
+   `aria-current` separately.
 4. Read everything from `req` before building the view: `html!` views render once and own what
    they capture (`let t = req.t();` first, then `<Layout req={&req} ..>`).
 

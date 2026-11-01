@@ -124,11 +124,34 @@ async fn cart_count(req: &Req, carts: &Carts, viewer: Option<&Viewer>) -> Option
 ```
 
 A full load, a reload and a page without JavaScript draw it in the HTML, with no second request
-and nothing that moves when it arrives. (A data client's `req.screen` answer renders only the
-title, so a page answered that way may skip the read for `Mode::Data` too.) A write that changes it updates it with a patch (an
-`#[derive(Id)]` on the badge), since a navigation does not draw the header again. Corten has no
-layout slot that fills itself: the layout is the app's component (design rule 10), so the value
-reaches it as a prop, and the read stays where the handler can see it, its failure included.
+and nothing that moves when it arrives.
+
+Since a navigation does not draw the header again, a write that changes the value draws it
+itself. The badge is a component the layout renders and a patch can carry (an `#[derive(Id)]`
+on it), and the write reads the value directly, not through the helper above, which skips the
+read for its `Mode::Action` answer:
+
+```rust,ignore
+#[component]
+fn CartBadge(count: Option<u32>) -> impl Patch {
+    html! { <span id={CartBadgeId}>{count.unwrap_or(0)}</span> }
+}
+
+async fn add_to_cart(req: Req, carts: State<Carts>, viewer: Caller<Viewer>) -> HtmlResult {
+    carts.add(&viewer, ..).await?;
+    let count = carts.count(&viewer).await;
+    req.patch_or(CartBadge { count: Some(count) }, || async { req.redirect(&url::Cart) }).await
+}
+```
+
+A `data-patch` write that answers only with a redirect leaves the old value: the runtime follows
+it as a navigation, which keeps the header. Answer such a write with the patch (`req.patch_or`
+redirects only without JavaScript, where the next page is a full load), or leave `data-patch`
+off the form, so the browser submits it and loads the next page in full.
+
+Corten has no layout slot that fills itself: the layout is the app's component (design rule 10),
+so the value reaches it as a prop, and the read stays where the handler can see it, its failure
+included.
 
 A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
 `href`, `data-nav` and `aria-current="page"` when it is the page (`req.nav_section` for a link
