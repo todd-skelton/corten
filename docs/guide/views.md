@@ -108,6 +108,28 @@ for caching it per request and for the page key. In the handler the lookup runs 
 routes that ask for it, and the type says which pages show a viewer. A page with more than one call site keeps the viewer in its own
 function's parameters (`fn alerts_page(req: &Req, viewer: Option<&Viewer>, ..)`), as watchlist does.
 
+A value only the layout shows and that needs a read of its own (a cart's count, an unread count)
+is read only when the layout renders: `req.mode.swaps()` is true for a navigation and a
+`data-patch` action, whose answer the runtime swaps into the page it has, keeping the header the
+full load drew. Read it in the function that builds the layout's props, so every page passes it
+the same way and a click between pages does not read it:
+
+```rust,ignore
+async fn cart_count(req: &Req, carts: &Carts, viewer: Option<&Viewer>) -> Option<u32> {
+    if req.mode.swaps() {
+        return None; // the runtime keeps the count the full load drew
+    }
+    Some(carts.count(viewer?).await)
+}
+```
+
+A full load, a reload and a page without JavaScript draw it in the HTML, with no second request
+and nothing that moves when it arrives. (A data client's `req.screen` answer renders only the
+title, so a page answered that way may skip the read for `Mode::Data` too.) A write that changes it updates it with a patch (an
+`#[derive(Id)]` on the badge), since a navigation does not draw the header again. Corten has no
+layout slot that fills itself: the layout is the app's component (design rule 10), so the value
+reaches it as a prop, and the read stays where the handler can see it, its failure included.
+
 A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
 `href`, `data-nav` and `aria-current="page"` when it is the page (`req.nav_section` for a link
 that stays current on the pages under it). The full load renders `aria-current`, and the runtime

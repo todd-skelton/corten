@@ -58,7 +58,10 @@ async fn show(req: Req, Params(at): Params<url::Item<'_>>) -> HtmlResult {
    or the page without JavaScript); never redirect only to show "saving". Never a `Refresh` header. Structured data is `JsonLd { value: &product }` among the head tags, never
    `raw` or an expression inside `<script>` (that does not compile).
 3. A client navigation gets only the `<title>`, the head tags and `<main>`'s children; the rest of
-   the layout renders on full loads. Write each nav link from one mention of its route,
+   the layout renders on full loads. A value only the layout shows that needs its own read (a
+   cart count) is read only when `!req.mode.swaps()`, in the function that builds the layout's
+   props, and a write that changes it patches it; never fetch it from the browser after load.
+   Write each nav link from one mention of its route,
    `<a {..req.nav(&url::Item { id })}>` (`href`, `data-nav` and `aria-current` on its own page;
    `req.nav_section(..)` for a section), never `href` and `aria-current` separately.
 4. Read everything from `req` before building the view: `html!` views render once and own what
