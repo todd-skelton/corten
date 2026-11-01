@@ -1351,8 +1351,16 @@ async fn a_layout_value_is_read_only_when_the_layout_renders() {
         get(|req: Req| async move {
             let count = if req.mode.swaps() { None } else { Some(READS.fetch_add(1, Ordering::Relaxed) + 7) };
             req.page::<()>(html! {
-                <html><head><title>"Shop"</title><Corten /></head>
-                <body><header>"Cart "{count.unwrap_or(0)}</header><main>"Items"</main></body></html>
+                <html>
+                    <head>
+                        <title>"Shop"</title>
+                        <Corten />
+                    </head>
+                    <body>
+                        <header>"Cart "{count.unwrap_or(0)}</header>
+                        <main>"Items"</main>
+                    </body>
+                </html>
             })
         }),
     );
