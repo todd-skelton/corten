@@ -73,43 +73,53 @@ fn check_name(name: &str) -> Result<(), String> {
 }
 
 /// The app's `corten` dependency: the release this command was built with (the crates share one
-/// version), or a local checkout with `--corten-path`: the corten crate, or a checkout's root,
-/// whose `crates/corten` it is. Anything else is refused before a file is written.
+/// version), or a local checkout with `--corten-path`: the corten crate, or the root of the
+/// workspace it is in. Anything else is refused before a file is written.
 fn dependency(path: Option<&str>) -> Result<String, String> {
     match path {
         Some(given) => {
             let path = std::fs::canonicalize(given).map_err(|e| format!("--corten-path {given}: {e}"))?;
-            let is_corten = |dir: &Path| {
-                std::fs::read_to_string(dir.join("Cargo.toml")).is_ok_and(|toml| package_name(&toml).as_deref() == Some("corten"))
-            };
-            let path = if is_corten(&path) {
-                path
-            } else if is_corten(&path.join("crates").join("corten")) {
-                path.join("crates").join("corten")
-            } else {
-                return Err(format!(
-                    "--corten-path {given}: not the corten crate (its Cargo.toml names another package or none) nor a checkout with crates/corten"
-                ));
-            };
-            Ok(format!("path = {:?}", path.to_string_lossy().trim_start_matches(r"\\?\")))
+            let corten = corten_crate(&path).map_err(|e| format!("--corten-path {given}: {e}"))?;
+            Ok(format!("path = {:?}", corten.to_string_lossy().trim_start_matches(r"\\?\")))
         }
         None => Ok(format!("version = {:?}", env!("CARGO_PKG_VERSION"))),
     }
 }
 
-/// The `name` in a manifest's `[package]` table, if it has one.
-fn package_name(toml: &str) -> Option<String> {
-    let mut in_package = false;
-    for line in toml.lines().map(str::trim) {
-        if line.starts_with('[') {
-            in_package = line == "[package]";
-        } else if let Some(value) =
-            line.strip_prefix("name").map(str::trim_start).and_then(|l| l.strip_prefix('=')).filter(|_| in_package)
-        {
-            return Some(value.split('#').next().unwrap_or("").trim().trim_matches('"').to_string());
-        }
+/// The directory of the `corten` package that `dir` is, or whose workspace root `dir` is, read
+/// by `cargo metadata` as `corten check` reads an app's packages. Its directory is named
+/// `corten`, as `corten ui` and `corten check` look for it.
+fn corten_crate(dir: &Path) -> Result<PathBuf, String> {
+    let manifest = dir.join("Cargo.toml");
+    if !manifest.is_file() {
+        return Err("has no Cargo.toml".into());
     }
-    None
+    let output = std::process::Command::new("cargo")
+        .args(["metadata", "--no-deps", "--format-version", "1", "--manifest-path"])
+        .arg(&manifest)
+        .output()
+        .map_err(|e| format!("could not run cargo metadata: {e}"))?;
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("cargo metadata could not read it: {}", error.trim()));
+    }
+    let metadata = crate::json::parse(&String::from_utf8_lossy(&output.stdout)).map_err(|e| format!("cargo metadata: {e}"))?;
+    let canonical = |p: &str| std::fs::canonicalize(p).ok();
+    let root = metadata.get("workspace_root").and_then(|v| v.as_str()).and_then(canonical);
+    let found = metadata.get("packages").map_or(&[][..], |p| p.items()).iter().find_map(|package| {
+        (package.get("name")?.as_str()? == "corten")
+            .then(|| canonical(package.get("manifest_path")?.as_str()?)?.parent().map(Path::to_path_buf))?
+    });
+    match found {
+        Some(corten) if corten == dir || root.as_deref() == Some(dir) => match corten.file_name() {
+            Some(name) if name == "corten" => Ok(corten),
+            _ => Err(format!(
+                "its corten crate is in {}, and corten ui and corten check look for a directory named corten",
+                corten.display()
+            )),
+        },
+        _ => Err("not the corten crate nor the root of a workspace that has it".into()),
+    }
 }
 
 fn crate_name(dir: &Path) -> Result<String, String> {
@@ -160,13 +170,37 @@ mod tests {
 
     #[test]
     fn corten_path_points_the_app_at_a_local_checkout() {
-        let corten = std::fs::canonicalize(concat!(env!("CARGO_MANIFEST_DIR"), "/../corten")).unwrap();
+        // A workspace like a checkout, read as cargo reads it: a literal-string name and a
+        // commented table header are a manifest like any other.
+        let base = std::env::temp_dir().join(format!("corten-new-path-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let write = |path: &str, text: &str| {
+            let path = base.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("ws/Cargo.toml", "[workspace]\nmembers = [\"crates/corten\", \"crates/other\"]\nresolver = \"2\"\n");
+        write(
+            "ws/crates/corten/Cargo.toml",
+            "[ package ] # the framework\nname = 'corten'\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+        );
+        write("ws/crates/corten/src/lib.rs", "");
+        write("ws/crates/other/Cargo.toml", "[package]\nname = \"other\"\nversion = \"0.0.0\"\nedition = \"2021\"\n");
+        write("ws/crates/other/src/lib.rs", "");
+        write("fork/Cargo.toml", "[package]\nname = \"corten\"\nversion = \"0.0.0\"\nedition = \"2021\"\n");
+        write("fork/src/lib.rs", "");
+        std::fs::create_dir_all(base.join("empty")).unwrap();
+        let at = |p: &str| base.join(p).to_string_lossy().into_owned();
+        let corten = std::fs::canonicalize(base.join("ws/crates/corten")).unwrap();
         let expected = format!("path = {:?}", corten.to_string_lossy().trim_start_matches(r"\\?\"));
-        assert_eq!(dependency(Some(concat!(env!("CARGO_MANIFEST_DIR"), "/../corten"))).unwrap(), expected);
-        // A checkout's root is a workspace: its crates/corten is the crate.
-        assert_eq!(dependency(Some(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))).unwrap(), expected);
-        let other = dependency(Some(env!("CARGO_MANIFEST_DIR"))).unwrap_err();
-        assert!(other.contains("not the corten crate"), "{other}");
+        assert_eq!(dependency(Some(&at("ws/crates/corten"))).unwrap(), expected);
+        assert_eq!(dependency(Some(&at("ws"))).unwrap(), expected, "a checkout's root: its corten crate");
+        let other = dependency(Some(&at("ws/crates/other"))).unwrap_err();
+        assert!(other.contains("not the corten crate"), "another member is not its workspace's root: {other}");
+        assert!(dependency(Some(&at("empty"))).unwrap_err().ends_with("has no Cargo.toml"));
+        let fork = dependency(Some(&at("fork"))).unwrap_err();
+        assert!(fork.contains("a directory named corten"), "{fork}");
         assert!(dependency(Some("no/such/dir")).unwrap_err().starts_with("--corten-path no/such/dir: "));
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
