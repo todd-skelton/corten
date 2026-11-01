@@ -37,7 +37,9 @@ pub fn Pagination<'a>(
             <ul>
                 <li>
                     if current > 1 {
-                        <a class={(Step, Previous)} href={link(current - 1)} rel="prev">{previous_label}</a>
+                        <a class={(Step, Previous)} href={link(current - 1)} rel="prev">
+                            {previous_label}
+                        </a>
                     } else {
                         <span class={(Step, Previous)} aria-disabled="true">{previous_label}</span>
                     }

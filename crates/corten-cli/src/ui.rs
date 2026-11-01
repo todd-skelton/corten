@@ -409,4 +409,18 @@ mod tests {
             }
         }
     }
+
+    /// `corten check` in an app runs `corten fmt --check`, so each kit file is laid out as
+    /// `corten fmt` lays it out at rustfmt's default width. (rustfmt's own layout is checked by the
+    /// `corten new` check, which formats an app with every component.)
+    #[test]
+    fn every_kit_file_is_laid_out_as_corten_fmt_does() {
+        for piece in KIT {
+            for (file, text) in piece.files.iter().filter(|(f, _)| f.ends_with(".rs")) {
+                let (formatted, warnings) = crate::fmt::format_source(text, 100);
+                assert!(warnings.is_empty(), "{file}: {warnings:?}");
+                assert!(formatted == *text, "{file} is not laid out as corten fmt does");
+            }
+        }
+    }
 }

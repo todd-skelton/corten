@@ -45,12 +45,14 @@ app chooses, so `html!` checks them as it checks any element (`type`, `disabled`
 `display: contents`, adding no box. A component that is only a surface renders its own element.
 
 ```rust,ignore
-use crate::ui::{button::*, card::*, input::*};
+use crate::ui::{button::*, card::*, field::*, input::*};
 
 <Card>
     <CardHeader><h2>"Sign in"</h2><p>"Use the email you registered with."</p></CardHeader>
     <CardContent>
-        <Input><input type="email" name={f.email} required></Input>
+        <Field id="email" label="Email" note={e.message(f.email)}>
+            <Input><input id="email" type="email" name={f.email} required {..e.aria(f.email)}></Input>
+        </Field>
     </CardContent>
     <CardFooter>
         <Button variant={ButtonVariant::Primary} size={ButtonSize::Md}><button>"Sign in"</button></Button>
@@ -68,7 +70,7 @@ they are the whole page's.
 | `Badge` | a `<span>` label | `BadgeVariant`: `Primary`, `Secondary`, `Outline`, `Destructive` |
 | `Card`, `CardHeader`, `CardContent`, `CardFooter` | a surface and its parts; the heading and description in the header are the app's (`<h2>` or `<h3>`, as the page's outline needs, then `<p>`) | |
 | `Alert` | a `role="alert"` box, so a screen reader reads it when a patch brings it in | `AlertVariant`: `Neutral`, `Destructive` |
-| `Field` | a `<label>` around its text and the control, then a note: a hint in text, or the server's message for the field (`note={e.message(f.email)}`), drawn destructive | |
+| `Field` | a `<label for={id}>`, the control (a kit control or a corten-ui widget, its parts in one row), then a note: a hint in text, or the server's message for the field (`note={e.message(f.email)}`), drawn destructive | |
 | `Input`, `Textarea`, `Select`, `Slider` | the look of the `<input>`, `<textarea>`, `<select>` or `<input type="range">` inside it, with the destructive border once the user has edited an invalid value (`:user-invalid`) or the server marked it (`aria-invalid`, which `e.aria(field)` writes); `Select` styles the open list where the browser has `appearance: base-select` | |
 | `Checkbox`, `Switch` | a `<label>` with the `<input type="checkbox">` inside and its text after; a switch is `role="switch"` on the checkbox, so it posts as one | |
 | `RadioGroup`, `Radio` | a `<fieldset>` with its `<legend>`, and each `<input type="radio">` with its text | |
@@ -90,3 +92,10 @@ not compile, and every prop is written where the component is used, as for any c
 or three of them, not for any lookup. No component has a script: each works without
 JavaScript and under the CSP, with no `style=`, and the labels they show (Previous, Next, a
 legend) are the app's, in its language.
+
+## Size
+
+The kit's CSS goes into `components.css` with the app's own, one cached file. Measured on a new
+app with every component added (`corten ui add --all`) and nothing of its own but the starter's
+counter: 26,566 bytes, 4,104 with brotli at level 11 and 4,673 with gzip at level 9, the theme's
+tokens included. An app pays for the components it adds, and `corten ui add` adds one at a time.

@@ -22,7 +22,12 @@ use corten::prelude::*;
 /// ```
 #[component(css)]
 pub fn RadioGroup<'a, C: Render>(legend: &'a str, children: C) -> impl Render {
-    html! { <fieldset class={Group}><legend>{legend}</legend>{children}</fieldset> }
+    html! {
+        <fieldset class={Group}>
+            <legend>{legend}</legend>
+            {children}
+        </fieldset>
+    }
 }
 
 #[component(css = RadioGroup)]
