@@ -2547,11 +2547,11 @@ Corten is pre-1.0, so any minor version may change the API.
     so a cache that reads only one line, or a value another way, is told the same.
     Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
     requests over 1,000, median of three and the range of the nine pairs, against main at
-    a83452c9): a `NoStore` failure as an HTML error page runs 31,990 instructions a request
-    (31,986 to 31,996) against 30,924 (30,916 to 30,933), as it now keeps and reads the header; an
-    unknown URL's 404 26,774 (26,592 to 26,804) against 26,772 (26,587 to 26,774); a `Public`
+    a83452c9): a `NoStore` failure as an HTML error page runs 31,683 instructions a request
+    (31,680 to 31,691) against 30,857 (30,852 to 30,918), as it now keeps and reads the header; an
+    unknown URL's 404 26,773 (26,588 to 26,804) against 26,773 (26,772 to 26,804); a `Public`
     answer, whose lines are now read in one pass through the lookup `settle` already made,
-    23,618 (23,584 to 23,621) against 23,795 (23,757 to 23,868)
+    23,726 (23,688 to 23,749) against 23,793 (23,759 to 23,804)
     ([#519 NoStore does not apply to a failure: the error page replaces its no-store with private, no-cache](https://github.com/todd-skelton/corten/issues/519)).
 
 ### Documentation
