@@ -111,26 +111,65 @@ function's parameters (`fn alerts_page(req: &Req, viewer: Option<&Viewer>, ..)`)
 A value only the layout shows and that needs a read of its own (a cart's count, an unread count)
 need not be read when the runtime swaps the answer in: `req.mode.swaps()` is true for a
 navigation and a `data-patch` action, whose answer the runtime puts into the page it has, keeping
-the header the full load drew. Read it in the function that builds the layout's props, so every page passes it
-the same way and a click between pages does not read it:
+the header the full load drew. Start its read as the request arrives, in an extractor that holds
+what the layout needs, so it runs while the page does its own reads: a full load waits for the
+longer of the two, not their sum. `corten::Ahead` is the started read, awaited where the
+layout's props are built, and `Mode::of` reads the mode before the handler has its `Req`:
 
 ```rust,ignore
-async fn cart_count(req: &Req, carts: &Carts, viewer: Option<&Viewer>) -> Option<u32> {
-    if req.mode.swaps() {
-        return None; // the runtime keeps the count the full load drew
+/// What the layout shows beside the page: who is signed in and their cart's count.
+pub struct Chrome { pub viewer: Option<Viewer>, pub cart: Ahead<Option<u32>> }
+
+impl FromRequestParts<Shared> for Chrome {
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &Shared) -> Result<Self, Response> {
+        let viewer = Option::<Caller<Viewer>>::from_request_parts(parts, state).await?.map(|c| c.0);
+        // The runtime keeps the header for a navigation or a `data-patch` action; every other
+        // answer that draws the layout (a full load, a refused form without JavaScript, a data
+        // client's `req.page`) draws the count.
+        let swaps = Mode::of(&parts.headers).swaps();
+        let cart = match (&viewer, !swaps) {
+            (Some(who), true) => {
+                let (carts, who) = (state.carts.clone(), who.clone());
+                Ahead::start(async move { Some(carts.count(&who).await) })
+            }
+            _ => Ahead::ready(None), // signed out, or the runtime keeps the count it drew
+        };
+        Ok(Chrome { viewer, cart })
     }
-    Some(carts.count(viewer?).await)
+}
+
+// In a routes module with `caller = Viewer` the handler also takes the caller; it is looked up
+// once per request, so `Chrome` reads the same viewer.
+async fn account(req: Req, viewer: Caller<Viewer>, chrome: Chrome, db: State<Db>) -> HtmlResult {
+    let orders = db.orders().await?; // runs while the cart is read
+    req.page(Shell { props: layout(chrome).await, .. })
 }
 ```
 
+Every page that draws the layout takes `Chrome` and passes it on, as it would the viewer, and
+`layout` awaits `chrome.cart`, so no page joins the read with its own and none can forget to
+start it. The read runs on a task of its own (`Send + 'static`, taking what it uses by value),
+is cancelled if the handler answers without awaiting it, and its panic is the handler's. Reading
+it in the props builder after the page's reads instead adds its whole time to every full load.
+`Ahead` is `tokio::spawn` with the two things a request needs and a bare task lacks: dropped, it
+stops the read (a bare task would run on after the client left), and its panic fails the request.
+
 A full load, a reload and a page without JavaScript draw it in the HTML, with no second request
-and nothing that moves when it arrives. A data client (`Mode::Data`) still pays for the read,
-since `req.page` draws the whole document for it; only a handler that answers with `req.screen`
-alone, which renders just the title, may skip it there too.
+and nothing that moves when it arrives. Only a handler that draws the layout takes `Chrome`, so a write that only redirects starts no
+read, and one that takes it to draw a refused form again stops the read when it redirects
+instead. A synchronous helper that draws the layout (a page for a failed read) takes the awaited
+`Option<u32>`, and its handler awaits `chrome.cart` before calling it.
+
+A data client (`Mode::Data`) gets the read too, since `req.page` draws the whole document for
+it. An app whose layout pages answer data clients with `req.screen` alone, which renders just
+the title, starts the read only for `Mode::of(..) == Mode::Document`; a `req.page` data client
+of such an app then draws `None`.
 
 Since a navigation does not draw the header again, a write that changes the value draws it
 itself. The badge is a component the layout renders and a patch can carry (an `#[derive(Id)]`
-on it), and the write reads the value directly, not through the helper above (which skips the
+on it), and the write reads the value directly, not through the extractor above (which skips the
 read for its `Mode::Action` answer), and only for the patch: without JavaScript the redirect's
 next page is a full load that reads it.
 

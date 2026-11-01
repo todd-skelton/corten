@@ -13,13 +13,15 @@ that thing ends.
 | a request on the server | `req.signal()`, or `signal: corten::Signal` as an extractor | the response was sent (`Abort::Responded`), the client left (`Disconnected`), or the deadline passed (`Deadline`) |
 | a task of the app's ([`App::task`](app.md#tasks)) | its argument | shutdown began (`Abort::Shutdown`); `serve` then waits for it up to `App::shutdown_grace` |
 | work a handler finishes ([`Signal::finish`](#work-that-must-finish)) | its argument | the request's signal aborted (the client left, the deadline passed), or shutdown began |
+| a read started ahead ([`Ahead`](views.md#the-document)) | none: dropping it stops it | the handler answered without awaiting it, the client left, or the deadline passed |
 
 On the server, work the handler awaits needs no signal to stop: Rust drops the handler's future
 when the client leaves or the deadline passes. The signal is for what a drop cannot reach: spawned
-tasks, blocking threads, queries running elsewhere. A drop also cannot run async cleanup, so a
-handler that holds something across an await (a lease it claimed, a lock in another service, a
-reservation) puts the claim, the work and the release in `signal.finish(..)` ([Work that must
-finish](#work-that-must-finish)). `App::deadline` (30 seconds unless set, `None` for
+tasks, blocking threads, queries running elsewhere. A read started ahead with `corten::Ahead` is
+the exception among spawned tasks: dropping it stops it, so it needs none. A drop also cannot run
+async cleanup, so a handler that holds something across an await (a lease it claimed, a lock in
+another service, a reservation) puts the claim, the work and the release in `signal.finish(..)`
+([Work that must finish](#work-that-must-finish)). `App::deadline` (30 seconds unless set, `None` for
 none) bounds the time to a response's start and answers 503 with the error page; streams run as
 long as they need. It includes reading the request body, so an app that takes large uploads
 raises it. A client closing an HTTP/1.1 connection mid-request is seen at once (an

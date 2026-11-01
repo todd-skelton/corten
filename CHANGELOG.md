@@ -1338,6 +1338,23 @@ Corten is pre-1.0, so any minor version may change the API.
     `FromQuery` set whose `Read` has `Vec` fields runs 35,232 (35,155 to 35,243): the lists and
     the rule cost about 960 more, paid only by such a set
     ([#530 A #[route(query)] set that reads itself from the whole query has no public reader since Params reads sets field by field](https://github.com/todd-skelton/corten/issues/530)).
+162. `corten::Ahead` and `Mode::of`: a read only the layout shows (a cart's count) started
+    as the request arrives, in an extractor that holds what the layout needs, and awaited where
+    the layout's props are built, so a full load waits for the longer of the page's reads and
+    the layout's, not their sum; `Mode::of(&headers)` reads the mode before the handler has its
+    `Req`, so the extractor starts the read only for a full load. The read runs on a task of
+    its own, is cancelled when dropped unawaited, and its panic is the handler's. The views
+    guide's cart count now starts this way. Wall time (release, in-process `oneshot`, a 60 ms
+    cart read and 56 ms of page reads as in the issue, median of 12): a full load takes 61.6 ms
+    (60.5 to 61.7) against 118.4 (117.8 to 118.9) read after the page, and a navigation 57.4
+    either way. Callgrind (the difference between 1,200 and 200 requests over 1,000, median of
+    three and the range of the nine pairs): starting the read costs 30,065 instructions a full
+    load (29,537 to 30,295) against 24,790 (24,745 to 24,907) for the same page reading it
+    after, about 5,300 for the task, paid only on a full load by a page that starts one (one
+    request at a time; not measured under load); `Mode::of` moved the request path nowhere
+    measurable (a full document 24,954, 24,944 to 24,980, against 24,830 on main, 24,794 to
+    24,978; a navigation 23,541, 23,515 to 23,862, against 23,573, 23,515 to 23,893)
+    ([#534 A layout value read the way the guide shows starts after the page's own reads, so a full load waits for both, and an extractor cannot read Mode to start it early](https://github.com/todd-skelton/corten/issues/534)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
