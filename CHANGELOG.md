@@ -1985,7 +1985,6 @@ Corten is pre-1.0, so any minor version may change the API.
     could not be reached by (a keyword, `std`, `test`, a dependency such as `tokio`) is refused. An app made before keeps working; the app guide
     says how to move it
     ([#508 corten new makes a bin-only app: tests/, examples/ and a second bin cannot reach its code, so #506's advice cannot be followed](https://github.com/todd-skelton/corten/issues/508)).
-
 98. `t.money` and `t.number` write a value in about two thirds of the instructions: a currency
     looks up its fraction digits once, when it is made (at compile time for a `const` one), not for
     each amount; digits are made two per division; and a one-byte separator or symbol is pushed as
@@ -2000,7 +1999,6 @@ Corten is pre-1.0, so any minor version may change the API.
     began writing prices in the reader's locale (ce04961b), which is what benchmark round r7 to r8
     saw. `Currency`'s `Debug` is now its code (`Currency("USD")`, was its bytes)
     ([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
-
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -2542,6 +2540,17 @@ Corten is pre-1.0, so any minor version may change the API.
     downloaded. The step order, limits and resume rule are in `round.mjs`, tested by
     `round.test.mjs` (`npm run check`)
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
+92. `bench/fullstack/parity.mjs` passes again: the thirteen other apps write the item page's counts
+    as Corten's plural messages do since
+    [#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393),
+    digits grouped and the word singular for one (`2,866 listings`, `9,920 available`,
+    `1 listing`), each with the number formatting its stack provides (`Intl.NumberFormat`,
+    `intcomma`, `number_format`, `number_with_delimiter`, Thymeleaf's `formatInteger`, .NET's
+    `N0`; Leptos and Phoenix group by hand). A negative count still differs (the apps write
+    "-1 listings", Corten "-1 listing"); no page has one. Corten's page is unchanged. Checked with each app's image and `check-app.mjs` against card-market on the
+    fixture: 16 pages, the JSON and the 404s pass for all thirteen (Laravel on a 15-item fixture,
+    since PHP's default 128 MB limit does not hold the 508-item one, as its provider notes)
+    ([#520 Benchmark parity fails for every app: card-market writes counts as 2,866 since plural messages, the other apps 2866](https://github.com/todd-skelton/corten/issues/520)).
 
 ### Documentation
 

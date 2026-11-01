@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { data, Form, Link, useActionData, useLoaderData, type LoaderFunctionArgs, type ActionFunctionArgs } from "react-router";
 import { fetchItem } from "../api.server";
-import { alertMessage, sortListings, type ItemView } from "../view-model";
+import { alertMessage, counted, sortListings, type ItemView } from "../view-model";
 
 export async function loader({ params }: LoaderFunctionArgs) {
   const item = await fetchItem(params.id ?? "");
@@ -54,8 +54,8 @@ function ItemDetail({ item }: { item: ItemView }) {
         {item.summary ? (
           <>
             <span><strong>{item.summary.lowest ?? "—"}</strong>{" lowest"}</span>
-            <span>{`${item.summary.count} listings`}</span>
-            <span>{`${item.summary.quantity} available`}</span>
+            <span>{counted(item.summary.count, "listing", "listings")}</span>
+            <span>{counted(item.summary.quantity, "available", "available")}</span>
           </>
         ) : (
           <span>No listings yet</span>
