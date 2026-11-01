@@ -1,20 +1,18 @@
 // corten ui {{version}}: dialog
-//! A modal dialog's look, on the `<dialog>` written inside it, so its id, `open`, `closedby`
-//! and `on:connect` are checked as always. A button opens it with no script, and another closes
-//! it:
+//! A modal dialog's look, as the classes of the `<dialog>` you write, so its id, `open`,
+//! `closedby` and `on:connect` are checked as always and a patch replaces the dialog itself. A
+//! button opens it with no script, and another closes it:
 //!
 //! ```rust,ignore
 //! <button class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Md }} type="button" command="show-modal" commandfor={RenameId}>"Rename"</button>
-//! <Dialog>
-//!     <dialog id={RenameId} closedby="any" open={!errors.is_empty()} on:connect={dialog::modal(target)}>
-//!         <h2>"Rename the deck"</h2>
-//!         <p>"The new name shows everywhere the deck does."</p>
-//!         <form method="post" action={url::Rename} data-patch>..</form>
-//!         <DialogFooter>
-//!             <button class={Button { variant: ButtonVariant::Ghost, size: ButtonSize::Md }} type="button" command="close" commandfor={RenameId}>"Cancel"</button>
-//!         </DialogFooter>
-//!     </dialog>
-//! </Dialog>
+//! <dialog class={Dialog {}} id={RenameId} closedby="any" open={!errors.is_empty()} on:connect={dialog::modal(target)}>
+//!     <h2>"Rename the deck"</h2>
+//!     <p>"The new name shows everywhere the deck does."</p>
+//!     <form method="post" action={url::Rename} data-patch>..</form>
+//!     <div class={DialogFooter {}}>
+//!         <button class={Button { variant: ButtonVariant::Ghost, size: ButtonSize::Md }} type="button" command="close" commandfor={RenameId}>"Cancel"</button>
+//!     </div>
+//! </dialog>
 //! ```
 //!
 //! `corten_ui::dialog::modal` (docs/guide/ui.md) makes a dialog the server drew open, after it
@@ -27,17 +25,17 @@ use corten::prelude::*;
 /// use corten::prelude::*;
 ///
 /// #[component(css)]
-/// fn Dialog() -> impl Render {
-///     html! { <div class={(Dialog, Fullscreen)}></div> }
+/// fn Dialog() -> impl ClassList {
+///     (Dialog, Fullscreen)
 /// }
 /// ```
 #[component(css)]
-pub fn Dialog<C: Render>(children: C) -> impl Render {
-    html! { <div class={Dialog}>{children}</div> }
+pub fn Dialog() -> impl ClassList {
+    Dialog
 }
 
 /// The dialog's actions, at its end.
 #[component(css = Dialog)]
-pub fn DialogFooter<C: Render>(children: C) -> impl Render {
-    html! { <div class={Footer}>{children}</div> }
+pub fn DialogFooter() -> impl ClassList {
+    Footer
 }

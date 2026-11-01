@@ -1400,7 +1400,8 @@ Corten is pre-1.0, so any minor version may change the API.
     a `<summary>` sees the element it expects. It takes a stylesheet (its own or an owner's) and no
     script, refs or view, and used as an element (`<Button>`) it does not compile (design.md
     Choice 16; [Looks](docs/guide/styles.md#looks))
-    ([#558 Kit wrappers accept any children, so a Switch without role="switch" or a Button around a summary compiles and silently breaks](https://github.com/todd-skelton/corten/issues/558)).
+    ([#558 Kit wrappers accept any children, so a Switch without role="switch" or a Button around a summary compiles and silently breaks](https://github.com/todd-skelton/corten/issues/558):
+    its Button around a `<summary>` and Input on a `<select>`; a Switch's role is still the app's).
 168. The kit's Table has a `TableNumeric` look for a number column (aligned to its end, tabular
     figures, on one line) and a `SortHeader` for a column the table sorts by: a typed link to the
     page sorted by it, `aria-sort` on the column sorted now, and an arrow drawn, not written. Its
@@ -2210,11 +2211,11 @@ Corten is pre-1.0, so any minor version may change the API.
     stylesheet that sets `color-scheme` as it is, saying what to add; `corten ui add` lists
     `corten_ui::COMPONENTS` beside the kit's list wherever it is, and not again when a file has it
     ([#551 corten ui init on an app that already has tokens adds a second theme instead of mapping onto the app's](https://github.com/todd-skelton/corten/issues/551)).
-104. The kit's Button, Input, Textarea, Select, Slider, Badge, Card, CardHeader, CardContent and
-    CardFooter are looks: `<button class={Button { variant: ButtonVariant::Primary, size:
+104. The kit's Button, Input, Textarea, Select, Slider, Badge, Card, CardHeader, CardContent,
+    CardFooter, Dialog, DialogFooter, Sheet and Popover are looks: `<button class={Button { variant: ButtonVariant::Primary, size:
     ButtonSize::Md }}>` where it was `<Button ..><button>..</button></Button>`, and
     `<section class={Card {}}>` (or an `<article>`, an `<li>`, a form, a patch target) where
-    `Card` drew a `<div>`. Alert, Switch, Checkbox and Field still draw their element, for a
+    `Card` drew a `<div>`, and `<dialog class={Dialog {}}>` where `Dialog` wrapped the `<dialog>`. Alert, Switch, Checkbox and Field still draw their element, for a
     role or a label. A copy made before is replaced with `corten ui add --force <name>`, and its
     uses change as shown
     ([#563 Kit Card and Alert render their own div, so a card cannot be the page's section, article or list item](https://github.com/todd-skelton/corten/issues/563),
@@ -2222,11 +2223,12 @@ Corten is pre-1.0, so any minor version may change the API.
 105. The kit's Badge takes a tone (`Neutral`, `Primary`, `Info`, `Success`, `Warning`,
     `Destructive`) and an emphasis (`Solid`, `Soft`, `Outline`), `class={Badge { tone, emphasis }}`,
     in place of one variant per look; a soft badge is a 12% tint of its tone, and every pair
-    keeps 4.5:1 contrast in both themes (4.98:1 at worst)
+    keeps at least 4.5:1 contrast on the page and on a card in both themes, which a test checks
     ([#569 Kit Badge has one look per tone, so an app cannot tell a filled status from an outlined one as MUI Chip does](https://github.com/todd-skelton/corten/issues/569)).
 106. The kit's Field takes the control's `#[derive(Id)]` id, `id={QtyId}`, which its label's `for`
     and the control share, so the two cannot differ, and a `hint` and an `error` shown together;
-    `aria-describedby={FieldHintId(&QtyId)}` on the control names the hint
+    `e.aria(f.qty).hint(&FieldHintId(&QtyId))` on the control names the hint before the error
+    (`aria-describedby={FieldHintId(&QtyId)}` on a control the server never marks)
     ([#554 Kit Field: the control id is written twice, unchecked, and a field cannot show a hint and its error together](https://github.com/todd-skelton/corten/issues/554)).
 107. corten-ui's `PrintButton` and `CopyButton` take a `class`, the button's look
     (`class={Button { .. }}` from the kit, `class={()}` for none), so a kit app styles them as its

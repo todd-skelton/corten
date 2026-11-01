@@ -403,7 +403,7 @@ mod tests {
     async fn the_address_opens_the_sale_sheet_and_its_link_closes_it() {
         let open = send(Request::get("/?sale=last").body(Body::empty()).unwrap()).await;
         assert!(
-            open.contains(r#"<dialog data-scope="sale-sheet" open aria-label="Last sale" data-on="connect:ui.dialog.modalClosedBy($t,@close,$s)">"#),
+            open.contains(r#"<dialog data-scope="sale-sheet" class="sheet__sheet sheet__right" open aria-label="Last sale" data-on="connect:ui.dialog.modalClosedBy($t,@close,$s)">"#),
             "{open}"
         );
         assert!(
@@ -420,14 +420,14 @@ mod tests {
         let rename = || Request::post("/rename").header("content-type", "application/x-www-form-urlencoded");
         let patch = send(rename().header("corten", "action").body(Body::from("name=+")).unwrap()).await;
         assert!(
-            patch.starts_with(r#"<dialog id="rename" open aria-label="Rename the draft" data-on="connect:ui.dialog.modal($t)">"#),
+            patch.starts_with(r#"<dialog class="dialog__dialog" id="rename" open aria-label="Rename the draft" data-on="connect:ui.dialog.modal($t)">"#),
             "{patch}"
         );
         assert!(patch.contains("aria-invalid=\"true\"") && patch.contains("Give the draft a name."), "{patch}");
         let page = send(rename().body(Body::from("name=")).unwrap()).await;
-        assert!(page.contains("<html") && page.contains(r#"<dialog id="rename" open"#), "{page}");
+        assert!(page.contains("<html") && page.contains(r#"<dialog class="dialog__dialog" id="rename" open"#), "{page}");
         let home = send(Request::get("/").body(Body::empty()).unwrap()).await;
-        assert!(home.contains(r#"<dialog id="rename" aria-label"#), "drawn closed: {home}");
+        assert!(home.contains(r#"<dialog class="dialog__dialog" id="rename" aria-label"#), "drawn closed: {home}");
     }
 
     /// Each page's links are typed routes: the first page's address has no number, and a number

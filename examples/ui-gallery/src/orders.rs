@@ -188,12 +188,10 @@ pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) 
                         >
                             "Share the shop"
                         </button>
-                        <Popover>
-                            <div id={ShareId} popover>
-                                <p><strong>"Your shop's address"</strong></p>
-                                <p><code>"corten.run/shop/ashen"</code></p>
-                            </div>
-                        </Popover>
+                        <div class={Popover {}} id={ShareId} popover>
+                            <p><strong>"Your shop's address"</strong></p>
+                            <p><code>"corten.run/shop/ashen"</code></p>
+                        </div>
                     </div>
                 </header>
                 <div class={CardContent {}}>

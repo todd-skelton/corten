@@ -376,9 +376,9 @@ pub fn Gallery<'a>(
                 </section>
             </div>
         </div>
-        <Dialog>{rename}</Dialog>
+        {rename}
         if sale {
-            <Sheet side={Side::Right}><SaleSheet /></Sheet>
+            <SaleSheet />
         }
     }
 }
@@ -443,7 +443,12 @@ pub fn Sku<'a>(sku: &'a str) -> impl Render {
 pub fn SaleSheet() -> impl Render {
     let close = refs();
     html! {
-        <dialog open aria-label="Last sale" on:connect={dialog::modalClosedBy(target, close, signal)}>
+        <dialog
+            class={Sheet { side: Side::Right }}
+            open
+            aria-label="Last sale"
+            on:connect={dialog::modalClosedBy(target, close, signal)}
+        >
             <h2>"Last sale"</h2>
             <p>"A Near Mint copy sold for $12.00 on May 3."</p>
             <a
@@ -469,13 +474,19 @@ pub fn RenameDialog<'a>(name: &'a str, errors: &'a Errors) -> impl Patch {
     let f = RenameForm::FIELDS;
     let e = errors.within(RenameId);
     html! {
-        <dialog id={RenameId} open={!errors.is_empty()} aria-label="Rename the draft" on:connect={dialog::modal(target)}>
+        <dialog
+            class={Dialog {}}
+            id={RenameId}
+            open={!errors.is_empty()}
+            aria-label="Rename the draft"
+            on:connect={dialog::modal(target)}
+        >
             <h2>"Rename the draft"</h2>
             <form class={Rename} method="post" action={url::Rename} data-patch>
                 <Field id={DraftNameId} label="Name" hint="" error={e.message(f.name)}>
                     <input class={Input {}} id={DraftNameId} name={f.name} value={name} {..e.aria(f.name)}>
                 </Field>
-                <DialogFooter>
+                <div class={DialogFooter {}}>
                     <button
                         class={Button { variant: ButtonVariant::Ghost, size: ButtonSize::Md }}
                         type="button"
@@ -485,7 +496,7 @@ pub fn RenameDialog<'a>(name: &'a str, errors: &'a Errors) -> impl Patch {
                         "Cancel"
                     </button>
                     <button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>"Rename"</button>
-                </DialogFooter>
+                </div>
             </form>
         </dialog>
     }

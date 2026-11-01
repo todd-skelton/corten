@@ -3,7 +3,7 @@
 .table > table { width: 100%; border-collapse: collapse; font-size: .875rem; caption-side: bottom; }
 .table > table > caption { margin-top: 1rem; font-size: .875rem; color: var(--muted-foreground); }
 /* No specificity on the cells (:where), so one class of the app's on a cell wins. */
-:where(.table) :where(th, td) { padding: .5rem; text-align: start; vertical-align: middle; overflow-wrap: anywhere; }
+:where(.table) :where(th, td) { padding: .5rem; text-align: start; vertical-align: middle; overflow-wrap: break-word; }
 :where(.table) :where(th) { height: 2.5rem; font-weight: 500; color: var(--foreground); white-space: nowrap; overflow-wrap: normal; }
 .table tr { border-bottom: 1px solid var(--border); transition: background-color .15s; }
 .table > table > tbody > tr:last-child { border-bottom: 0; }
@@ -17,3 +17,5 @@
 .arrow { display: inline-block; width: .5rem; height: .375rem; background: currentColor; opacity: .35; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
 .arrow.up { opacity: 1; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .arrow.down { opacity: 1; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+/* Forced colors drop backgrounds: the arrow keeps the text's system color. */
+@media (forced-colors: active) { .arrow { forced-color-adjust: none; background: CanvasText; } }
