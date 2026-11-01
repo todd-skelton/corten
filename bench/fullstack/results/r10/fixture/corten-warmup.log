@@ -1,0 +1,46 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 586879  19561.497739/s
+    checks_succeeded...: 100.00% 586879 out of 586879
+    checks_failed......: 0.00%   0 out of 586879
+
+    ✓ status 200
+
+    HTTP
+    http_req_duration..............: avg=1.54ms p(50)=1.73ms p(95)=2.19ms p(99)=3.89ms max=17.4ms 
+      { expected_response:true }...: avg=1.54ms p(50)=1.73ms p(95)=2.19ms p(99)=3.89ms max=17.4ms 
+    http_req_failed................: 0.00%  0 out of 586879
+    http_reqs......................: 586879 19561.497739/s
+
+    EXECUTION
+    iteration_duration.............: avg=1.62ms p(50)=1.8ms  p(95)=2.27ms p(99)=4.13ms max=19.19ms
+    iterations.....................: 586879 19561.497739/s
+    vus............................: 32     min=32          max=32
+    vus_max........................: 32     min=32          max=32
+
+    NETWORK
+    data_received..................: 6.3 GB 209 MB/s
+    data_sent......................: 65 MB  2.2 MB/s
+
+
+
+Unable to find image 'grafana/k6:latest' locally
+latest: Pulling from grafana/k6
+4f4fb700ef54: Pulling fs layer
+2b28f25602d4: Pulling fs layer
+699240e0b337: Pulling fs layer
+55afa1ecc21d: Pulling fs layer
+4f4fb700ef54: Already exists
+2b28f25602d4: Download complete
+55afa1ecc21d: Download complete
+44136fa355b3: Already exists
+935631f8a8f2: Download complete
+2b28f25602d4: Pull complete
+55afa1ecc21d: Pull complete
+699240e0b337: Download complete
+4f4fb700ef54: Pull complete
+699240e0b337: Pull complete
+Digest: sha256:3e4186aea62e11a45560bfc51e19eeafe82fc07ce069c78aff44b7ff893d9a5e
+Status: Downloaded newer image for grafana/k6:latest
