@@ -258,8 +258,10 @@ async fn settings(req: Req, Form(form): Form<SettingsForm>) -> HtmlResult {
     let (from, days) = (form.warehouse.label(), form.handling.clamp(1, 5));
     let emails = if form.notify { "on" } else { "off" };
     let note = if form.note.trim().is_empty() { "no note" } else { "your note" };
-    let saved = format_args!("Saved: ships from {from} in {days} days with {note}; shipping emails {emails}.");
-    req.redirect_with_notice(&url::Orders { page: None }, saved)
+    req.redirect_with_notice(
+        &url::Orders { page: None },
+        format_args!("Saved: ships from {from} in {days} days with {note}; shipping emails {emails}."),
+    )
 }
 
 async fn help(req: Req) -> HtmlResult {
