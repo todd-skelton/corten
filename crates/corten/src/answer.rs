@@ -356,7 +356,8 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 /// `Json(started).with_status(StatusCode::ACCEPTED)`, `Json(session).with_cookie(cookie)`. Its
 /// handler returns `Result<JsonResponse, JsonError>` where one that answers `200` with no cookie
 /// returns [`JsonResult<T>`]. The value is written when it is made, with the same headers as any
-/// JSON answer; it derefs to the response for any other header of the handler's own.
+/// JSON answer; it derefs to the response for any other header of the handler's own. One made
+/// from a [`Relay`] (`relay.into()`, below) stays the upstream's: its status, headers and body.
 ///
 /// A status here is the app's own answer, body and all: `503 {"error":"No forecast yet"}` reaches
 /// the client as written. A failure (`Err`) is answered as every failure of a JSON route is, a
@@ -460,6 +461,35 @@ impl<T: crate::json::ToJson> crate::Json<T> {
 impl<T: crate::json::ToJson> From<crate::Json<T>> for JsonResponse {
     fn from(json: crate::Json<T>) -> Self {
         JsonResponse(json.into_response())
+    }
+}
+
+/// Another server's answer, in a JSON route that answers some requests itself and passes the rest
+/// on (a route moved off another service a part at a time, a cache in front of an upstream):
+/// `Ok(relay.into())`. It stays the upstream's answer, as a [`Relay`] is anywhere: never
+/// compressed by the app, and its failure status passed on with its body rather than written as
+/// the route's JSON error.
+///
+/// ```
+/// use corten::{axum::{body::Body, http::{HeaderMap, StatusCode}}, prelude::*, JsonError, JsonResponse, Relay};
+///
+/// #[derive(ToJson)]
+/// struct Order { id: u32 }
+///
+/// async fn order(ported: bool) -> Result<JsonResponse, JsonError> {
+///     if ported {
+///         return Ok(Json(Order { id: 7 }).into());
+///     }
+///     // The old service's answer, from the app's HTTP client.
+///     let (status, headers, body) = (StatusCode::OK, HeaderMap::new(), Body::from(r#"{"id":7}"#));
+///     Ok(Relay::new(status, headers, body).into())
+/// }
+/// # let _ = order;
+/// ```
+#[cfg(feature = "json")]
+impl From<Relay> for JsonResponse {
+    fn from(relay: Relay) -> Self {
+        JsonResponse(relay.0)
     }
 }
 

@@ -12,7 +12,7 @@ your routes. Each default can be replaced in one line.
 | The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
 | Routes | a `#[corten::routes]` module: each route names its handlers, and `router()` is what `App::new` takes; every handler is checked when the crate compiles, there and in `Area::route` and `Api::route` (Corten's `get`, `post`, ...), so no route reaches the app unchecked | |
 | What handlers share | nothing | `#[corten::routes(state = Shared)]` and `router(shared)`; `#[derive(Clone, FromRef)]` on `Shared` lets a handler take one part, `State<Market>` (each field's type once; `#[from_ref(skip)]` leaves a field out) |
-| What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too; `Result<JsonResponse, JsonError>` for a status or cookie of the handler's own) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
+| What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too; `Result<JsonResponse, JsonError>` for a status or cookie of the handler's own, or another server's answer passed on) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
 | The client's address | the connection's peer; no `X-Forwarded-For` is read | a handler takes `ClientIp`; behind a proxy, `PROXIES=10.0.0.0/8` in the environment or `Policy::proxy("10.0.0.0/8")` ([below](#the-clients-address)) |
 | Who is asking | nothing: no lookup runs | a handler takes `Caller<Viewer>` (`Viewer: Identify`), looked up only then, once per request ([below](#who-is-asking)) |
 | A part of the app | none | `.area(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
@@ -878,7 +878,8 @@ fn app(pages: Routes) -> App {
 ```
 
 A JSON answer is `200` with the value's JSON. One with a status or a cookie of its own is a
-`JsonResponse`, made from the value, and its handler returns `Result<JsonResponse, JsonError>`:
+`JsonResponse`, made from the value (or from a `Relay`, [below](#websockets-and-relays)), and its
+handler returns `Result<JsonResponse, JsonError>`:
 `Json(started).with_status(StatusCode::ACCEPTED)` for a job begun,
 `Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE)` for a document that does not exist
 yet, `Json(session).with_cookie(SetCookie::try_new("session", &token)?)` for a sign-in (never a
@@ -1039,6 +1040,16 @@ be compressed forwards the client's `Accept-Encoding`, and the upstream's encode
 it is, as long as the HTTP client does not decode it (for reqwest, leave its `gzip`, `brotli` and
 `zstd` features off). When the client leaves, the body is dropped, and
 the upstream request with it. What else to drop (`Set-Cookie`) is the route's to decide.
+
+A route that answers some requests itself and passes the rest on (by method, body or tenant,
+while it moves off another service; a cache in front of an upstream) names one answer for both.
+A page route's is `PageOr<Relay>`, a page or the relayed answer. A JSON route's is
+`Result<JsonResponse, JsonError>`: `Ok(Json(value).into())` for its own answer and
+`Ok(relay.into())` for the upstream's, which stays the upstream's (its status, headers and
+failure body, its encoding) as a `Relay` is anywhere. A route that only relays returns `Relay`:
+its own failures (a path that does not parse) are then the error page, and it can be `Public`.
+A JSON route that relays some requests is never `Public`, as no `JsonResponse` is, so a shared
+cache keeps neither of its answers.
 
 An app moved onto Corten a slice at a time serves its own paths and relays the rest to the
 old server behind a catch-all route. `any = relay` serves every method there, those the app never

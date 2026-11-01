@@ -1355,6 +1355,12 @@ Corten is pre-1.0, so any minor version may change the API.
     measurable (a full document 24,954, 24,944 to 24,980, against 24,830 on main, 24,794 to
     24,978; a navigation 23,541, 23,515 to 23,862, against 23,573, 23,515 to 23,893)
     ([#534 A layout value read the way the guide shows starts after the page's own reads, so a full load waits for both, and an extractor cannot read Mode to start it early](https://github.com/todd-skelton/corten/issues/534)).
+163. `JsonResponse` from a `Relay` (`Ok(relay.into())`), so a JSON route that answers some
+    requests itself and passes the rest to another service (a route moved off it a part at a time,
+    a cache in front of it) names one answer, and the relayed one stays the upstream's: its failure
+    body passes on, and the app does not compress it. Before, such a route sent its own JSON as a
+    `Relay`, uncompressed. No request path changed
+    ([#541 A route that answers its own JSON for some requests and relays the rest to another service has no answer type, so a half-ported route sends its own JSON as a Relay](https://github.com/todd-skelton/corten/issues/541)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
