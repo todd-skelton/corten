@@ -1252,6 +1252,21 @@ Corten is pre-1.0, so any minor version may change the API.
     screenshots are served at the sizes it says and that the shortcut opens a page. A manifest image's
     `type` comes from the static directory's own table (a GIF was written `image/png`)
     ([#515 pwa::Manifest cannot set the manifest's other members (orientation, categories, id, screenshots, shortcuts)](https://github.com/todd-skelton/corten/issues/515)).
+159. A UI kit, copied into the app as source (docs/guide/kit.md). `corten ui init` writes theme
+    tokens under shadcn/ui's variable names (`--background`, `--primary`, `--ring`, `--radius`
+    and the rest), light and dark, following the system when the page chose none, `src/ui.rs`
+    listing the kit's components, and the page's colors in `static/style.css`, and lists
+    `ui::COMPONENTS` on the `App`. `corten ui add <name>..` (or `--all`) copies a component into
+    `src/ui/` with the kit version it came from, refusing to replace a file unless `--force`, and
+    lists it; `corten ui list` names them. The first five are `Button` (six variants, four
+    sizes), `Badge`, `Card` with its header, content and footer, `Input` and `Alert`: ordinary
+    `#[component(css)]`s whose variants are enums matched to classes, so one without a rule does not
+    compile (a `compile_fail` doctest in each), with no script and no `style=`. A component whose
+    element takes the app's attributes (a button, a link, an input) styles the element written
+    inside it, so `html!` checks those attributes as always. The `corten new` check now also runs
+    `corten ui init`, `corten ui add --all` and `corten check` on the new app
+    ([#404 corten ui init: no theme tokens a component kit can build on, and a shadcn theme cannot be brought over](https://github.com/todd-skelton/corten/issues/404),
+    [#405 corten ui add: no command copies a component's source into an app](https://github.com/todd-skelton/corten/issues/405)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

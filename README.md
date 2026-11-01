@@ -406,6 +406,7 @@ small ([profile](bench/browser/README.md#creating-many-rows)).
 | [Cancellation](docs/guide/cancellation.md) | `AbortSignal` in the browser and on the server, deadlines |
 | [Styles](docs/guide/styles.md) | a scoped CSS file per component, design tokens, themes |
 | [Headless components](docs/guide/ui.md) | `corten-ui`: number field, combobox, tabs, menu button, toaster, copy button, relative time, checkbox group, required-when |
+| [The UI kit](docs/guide/kit.md) | `corten ui`: theme tokens and styled components copied into the app as source |
 | [Type safety](docs/guide/type-safety.md) | every seam between server and client, and how it is checked |
 | [Design decisions and limits](docs/design.md) | why it is built this way, and what it does not do |
 | [Surfaces](docs/architecture.md) | one server for web, native apps and agents |

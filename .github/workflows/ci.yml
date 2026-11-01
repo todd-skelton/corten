@@ -27,11 +27,13 @@ jobs:
       - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
       - run: cargo test --workspace --all-features
       - run: cargo test -p corten --no-default-features
-      - name: corten new writes an app that passes corten check
+      - name: corten new writes an app that passes corten check, and so does every kit component in it
         run: |
           cargo build -q -p corten-cli
           target/debug/corten new "$RUNNER_TEMP/app" --corten-path crates/corten
           cd "$RUNNER_TEMP/app" && CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" "$GITHUB_WORKSPACE/target/debug/corten" check
+          "$GITHUB_WORKSPACE/target/debug/corten" ui init && "$GITHUB_WORKSPACE/target/debug/corten" ui add --all
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" "$GITHUB_WORKSPACE/target/debug/corten" check
       # Every published crate still packages and builds on its own from the .crate files, in a
       # target of its own: cargo treats a registry crate as unchanged while its version is, so the
       # cached target could hand it an earlier build of corten 0.1.0.
