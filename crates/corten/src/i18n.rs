@@ -931,6 +931,15 @@ mod tests {
         assert_eq!(serde_json::from_str::<Day>(r#""2026-09-02""#).unwrap(), day);
     }
 
+    /// A code given in lower case finds the currency's symbol and digits, as its upper case does.
+    #[test]
+    fn a_lower_case_code_finds_its_symbol() {
+        let en = Msg::for_locale("en");
+        assert_eq!(en.money(Minor(150), Currency::parse("usd").unwrap()).to_string(), "$1.50");
+        assert_eq!(en.money(Minor(150), Currency::parse("jpy").unwrap()).to_string(), "¥150");
+        assert_eq!((Currency::parse("kwd").unwrap().digits(), Currency::parse("zzz").unwrap().digits()), (3, 2));
+    }
+
     /// Money typed in a locale is read back in minor units, as `t.money` writes it.
     #[test]
     fn money_is_read_back_as_the_locale_writes_it() {
@@ -1155,17 +1164,25 @@ mod tests {
         );
     }
 
+    /// The code a locale table's key is for (`Currency::key`: the code's three bytes).
+    fn code_of(key: u32) -> String {
+        let [zero, code @ ..] = key.to_be_bytes();
+        assert_eq!(zero, 0, "{key}");
+        String::from_utf8(code.to_vec()).unwrap()
+    }
+
     /// `t.money` places a code only in the template that writes a currency by its code; every
     /// currency a locale has a symbol for has it in place.
     #[test]
     fn a_currency_with_a_symbol_has_no_code_to_place() {
         let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
         for (tag, data) in locales {
-            for (code, positive, negative) in data.currencies {
+            for (key, positive, negative) in data.currencies {
+                let code = code_of(*key);
                 assert!(!positive.contains('\u{2}') && !negative.contains('\u{2}'), "{tag} {code}");
-                assert_eq!(code.len(), 3, "{tag} {code}");
+                assert_eq!(Currency::parse(&code).map(|c| c.key()), Some(*key), "{tag} {code}");
             }
-            assert!(data.currencies.is_sorted_by_key(|(code, ..)| *code), "{tag}");
+            assert!(data.currencies.is_sorted_by_key(|(key, ..)| *key), "{tag}");
         }
     }
 
@@ -1202,8 +1219,9 @@ mod tests {
         // Every currency a locale has a symbol for, not only the ones in cases.tsv: a longer symbol
         // in a later CLDR still reads.
         for (tag, data) in locales {
-            for (code, ..) in data.currencies {
-                let currency = Currency::parse(code).unwrap();
+            for (key, ..) in data.currencies {
+                let code = code_of(*key);
+                let currency = Currency::parse(&code).unwrap();
                 for minor in [0_u64, 7, 1234, 123_456_789] {
                     let text = Formatted::money(data, &Minor(minor), currency).to_string();
                     assert_eq!(format::parse_money(data, &text, currency), Some(Minor(minor)), "{tag} {code} {text:?}");

@@ -2126,6 +2126,20 @@ Corten is pre-1.0, so any minor version may change the API.
     began writing prices in the reader's locale (ce04961b), which is what benchmark round r7 to r8
     saw. `Currency`'s `Debug` is now its code (`Currency("USD")`, was its bytes)
     ([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
+99. A currency's symbol and fraction digits are found in the locale tables by a number, the
+    code's three bytes, which `Currency` already holds; `scripts/locale-data.mjs` writes it beside
+    each code. Before, `t.money`, `t.signed_money` and `Currency::parse` turned the table's code
+    text into that number on each probe of the binary search, and `t.parse_money` and a script's
+    money format compared text. What they write is the same: the generator still checks 1,902,560
+    values against Intl, and the i18n tests pass. Measured with callgrind (release, three rounds
+    each): card-market's item page from memory (in-process `oneshot`, the difference between 1,200
+    and 200 requests over 1,000) is 90,101 instructions a request here (89,166 to 90,101) against
+    92,366 on main at 3b197114 (91,439 to 92,414), 2.5% fewer; `t.money` alone, written with
+    `write!` into a reused `String` (so `std::fmt` is counted, unlike entry 98), is 780
+    instructions a value in `en` USD against 852, `fr` USD 848 against 931, `en` EUR 811 against
+    881 and `fr` JPY 951 against 1,036. Most of the page's rise in the issue is card-market writing
+    more prices, which stays
+    ([#545 The item page's user-mode instructions rose 14.8% between benchmark rounds r7 and r10 (95,949 to 110,172) while its CPU time per page fell](https://github.com/todd-skelton/corten/issues/545)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
