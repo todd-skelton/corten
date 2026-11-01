@@ -2955,6 +2955,16 @@ Corten is pre-1.0, so any minor version may change the API.
     example rather than a test. Corten adds no test mode or rollback helper: the driver's are the one
     way
     ([#506 No story for tests that need a database or a live service: #[ignore] runs both, and a live recorder ran with the database tests](https://github.com/todd-skelton/corten/issues/506)).
+42. The app guide (Numbers in JSON) and `ToJson` for floats say how numbers are written in a JSON
+    response, a feed's rows and an agent tool's output: as serde_json writes them (a whole float as
+    `2.0` where `JSON.stringify` writes `2`, and where each switches to an exponent), which readers
+    that type a number by its text read differently; a value a client should read as an integer is
+    an integer field, text that must match another service's byte for byte is `Raw`, and a shared
+    checksum is over canonical JSON (RFC 8785). Corten keeps one number format for these rather than
+    a second one for JavaScript parity, which would make a `ToJson` disagree with the `serde_json`
+    fields inside it, feeds and agent output, and would still not give canonical bytes (design.md,
+    Limits 16)
+    ([#540 Json writes a whole f64 as 2.0 where JSON.stringify writes 2, so a route ported from a Node service changes its numbers' text and how clients read them](https://github.com/todd-skelton/corten/issues/540)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

@@ -281,3 +281,9 @@ framework's shape, and what it does not do yet.
     starting a line after a value, as after `continue` or `let t`), the script is served as
     written, comments included: correct, only larger. None of the repo's scripts is; of 1,230
     third-party files with comments, 161 (mostly minified bundles) were.
+16. JSON numbers have one form, serde_json's, in responses, feeds and agent output: a whole float
+    keeps its fraction (`2.0`), where JavaScript's `JSON.stringify` writes `2`. There is no switch
+    to JavaScript's form: a second form would split the surfaces and still not give canonical bytes.
+    Text that must match another service's is the app's own (`Raw`, or serde_json's `RawValue`
+    where `Serialize` writes it), and a shared checksum is over RFC 8785 (the app guide, Numbers in
+    JSON).

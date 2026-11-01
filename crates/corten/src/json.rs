@@ -540,8 +540,12 @@ wide_integers!(u128, i128);
 
 macro_rules! floats {
     ($($t:ty),*) => {$(
-        /// The shortest digits that read back as the same number; NaN and infinity, which JSON
-        /// has no form for, are `null` (as serde_json writes them).
+        /// The shortest digits that read back as the same number (an `f32`'s digits are the
+        /// `f32`'s), a whole one with its fraction (`2.0`), an exponent when the magnitude is at
+        /// least `1e16` or nonzero and below `1e-5` for an `f64` (`1e+16`, `5e-6`), at least `1e13` or
+        /// nonzero and below `1e-6` for an `f32`, and `-0.0` as such; NaN and infinity, which JSON has no form for,
+        /// are `null` (as serde_json writes them). A value a client should read as an integer is an
+        /// integer type.
         impl ToJson for $t {
             #[inline]
             fn write_json(&self, out: &mut Vec<u8>) {
@@ -1118,6 +1122,45 @@ mod tests {
             same(&either);
         }
         same(&WithForeign { when: Foreign { at: "2026-10-24" }, many: vec![Foreign { at: "a" }, Foreign { at: "b" }] });
+    }
+
+    /// Each case the app guide (Numbers in JSON) describes, as text: the guide states it, so a change in serde_json
+    /// or zmij shows here rather than leaving the guide wrong.
+    #[test]
+    fn floats_are_written_as_the_json_guide_says() {
+        let f64s: &[(f64, &str)] = &[
+            (2.0, "2.0"),
+            (-0.0, "-0.0"),
+            (9999999999999998.0, "9999999999999998.0"),
+            (1e16, "1e+16"),
+            (-1e16, "-1e+16"),
+            (1e-5, "0.00001"),
+            (9.999999999999999e-6, "9.999999999999999e-6"),
+            (9e-6, "9e-6"),
+            (5e-6, "5e-6"),
+            (0.0, "0.0"),
+            (f64::NAN, "null"),
+            (f64::INFINITY, "null"),
+            (f64::NEG_INFINITY, "null"),
+        ];
+        for (value, text) in f64s {
+            assert_eq!(String::from_utf8(to_vec(value)).unwrap(), *text, "{value:e}");
+            same(value);
+        }
+        let f32s: &[(f32, &str)] = &[
+            (2.0, "2.0"),
+            (-0.0, "-0.0"),
+            (0.1, "0.1"),
+            (9999999e6, "9999999000000.0"),
+            (1e13, "1e+13"),
+            (1e-6, "0.000001"),
+            (9.999999e-7, "9.999999e-7"),
+            (9e-7, "9e-7"),
+        ];
+        for (value, text) in f32s {
+            assert_eq!(String::from_utf8(to_vec(value)).unwrap(), *text, "{value:e}");
+            same(value);
+        }
     }
 
     #[test]
