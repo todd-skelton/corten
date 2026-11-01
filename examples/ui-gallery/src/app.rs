@@ -71,6 +71,7 @@ pub mod url {
     #[route("/orders", get = orders)]
     pub struct Orders {
         pub page: Option<usize>,
+        pub sort: Option<crate::orders::OrderSort>,
     }
 
     #[route("/orders/settings", post = settings)]
@@ -248,7 +249,7 @@ async fn orders(req: Req, Params(q): Params<url::Orders>) -> HtmlResult {
     let (t, photo) = (req.t(), req.asset(Static::FAVICON_SVG).to_string());
     req.page(html! {
         <Layout req={&req} title="Orders | corten-ui" toast={None}>
-            <Orders t={t} page={page} photo={&photo} />
+            <Orders t={t} page={page} sort={q.sort} photo={&photo} />
         </Layout>
     })
 }
@@ -259,7 +260,7 @@ async fn settings(req: Req, Form(form): Form<SettingsForm>) -> HtmlResult {
     let emails = if form.notify { "on" } else { "off" };
     let note = if form.note.trim().is_empty() { "no note" } else { "your note" };
     req.redirect_with_notice(
-        &url::Orders { page: None },
+        &url::Orders { page: None, sort: None },
         format_args!("Saved: ships from {from} in {days} days with {note}; shipping emails {emails}."),
     )
 }
@@ -440,6 +441,19 @@ mod tests {
         let last = send(Request::get("/orders?page=9").body(Body::empty()).unwrap()).await;
         assert!(last.contains(r#"href="/orders?page=3" aria-current="page">3</a>"#), "{last}");
         assert!(last.contains(">JB<") && !last.contains(">AL<"), "{last}");
+    }
+
+    #[tokio::test]
+    async fn the_orders_sort_by_their_total() {
+        let unsorted = send(Request::get("/orders").body(Body::empty()).unwrap()).await;
+        assert!(unsorted.contains(r#"href="/orders?sort=total_up""#) && !unsorted.contains("aria-sort"), "{unsorted}");
+        let up = send(Request::get("/orders?sort=total_up").body(Body::empty()).unwrap()).await;
+        assert!(up.contains(r#"aria-sort="ascending""#) && up.contains(r#"href="/orders?sort=total_down""#), "{up}");
+        assert!(up.contains(">JB<") && up.contains(">BL<") && !up.contains(">AL<"), "the four smallest: {up}");
+        assert!(up.contains(r#"href="/orders?page=2&amp;sort=total_up" rel="next""#), "a page keeps the order: {up}");
+        let down = send(Request::get("/orders?sort=total_down").body(Body::empty()).unwrap()).await;
+        assert!(down.contains(r#"aria-sort="descending""#) && down.contains(r#"href="/orders?sort=total_up""#), "{down}");
+        assert!(down.contains(">ED<") && !down.contains(">JB<"), "the four largest: {down}");
     }
 
     #[tokio::test]

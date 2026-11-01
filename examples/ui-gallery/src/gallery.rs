@@ -356,7 +356,7 @@ pub fn Gallery<'a>(
                         </a>
                         <a
                             class={Button { variant: ButtonVariant::Link, size: ButtonSize::Sm }}
-                            href={url::Orders { page: None }}
+                            href={url::Orders { page: None, sort: None }}
                         >
                             "Orders"
                         </a>

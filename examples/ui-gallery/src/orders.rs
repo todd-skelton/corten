@@ -21,7 +21,7 @@ use crate::ui::{
     skeleton::{Skeleton, SkeletonShape},
     slider::Slider,
     switch::Switch,
-    table::Table,
+    table::{Sort, SortHeader, Table, TableNumeric},
     textarea::Textarea,
 };
 
@@ -53,6 +53,14 @@ impl Status {
         };
         Badge { tone, emphasis }
     }
+}
+
+/// The order the table is sorted in, by the `sort` query value; newest first when there is none.
+#[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OrderSort {
+    TotalUp,
+    TotalDown,
 }
 
 /// One order: who bought what, where it is and what it came to.
@@ -135,11 +143,24 @@ struct HandlingId;
 #[derive(Id)]
 struct NoteId;
 
-/// The orders page: `page` counts from 1, and `photo` is the picture of a buyer who has one.
+/// The orders page: `page` counts from 1, `sort` is the table's order, and `photo` is the
+/// picture of a buyer who has one.
 #[component(css)]
-pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
+pub fn Orders<'a>(t: Msg, page: usize, sort: Option<OrderSort>, photo: &'a str) -> impl Render {
     let f = SettingsForm::FIELDS;
-    let shown = ORDERS.iter().skip((page - 1) * PER_PAGE).take(PER_PAGE);
+    let mut sorted: Vec<&Order> = ORDERS.iter().collect();
+    match sort {
+        Some(OrderSort::TotalUp) => sorted.sort_by_key(|o| o.cents),
+        Some(OrderSort::TotalDown) => sorted.sort_by_key(|o| std::cmp::Reverse(o.cents)),
+        None => {}
+    }
+    let shown = sorted.into_iter().skip((page - 1) * PER_PAGE).take(PER_PAGE);
+    // The total's header: sorted up on the first click, then down and up in turn.
+    let (by_total, next) = match sort {
+        Some(OrderSort::TotalUp) => (Some(Sort::Ascending), OrderSort::TotalDown),
+        Some(OrderSort::TotalDown) => (Some(Sort::Descending), OrderSort::TotalUp),
+        None => (None, OrderSort::TotalUp),
+    };
     html! {
         <Breadcrumb
             label="Breadcrumb"
@@ -184,7 +205,12 @@ pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
                                     <th scope="col">"Buyer"</th>
                                     <th scope="col">"Card"</th>
                                     <th scope="col">"Status"</th>
-                                    <th scope="col">"Total"</th>
+                                    <SortHeader
+                                        label="Total"
+                                        sort={by_total}
+                                        link={&url::Orders { page: None, sort: Some(next) }}
+                                        class={TableNumeric {}}
+                                    />
                                 </tr>
                             </thead>
                             <tbody>
@@ -198,7 +224,7 @@ pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
                                         </td>
                                         <td>{o.card}</td>
                                         <td><span class={o.status.look()}>{o.status.label()}</span></td>
-                                        <td>{t.money(Minor(o.cents), USD)}</td>
+                                        <td class={TableNumeric {}}>{t.money(Minor(o.cents), USD)}</td>
                                     </tr>
                                 }
                             </tbody>
@@ -212,7 +238,7 @@ pub fn Orders<'a>(t: Msg, page: usize, photo: &'a str) -> impl Render {
                         next_label="Next"
                         pages={PAGES}
                         current={page}
-                        link={&|page| Box::new(url::Orders { page: Some(page).filter(|p| *p > 1) })}
+                        link={&|page| Box::new(url::Orders { page: Some(page).filter(|p| *p > 1), sort })}
                     />
                 </footer>
             </section>
