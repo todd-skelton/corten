@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "bench-only-not-secret")
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
-INSTALLED_APPS = ["django.contrib.staticfiles"]
+INSTALLED_APPS = ["django.contrib.staticfiles", "django.contrib.humanize"]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",

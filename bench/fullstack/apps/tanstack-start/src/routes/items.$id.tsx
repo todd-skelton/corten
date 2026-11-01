@@ -1,7 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Fragment, useState, type FormEvent } from "react";
 import { createAlert, getItem } from "../item-api";
-import { sortListings, type ItemView } from "../view-model";
+import { counted, sortListings, type ItemView } from "../view-model";
 
 export const Route = createFileRoute("/items/$id")({
   loader: ({ params }) => getItem({ data: params.id }),
@@ -49,8 +49,8 @@ function ItemDetail({ item }: { item: ItemView }) {
         {item.summary ? (
           <>
             <span><strong>{item.summary.lowest ?? "—"}</strong>{" lowest"}</span>
-            <span>{`${item.summary.count} listings`}</span>
-            <span>{`${item.summary.quantity} available`}</span>
+            <span>{counted(item.summary.count, "listing", "listings")}</span>
+            <span>{counted(item.summary.quantity, "available", "available")}</span>
           </>
         ) : (
           <span>No listings yet</span>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
-  import { sortListings } from "#lib/view-model";
+  import { counted, sortListings } from "#lib/view-model";
   import type { PageProps } from "./$types";
 
   let { data, form }: PageProps = $props();
@@ -30,8 +30,8 @@
   <section class="summary">
     {#if item.summary}
       <span><strong>{item.summary.lowest ?? "—"}</strong> lowest</span>
-      <span>{`${item.summary.count} listings`}</span>
-      <span>{`${item.summary.quantity} available`}</span>
+      <span>{counted(item.summary.count, "listing", "listings")}</span>
+      <span>{counted(item.summary.quantity, "available", "available")}</span>
     {:else}
       <span>No listings yet</span>
     {/if}

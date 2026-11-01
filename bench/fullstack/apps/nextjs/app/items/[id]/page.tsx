@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Fragment, cache } from "react";
 import { fetchItem } from "@/lib/api";
-import type { ItemView } from "@/lib/view-model";
+import { counted, type ItemView } from "@/lib/view-model";
 import { Listings, Offers, PriceAlert } from "./interactive";
 
 // Every request renders fresh data, like the other stacks.
@@ -43,8 +43,8 @@ export default async function ItemPage({ params }: Props) {
         {item.summary ? (
           <>
             <span><strong>{item.summary.lowest ?? "—"}</strong>{" lowest"}</span>
-            <span>{`${item.summary.count} listings`}</span>
-            <span>{`${item.summary.quantity} available`}</span>
+            <span>{counted(item.summary.count, "listing", "listings")}</span>
+            <span>{counted(item.summary.quantity, "available", "available")}</span>
           </>
         ) : (
           <span>No listings yet</span>
