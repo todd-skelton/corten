@@ -95,8 +95,10 @@ impl<P: Prefix> Api<P> {
     /// function goes in the API's `#[corten::routes(api = ..)]` module instead. Otherwise
     /// `.route::<ItemJson>(get(item_json))`, with
     /// `.with_state(state)` on the [`crate::Methods`] when its handlers take `State`. `R`'s path is at
-    /// or under the prefix, or the app does not build, so no route of the API is served outside
-    /// it (and its settings).
+    /// or under the prefix, or the app does not build, and a path written under an API nested in
+    /// this one does not start, so no route of the API is served outside it (and its settings).
+    /// Nor does a parameter or a catch-all (`/api/{id}`, `/api/{*rest}`) answer a path under a
+    /// nested API's prefix: that API answers every path under it, with a 404 where it has no route.
     ///
     /// ```compile_fail,E0080
     /// # use corten::prelude::*;
@@ -138,8 +140,9 @@ impl<P: Prefix> Api<P> {
         self
     }
 
-    /// How long these routes may take to start their answer, in place of [`crate::App::deadline`]
-    /// for every request under the prefix: `.deadline(Duration::from_secs(300))` for an API that
+    /// How long these routes may take to start their answer, in place of the deadline of the API or
+    /// area around it, or [`crate::App::deadline`], for every request under the prefix (unset, it
+    /// takes theirs; see [`crate::App::api`]): `.deadline(Duration::from_secs(300))` for an API that
     /// waits on a slow upstream (a model, a report), so the rest of the app keeps its shorter one.
     /// Past it the answer is the JSON 503 and the request's [`crate::Signal`] aborts with
     /// [`crate::Abort::Deadline`], as at the app's. `None` removes it, for routes that bound
@@ -218,13 +221,23 @@ impl<P: Prefix> Api<P> {
 /// An [`Api`] in use: its prefix and settings, without the routes.
 pub(crate) struct Mount {
     pub prefix: String,
+    /// The origins it allows ([`Api::allow_origin`]): its own alone, never taken from an API around
+    /// it, so nesting grants no other site anything.
     origins: Vec<String>,
-    /// The API's own deadline, when it set one ([`Api::deadline`]).
+    /// Its deadline ([`Api::deadline`]): its own, else, once the router is built, that of the
+    /// nearest API or area around it that set one.
     pub deadline: Option<Option<std::time::Duration>>,
-    /// How its failures are written, when it says ([`Api::errors`]).
+    /// How its failures are written ([`Api::errors`]): its own, else the nearest API's around it.
     pub errors: Option<ErrorShape>,
-    /// Its own middleware ([`Api::middleware`]), in the order it runs.
+    /// Its middleware ([`Api::middleware`]), in the order it runs: once the router is built, the
+    /// areas' and APIs' around it first.
     pub middleware: crate::middleware::Stack,
+    /// Its routes' paths as written, so an API inside it can refuse one under its prefix.
+    pub written: Vec<&'static str>,
+    /// Whether a parameter or catch-all route outside it (a page's `/{*rest}`, the API around
+    /// it's `/api/{id}`) can match a path under its prefix, so a request must check which
+    /// route matched. Set when the router is built.
+    pub exposed: bool,
 }
 
 impl Mount {
@@ -235,11 +248,26 @@ impl Mount {
             deadline: api.deadline,
             errors: api.errors.clone(),
             middleware: api.middleware.iter().cloned().collect(),
+            written: api.written.clone(),
+            exposed: false,
         }
     }
 
     pub fn contains(&self, path: &str) -> bool {
         under(&self.prefix, path)
+    }
+
+    /// Takes what this API, inside `outer`, leaves unset from it (deadline, error shape; never its
+    /// origins), and runs `outer`'s middleware before its own, as a nested area does.
+    /// `outer` has already taken its own enclosing API's.
+    pub fn inherit(&mut self, outer: &Mount) {
+        if self.deadline.is_none() {
+            self.deadline = outer.deadline;
+        }
+        if self.errors.is_none() {
+            self.errors = outer.errors.clone();
+        }
+        self.middleware = outer.middleware.iter().chain(self.middleware.iter()).cloned().collect();
     }
 
     pub fn origins(&self) -> &[String] {
@@ -289,6 +317,14 @@ impl Mount {
 }
 
 const PREFLIGHT_VARY: &str = "origin, access-control-request-method, access-control-request-headers";
+
+/// Whether `route`, a path as written outside `prefix`, can match a path under `prefix`: its
+/// text before the first parameter leads to the prefix (`/` and `/api/` lead to `/api/items`).
+/// It may say yes for a route that never matches one; that only costs a check per request.
+pub(crate) fn reaches(route: &str, prefix: &str) -> bool {
+    let Some(at) = route.find('{') else { return false };
+    !under(prefix, route) && format!("{}/", prefix.trim_end_matches('/')).starts_with(&route[..at])
+}
 
 /// True when `path` is `prefix` or below it (`/api` holds `/api` and `/api/items`, not `/apis`).
 pub(crate) fn under(prefix: &str, path: &str) -> bool {
@@ -436,10 +472,6 @@ mod tests {
     #[route("/api")]
     struct ApiRoot;
 
-    #[derive(crate::Route)]
-    #[route("/api/v2")]
-    struct V2;
-
     #[test]
     fn a_prefix_holds_its_own_path_and_those_below_it() {
         for (prefix, path, held) in [
@@ -458,9 +490,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "overlap")]
-    fn prefixes_cannot_overlap() {
-        let _ = crate::App::new(crate::Routes::new()).api::<ApiRoot>(|api| api).api::<V2>(|api| api);
+    #[should_panic(expected = "given twice")]
+    fn a_prefix_is_given_once() {
+        let _ = crate::App::new(crate::Routes::new()).api::<ApiRoot>(|api| api).api::<ApiRoot>(|api| api);
     }
 
     #[test]

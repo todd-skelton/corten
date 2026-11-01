@@ -11,10 +11,12 @@
 //! 4. The deadline and the panic catch start ([`crate::Failure::TimedOut`],
 //!    [`crate::Failure::Panicked`]).
 //! 5. The app's middleware, in the order given ([`crate::App::middleware`]). The route has been
-//!    matched, so axum's `MatchedPath` names it. Then, for a request under an area's or an API's
-//!    prefix, its own middleware ([`crate::Area::middleware`], [`crate::Api::middleware`]): an
-//!    outer area's before an inner one's, each in the order given. A request anywhere else never
-//!    meets it.
+//!    matched, so axum's `MatchedPath` names it (none for an unknown URL, nor for a path under an
+//!    API's prefix that a route outside the API matched, whose axum path parameters are still
+//!    that route's, which the API answers 404). Then, for a request
+//!    under an area's or an API's prefix, its own middleware ([`crate::Area::middleware`],
+//!    [`crate::Api::middleware`]): the areas' (outer first), then the APIs' (outer first), each in
+//!    the order given. A request anywhere else never meets it.
 //! 6. The handler's extractors (a [`crate::Caller`] is looked up here, only when read), the
 //!    handler.
 //! 7. A failure becomes its route's answer: JSON for a JSON route or a data client, the app's
@@ -197,7 +199,7 @@ pub(crate) type Stack = Arc<[Arc<dyn Erased>]>;
 /// run (none for most routes), then the route.
 pub(crate) struct Rest<'a> {
     pub(crate) stack: &'a [Arc<dyn Erased>],
-    pub(crate) route: axum::routing::Route,
+    pub(crate) route: Option<axum::routing::Route>,
 }
 
 impl Next for Rest<'_> {
@@ -211,7 +213,7 @@ impl Next for Rest<'_> {
 }
 
 /// The route alone, after the app's middleware, for a request in no area or API with middleware.
-pub(crate) struct Handle(pub(crate) axum::routing::Route);
+pub(crate) struct Handle(pub(crate) Option<axum::routing::Route>);
 
 impl Next for Handle {
     #[inline]
@@ -221,12 +223,20 @@ impl Next for Handle {
 }
 
 /// The route's own future, not an async block around it, which would move the request once more.
+/// No route: a path under a nested API that a route outside it matched, answered with a 404 that
+/// the API writes as its own.
 #[inline]
-fn handle(mut route: axum::routing::Route, req: Request) -> impl Future<Output = Response> + Send {
-    futures_util::FutureExt::map(tower_service::Service::call(&mut route, req), |res: Result<Response, Infallible>| match res {
-        Ok(res) => res,
-        Err(never) => match never {},
-    })
+fn handle(route: Option<axum::routing::Route>, req: Request) -> impl Future<Output = Response> + Send {
+    match route {
+        Some(mut route) => Either::Left(futures_util::FutureExt::map(
+            tower_service::Service::call(&mut route, req),
+            |res: Result<Response, Infallible>| match res {
+                Ok(res) => res,
+                Err(never) => match never {},
+            },
+        )),
+        None => Either::Right(std::future::ready(axum::response::IntoResponse::into_response(axum::http::StatusCode::NOT_FOUND))),
+    }
 }
 
 refs!(A);
