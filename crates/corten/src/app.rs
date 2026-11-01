@@ -74,6 +74,8 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 pub struct Area<P> {
     routes: Router,
     pages: Vec<(&'static str, bool)>,
+    /// Its routes with text after a parameter, for [`crate::route::assert_no_clash_with`].
+    with_text: Vec<&'static str>,
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
     sources: crate::security::Sources,
@@ -103,7 +105,8 @@ impl<P: Prefix> Area<P> {
     ///
     /// A `Route` written by hand has a path of the shape `#[derive(Route)]` writes (each parameter
     /// a whole segment, the text characters a browser sends as they are, here not `|`), so
-    /// [`crate::Req::serves`] knows which route the router picks:
+    /// [`crate::Req::serves`] knows which route the router picks. Text after a parameter in its
+    /// segment (`/feeds/{name}.atom`) takes `#[derive(Route)]`:
     ///
     /// ```compile_fail,E0080
     /// # use corten::prelude::*;
@@ -133,8 +136,16 @@ impl<P: Prefix> Area<P> {
                 "corten: a route's path has the shape #[derive(Route)] writes: whole-segment parameters like /items/{{id}} and plain text (the note below names the route)"
             );
         };
-        self.routes = self.routes.route(R::PATH, methods.0);
-        self.pages.push((R::PATH, methods.1));
+        // Before the router, which would merge the two or refuse them less clearly.
+        if R::WRITTEN != R::PATH || !self.with_text.is_empty() {
+            let earlier: Vec<&str> = self.pages.iter().map(|(p, _)| *p).collect();
+            crate::route::assert_no_clash_with(&earlier, &self.with_text, R::WRITTEN);
+        }
+        if R::WRITTEN != R::PATH {
+            self.with_text.push(R::WRITTEN);
+        }
+        self.routes = self.routes.route(R::PATH, crate::route::with_suffixes::<R, _>(methods.0));
+        self.pages.push((R::WRITTEN, methods.1));
         self
     }
 
@@ -301,6 +312,8 @@ pub struct App<M = ()> {
     areas: Vec<Placed>,
     deadline: Option<Duration>,
     apis: Vec<(Mount, Router)>,
+    /// The APIs' route paths as written, checked with the pages' when the router is built.
+    api_paths: Vec<&'static str>,
     tasks: Vec<Task>,
     grace: Duration,
     /// Work its handlers finish whether or not they are dropped ([`Signal::finish`]), which
@@ -345,6 +358,7 @@ impl App {
             areas: Vec::new(),
             deadline: Some(Duration::from_secs(30)),
             apis: Vec::new(),
+            api_paths: Vec::new(),
             tasks: Vec::new(),
             grace: Duration::from_secs(5),
             finishing: Arc::default(),
@@ -380,6 +394,7 @@ impl App {
             areas: self.areas,
             deadline: self.deadline,
             apis: self.apis,
+            api_paths: self.api_paths,
             tasks: self.tasks,
             grace: self.grace,
             finishing: self.finishing,
@@ -427,6 +442,7 @@ impl<M: Middleware> App<M> {
         let area = build(Area {
             routes: Router::new(),
             pages: Vec::new(),
+            with_text: Vec::new(),
             components: Vec::new(),
             deadline: None,
             sources: crate::security::Sources::default(),
@@ -473,6 +489,7 @@ impl<M: Middleware> App<M> {
             panic!("corten: the API prefixes {:?} and {prefix:?} overlap", other.prefix);
         }
         let api = build(Api::new());
+        self.api_paths.extend(&api.written);
         self.apis.push((Mount::new(prefix.to_string(), &api), api.routes));
         self
     }
@@ -858,6 +875,14 @@ impl<M: Middleware> App<M> {
         // The same path routed in two places (the app's routes and an area's) is one route to axum,
         // with the methods of both.
         let mut pages: Vec<(&'static str, bool)> = Vec::new();
+        let written: Vec<&str> = self
+            .pages
+            .iter()
+            .chain(self.areas.iter().flat_map(|area| &area.pages))
+            .map(|(p, _)| *p)
+            .chain(self.api_paths.iter().copied())
+            .collect();
+        crate::route::assert_no_clash(&written);
         for &(pattern, get) in self.pages.iter().chain(self.areas.iter().flat_map(|area| &area.pages)) {
             match pages.iter_mut().find(|(p, _)| *p == pattern) {
                 Some((_, has)) => *has |= get,

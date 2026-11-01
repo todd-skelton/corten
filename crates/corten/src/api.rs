@@ -58,6 +58,10 @@ use crate::{
 /// [`crate::App::api`] gives its function to fill in.
 pub struct Api<P> {
     pub(crate) routes: Router,
+    /// Its routes' paths as written, for [`crate::route::assert_no_clash`].
+    pub(crate) written: Vec<&'static str>,
+    /// Those with text after a parameter, for [`crate::route::assert_no_clash_with`].
+    with_text: Vec<&'static str>,
     pub(crate) origins: Vec<String>,
     deadline: Option<Option<std::time::Duration>>,
     errors: Option<ErrorShape>,
@@ -76,6 +80,8 @@ impl<P: Prefix> Api<P> {
     pub(crate) fn new() -> Self {
         Api {
             routes: Router::new(),
+            written: Vec::new(),
+            with_text: Vec::new(),
             origins: Vec::new(),
             deadline: None,
             errors: None,
@@ -112,7 +118,13 @@ impl<P: Prefix> Api<P> {
                 "corten: a route of an API is at or under its prefix (the note below names the API's prefix and the route)"
             )
         };
-        self.routes = self.routes.route(R::PATH, methods.0);
+        // Before the router, which would merge the two or refuse them less clearly.
+        crate::route::assert_no_clash_with(&self.written, &self.with_text, R::WRITTEN);
+        if R::WRITTEN != R::PATH {
+            self.with_text.push(R::WRITTEN);
+        }
+        self.routes = self.routes.route(R::PATH, crate::route::with_suffixes::<R, _>(methods.0));
+        self.written.push(R::WRITTEN);
         self
     }
 

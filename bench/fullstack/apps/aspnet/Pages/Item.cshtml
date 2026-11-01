@@ -13,7 +13,7 @@
 @if (item.Subtitle is not null) {<p class="subtitle">@item.Subtitle</p>}
 <ul class="badges">@foreach (var b in item.Badges) {<li>@b</li>}</ul>
 <div class="gallery">@for (var i = 0; i < item.Images.Count; i++) {<div class="img" role="img" aria-label="@item.Title image @(i + 1)" data-src="@item.Images[i]"></div>}</div>
-<section class="summary">@if (item.Summary is { } s) {<span><strong>@(s.Lowest ?? "—")</strong> lowest</span> <span>@s.Count listings</span> <span>@s.Quantity available</span>} else {<span>No listings yet</span>}</section>
+<section class="summary">@if (item.Summary is { } s) {<span><strong>@(s.Lowest ?? "—")</strong> lowest</span> <span>@Counted(s.Count, "listing", "listings")</span> <span>@Counted(s.Quantity, "available", "available")</span>} else {<span>No listings yet</span>}</section>
 <section class="listings">
 <h2>Listings</h2>
 <button type="button" class="sort">Price: low to high</button>
@@ -44,3 +44,8 @@
 @if (item.Contents.Count > 0) {<section class="contents"><h2>Contents</h2><ul>@foreach (var c in item.Contents) {<li><a href="/items/@c.ItemId">@c.Title</a> × @c.Quantity</li>}</ul></section>}
 @if (item.IncludedIn.Count > 0) {<section class="included"><h2>Included in</h2><ul>@foreach (var c in item.IncludedIn) {<li><a href="/items/@c.ItemId">@c.Title</a> × @c.Quantity</li>}</ul></section>}
 </article>
+@functions {
+    // A count as an English page writes it: digits grouped, and the word singular for one.
+    static string Counted(long n, string one, string other) =>
+        n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " " + (n == 1 ? one : other);
+}

@@ -2337,6 +2337,11 @@ fn a_prefixed_entry_the_app_no_longer_has_is_left_out() {
 /// Every kind of parameter a route has, which its handler reads back as the link wrote it.
 #[crate::routes]
 mod params_url {
+    #[route("/flags/{on}.txt", get = params_flag)]
+    pub struct Flag {
+        pub on: bool,
+    }
+
     #[route("/shops/{shop}/items/{id}", get = params_item)]
     #[serde(rename_all = "camelCase")]
     pub struct Item<'a> {
@@ -2356,6 +2361,23 @@ mod params_url {
     pub struct File<'a> {
         pub rest: std::borrow::Cow<'a, str>,
     }
+
+    /// A parameter followed by text in its segment: a sitemap's pages.
+    #[route("/sitemap/{kind}/{page}.xml", get = params_sitemap)]
+    pub struct SitemapPage<'a> {
+        pub kind: &'a str,
+        pub page: u32,
+        pub gz: Option<bool>,
+    }
+}
+
+paths! { Feeds = "/feeds" }
+
+/// A route of an area with the same, added by hand (no `Params` in its handler).
+#[derive(crate::Route)]
+#[route("/feeds/{name}.rss")]
+struct Rss<'a> {
+    name: &'a str,
 }
 
 /// A value a link prints but nothing reads back: neither `Clone`, `Send` nor `Deserialize`.
@@ -2386,6 +2408,13 @@ struct LinkTwin<'a> {
     tab: Option<&'a Shown>,
 }
 
+/// The same with text after the parameter: still only `Display` for a link.
+#[derive(crate::Route)]
+#[route("/shown-file/{value}.xml")]
+struct LinkFile<'a> {
+    value: &'a Shown,
+}
+
 async fn params_item(item: crate::Params<params_url::Item<'_>>) -> String {
     let (shop, id, sort, tags, mine, page, dims) =
         (&item.shop, item.id, &item.sort_by, &item.tags, item.mine, item.paging.page, &item.dims);
@@ -2394,6 +2423,170 @@ async fn params_item(item: crate::Params<params_url::Item<'_>>) -> String {
 
 async fn params_file(file: crate::Params<params_url::File<'_>>) -> String {
     file.rest.clone()
+}
+
+async fn params_sitemap(page: crate::Params<params_url::SitemapPage<'_>>) -> String {
+    format!("{}|{}|{:?}", page.kind, page.page, page.gz)
+}
+
+#[tokio::test]
+async fn a_parameter_followed_by_text_is_read_without_it() {
+    use crate::route::Route as _;
+    assert_eq!(<params_url::SitemapPage<'_> as crate::Route>::PATH, "/sitemap/{kind}/{page}", "axum matches the segment");
+    let link = params_url::SitemapPage { kind: "items", page: 3, gz: None };
+    assert_eq!(link.href(), "/sitemap/items/3.xml");
+    let router = App::new(params_url::router()).router();
+    let (status, _, body) = call_with(router.clone(), "GET", &link.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "items|3|None"));
+    let (_, _, body) = call_with(router.clone(), "GET", "/sitemap/items/12.xml?gz=true", None, None).await;
+    assert_eq!(body, "items|12|Some(true)", "with a query");
+    // The text is the route's: without it, or with nothing before it, no route matches.
+    for path in ["/sitemap/items/3", "/sitemap/items/3.json", "/sitemap/items/.xml", "/sitemap/items/3.xml.bak"] {
+        for method in ["GET", "DELETE"] {
+            let (status, _, _) = call_with(router.clone(), method, path, None, None).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
+        }
+    }
+    let (status, _, _) = call_with(router.clone(), "DELETE", "/sitemap/items/3.xml", None, None).await;
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "a path the route serves, by another method");
+    // A value that is not the parameter's type is refused as any path parameter is.
+    let (status, _, body) = call_with(router.clone(), "GET", "/sitemap/items/x.xml", None, Some("text/plain")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.starts_with("Invalid URL: Cannot parse `x` to a `u32`"), "{body}");
+
+    // A route added to an area by hand is checked the same, with no `Params` to do it.
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let area = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Rss>(rss));
+    let router = area.router();
+    let (status, _, body) = call_with(router.clone(), "GET", &Rss { name: "news" }.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "rss"));
+    let (status, _, _) = call_with(router, "GET", "/feeds/news.atom", None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // And one of an API, whose failures are JSON.
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let router = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiFile>(json)).router();
+    let (status, _, body) = call_with(router.clone(), "GET", &ApiFile { name: "rates" }.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "json"));
+    let (status, headers, _) = call_with(router, "GET", "/api/files/rates.csv", None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/problem+json", "an API's 404");
+}
+
+#[derive(crate::Route)]
+#[route("/api/files/{name}.json")]
+struct ApiFile<'a> {
+    name: &'a str,
+}
+
+#[derive(crate::Route)]
+#[route("/feeds/{name}.atom")]
+struct Atom<'a> {
+    name: &'a str,
+}
+
+/// Two routes that differ only in the text after a parameter, in different places (the app's
+/// routes and an area): axum would match them as one path, so the app does not start.
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn routes_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let atom = crate::Methods::reads(axum::routing::post(|| async { "atom" }));
+    let _ = App::new(Routes::new().__route::<Rss>(rss)).area::<Feeds>(|feeds| feeds.route::<Atom>(atom)).router();
+}
+
+async fn params_flag(at: crate::Params<params_url::Flag>) -> String {
+    at.on.to_string()
+}
+
+/// A value before text reads as a path parameter does: a `bool` is `true` or `false`, not a
+/// checkbox's `on`.
+#[tokio::test]
+async fn a_value_before_text_reads_as_a_path_parameter() {
+    let router = App::new(params_url::router()).router();
+    let (status, _, body) = call_with(router.clone(), "GET", "/flags/true.txt", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "true"));
+    let (status, _, _) = call_with(router, "GET", "/flags/on.txt", None, None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[derive(crate::Route)]
+#[route("/feeds/{kind}.json")]
+struct FeedJson<'a> {
+    kind: &'a str,
+}
+
+#[derive(crate::Route)]
+#[route("/api/files/{name}.csv")]
+struct ApiCsv<'a> {
+    name: &'a str,
+}
+
+/// Two routes of one API that differ only in the text after a parameter.
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn routes_of_an_api_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let csv = crate::Methods::reads(axum::routing::post(|| async { "csv" }));
+    let _ = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiFile>(json).route::<ApiCsv>(csv));
+}
+
+/// A page and an API route that differ only in the text after a parameter.
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn a_page_and_an_api_route_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let csv = crate::Methods::reads(axum::routing::post(|| async { "csv" }));
+    let _ = App::new(Routes::new().__route::<ApiCsv>(csv)).api::<ApiRoot>(|api| api.route::<ApiFile>(json)).router();
+}
+
+/// The same in one area, with other parameter names: refused by Corten before the router (which
+/// would merge the two methods into one path, or refuse the names with a message about neither).
+#[test]
+#[should_panic(expected = "differ only in the text after a parameter")]
+fn routes_of_an_area_that_differ_only_in_the_text_after_a_parameter_do_not_start() {
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let json = crate::Methods::reads(axum::routing::post(|| async { "json" }));
+    let _ = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Rss>(rss).route::<FeedJson>(json));
+}
+
+#[derive(crate::Route)]
+#[route("/feeds/{*rest}")]
+struct FeedsRest<'a> {
+    rest: &'a str,
+}
+
+/// A route with text after a parameter where another, in another module or an area, has its
+/// catch-all: the router cannot hold the two, and Corten names both as written (axum would name
+/// `/feeds/{name}`), in either order.
+#[test]
+#[should_panic(expected = "have a parameter where the other has its catch-all")]
+fn a_route_with_text_beside_a_catch_all_does_not_start() {
+    let rest = crate::Methods::reads(get(|| async { "rest" }));
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let _ = App::new(Routes::new().__route::<FeedsRest>(rest)).area::<Feeds>(|feeds| feeds.route::<Rss>(rss)).router();
+}
+
+#[test]
+#[should_panic(expected = "have a parameter where the other has its catch-all")]
+fn a_catch_all_beside_a_route_with_text_in_an_area_does_not_start() {
+    let rest = crate::Methods::reads(get(|| async { "rest" }));
+    let rss = crate::Methods::reads(get(|| async { "rss" }));
+    let _ = App::new(Routes::new()).area::<Feeds>(|feeds| feeds.route::<Rss>(rss).route::<FeedsRest>(rest));
+}
+
+#[derive(crate::Route)]
+#[route("/api/files/{*rest}")]
+struct ApiFilesRest<'a> {
+    rest: &'a str,
+}
+
+#[test]
+#[should_panic(expected = "have a parameter where the other has its catch-all")]
+fn a_route_with_text_beside_a_catch_all_in_an_api_does_not_start() {
+    let json = crate::Methods::reads(get(|| async { "json" }));
+    let rest = crate::Methods::reads(get(|| async { "rest" }));
+    let _ = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<ApiFile>(json).route::<ApiFilesRest>(rest));
 }
 
 #[tokio::test]
@@ -2444,6 +2637,7 @@ async fn a_handler_reads_its_routes_parameters_as_the_link_wrote_them() {
     let shown = Shown("x y".into());
     assert_eq!(LinkOnly { value: &shown, tab: Some(&shown) }.href(), "/shown/x%20y?tab=x%20y");
     assert_eq!(LinkTwin { value: &shown, tab: None }.href(), "/shown-twin/x%20y");
+    assert_eq!(LinkFile { value: &shown }.href(), "/shown-file/x%20y.xml");
     let file = params_url::File { rest: "docs/a b.txt".into() };
     let (_, _, body) = call_with(router, "GET", &file.href(), None, None).await;
     assert_eq!(body, "docs/a b.txt", "{}", file.href());
@@ -4794,6 +4988,11 @@ mod serves_router_url {
     #[route("/shop/cart", get = serves_page)]
     pub struct CartPage;
 
+    #[route("/sitemap/{page}.xml", get = serves_sitemap)]
+    pub struct Sitemap {
+        pub page: u32,
+    }
+
     #[route("/{*page}", get = serves_router_page)]
     pub struct Page {
         pub page: String,
@@ -4823,6 +5022,10 @@ async fn serves_edit(_: crate::Params<serves_router_url::Edit>) -> &'static str 
 }
 
 async fn serves_write(_: crate::Params<serves_router_url::Write>) -> &'static str {
+    serves_page().await
+}
+
+async fn serves_sitemap(_: crate::Params<serves_router_url::Sitemap>) -> &'static str {
     serves_page().await
 }
 
@@ -4863,6 +5066,11 @@ async fn serves_agrees_with_the_router() {
         ("/shop/list", true),
         ("/about", true),
         ("/health/live", false),
+        // The sitemap's route takes every path of its shape; one without its text is a 404.
+        ("/sitemap/3.xml", true),
+        ("/sitemap/about", false),
+        ("/sitemap/.xml", false),
+        ("/sitemap/3.xml/x", true),
     ] {
         let (status, _, body) = call_with(router.clone(), "GET", p, None, None).await;
         let routed = status == StatusCode::OK && body == "page";

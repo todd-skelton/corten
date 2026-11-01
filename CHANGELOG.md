@@ -1252,6 +1252,33 @@ Corten is pre-1.0, so any minor version may change the API.
     screenshots are served at the sizes it says and that the shortcut opens a page. A manifest image's
     `type` comes from the static directory's own table (a GIF was written `image/png`)
     ([#515 pwa::Manifest cannot set the manifest's other members (orientation, categories, id, screenshots, shortcuts)](https://github.com/todd-skelton/corten/issues/515)).
+158. A route parameter may be followed by plain text in its segment, a file's extension:
+    `#[route("/sitemap/{kind}/{page}.xml")]` with `page: u32` links to `/sitemap/items/3.xml`, and
+    `Params` reads `page` as `3`. A segment that does not end in the text, or is only the text, is
+    a 404 before the handler runs, whatever its method (the router matches the segment whole, so
+    the route takes every path of its shape, and Corten checks the text), and a value that is not
+    the type is a 400 as for any parameter. Two routes of a module that differ only in that text
+    (`{name}.rss`, `{name}.atom`) do not compile, nor do two with a parameter where the other has
+    its catch-all (`/{name}.txt` or `/{name}` beside `/{*page}`), which the router cannot hold
+    and would refuse naming `/{name}`; in different modules, areas or APIs a route with text
+    beside a catch-all stops the app at startup naming both as written. `Req::serves` agrees
+    with the router. A field after which text comes needs only `Display` for a link, as any field, and two routes
+    anywhere in the app (modules, areas, APIs) that differ only in that text stop it at startup.
+    A route without such text generates the code it did (the expanded card-market is identical).
+    Measured with callgrind (release, in-process `oneshot`, the difference between 1,200 and 200
+    requests over 1,000, median of three and the range of the nine pairs): `/file/37.xml` with
+    `{page}.xml` runs 20,991 instructions a request (20,970 to 21,169), against 21,083 (21,073 to
+    21,203) for the workaround (the segment as text, the handler stripping `.xml` and parsing)
+    and 18,529 (18,488 to 18,781) for `/plain/37` with a plain `{page}`. `Req::serves`, which
+    now picks a route by its segments' shape and then checks the text, costs 5,350 instructions a
+    call (5,344 to 5,364) against 5,210 (5,209 to 5,210) on main, for an app of 12 routes. The
+    startup check compares only routes with such text against the others, path by path in place
+    (and looks for a catch-all only when one of the two has one): at `App::router`, 400 routes
+    with none take 27 microseconds (26 to 27), and 449 (436 to 511) when 10 of them have text,
+    against 375 (314 to 706) without the catch-all check; an area adding the same 400 routes one
+    by one 56 and 539 (493 to 606) against 435 (394 to 748) (release build, the check's
+    functions timed alone, median and range of nine runs of 50)
+    ([#514 A route parameter cannot be followed by fixed text in its segment, so /sitemap/{kind}/{page}.xml has no typed route](https://github.com/todd-skelton/corten/issues/514)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1985,6 +2012,38 @@ Corten is pre-1.0, so any minor version may change the API.
     could not be reached by (a keyword, `std`, `test`, a dependency such as `tokio`) is refused. An app made before keeps working; the app guide
     says how to move it
     ([#508 corten new makes a bin-only app: tests/, examples/ and a second bin cannot reach its code, so #506's advice cannot be followed](https://github.com/todd-skelton/corten/issues/508)).
+97. Component scripts (`#[component(js)]`, `script!`, `corten-ui`'s) are served without their
+    comments: the macro removes them when the crate compiles and keeps every line where it was, so
+    DevTools and stack traces still show the author's line numbers, and it still reads the JSDoc
+    to check the calls. A licence comment (`/*! .. */`, `//! ..`, `@license`, `@preserve`) stays, as
+    does one the browser reads (`//# sourceMappingURL=`). Every line ending stays as it was written
+    (`\r\n`, `\r`, `\n`, U+2028, U+2029), a comment's own included. Checked against esbuild: the
+    repo's 62 JS files, each with LF and with CRLF endings, minify to the same code with and
+    without their comments, and keep their line count. A script with a `/` after a
+    statement-level `}`, after `++`/`--`, or starting a line after a value, where only a parser
+    could tell a division from a regular expression, is served as written (none of the repo's
+    scripts has one; 161 of 1,230 third-party files with comments, mostly minified, would be).
+    Measured on the 24 scripts it strips (corten-ui's, the examples' and the template's), brotli
+    11 as Corten stores them: 30,779 to 15,855 bytes (-48.5%); gzip 9 36,371 to 18,651 (-48.7%).
+    The item page (`bench/fullstack/bytes.mjs`, card-market images of main and this change): its
+    two component scripts 1,690 to 874 bytes, every script it loads 29,336 to 28,520 raw and 11,101
+    to 10,697 gzipped. Nothing a request does changes: the stripped text is what `include_str!`
+    held before
+    ([#513 Explore removing comments from component scripts as they are served, if it cuts bytes shipped enough to matter](https://github.com/todd-skelton/corten/issues/513)).
+98. `t.money` and `t.number` write a value in about two thirds of the instructions: a currency
+    looks up its fraction digits once, when it is made (at compile time for a `const` one), not for
+    each amount; digits are made two per division; and a one-byte separator or symbol is pushed as
+    a character, an empty piece of a template skipped. What they write is the same, byte for byte,
+    in every locale and every currency its data has (compared on 68 MB of values before and after).
+    Measured with callgrind (release, the difference between 1,200 and 200 values over 1,000, one run):
+    `t.money` in en 754 to 500 instructions a value, `t.number` 406 to 247; card-market's item
+    page from memory, which writes a price for each listing and offer (in-process `oneshot`, the
+    difference between 1,200 and 200 requests over 1,000, three runs each, against main at
+    756ee0ea), 105,190 to 105,336 instructions a request on main and 93,529 to 94,016 here
+    (-11%), its JSON route unchanged at about 57,300. The page had grown from about 78,900 when it
+    began writing prices in the reader's locale (ce04961b), which is what benchmark round r7 to r8
+    saw. `Currency`'s `Debug` is now its code (`Currency("USD")`, was its bytes)
+    ([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -2553,6 +2612,17 @@ Corten is pre-1.0, so any minor version may change the API.
     answer, whose lines are now read in one pass through the lookup `settle` already made,
     23,726 (23,688 to 23,749) against 23,793 (23,759 to 23,804)
     ([#519 NoStore does not apply to a failure: the error page replaces its no-store with private, no-cache](https://github.com/todd-skelton/corten/issues/519)).
+92. `bench/fullstack/parity.mjs` passes again: the thirteen other apps write the item page's counts
+    as Corten's plural messages do since
+    [#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393),
+    digits grouped and the word singular for one (`2,866 listings`, `9,920 available`,
+    `1 listing`), each with the number formatting its stack provides (`Intl.NumberFormat`,
+    `intcomma`, `number_format`, `number_with_delimiter`, Thymeleaf's `formatInteger`, .NET's
+    `N0`; Leptos and Phoenix group by hand). A negative count still differs (the apps write
+    "-1 listings", Corten "-1 listing"); no page has one. Corten's page is unchanged. Checked with each app's image and `check-app.mjs` against card-market on the
+    fixture: 16 pages, the JSON and the 404s pass for all thirteen (Laravel on a 15-item fixture,
+    since PHP's default 128 MB limit does not hold the 508-item one, as its provider notes)
+    ([#520 Benchmark parity fails for every app: card-market writes counts as 2,866 since plural messages, the other apps 2866](https://github.com/todd-skelton/corten/issues/520)).
 
 ### Documentation
 
