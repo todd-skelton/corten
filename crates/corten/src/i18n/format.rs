@@ -382,6 +382,15 @@ impl Currency {
     }
 }
 
+/// `display_digits` searches `DISPLAY_DIGITS` by halves, so a table out of order does not build.
+const _: () = {
+    let mut i = 1;
+    while i < DISPLAY_DIGITS.len() {
+        assert!(DISPLAY_DIGITS[i - 1].0 < DISPLAY_DIGITS[i].0, "DISPLAY_DIGITS is in key order");
+        i += 1;
+    }
+};
+
 /// The fraction digits of the currency whose [`Currency::key`] is `key`: its entry in
 /// `DISPLAY_DIGITS`, else 2. A `const fn`, so a `const` currency has them at compile time.
 const fn display_digits(key: u32) -> u8 {

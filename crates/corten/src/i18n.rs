@@ -1172,7 +1172,9 @@ mod tests {
     }
 
     /// `t.money` places a code only in the template that writes a currency by its code; every
-    /// currency a locale has a symbol for has it in place.
+    /// currency a locale has a symbol for has it in place. Each table's keys are well formed (three
+    /// upper-case letters, as `Currency` keys them) and in order; that a key is its row's
+    /// currency is checked by the cases Intl wrote, in every locale.
     #[test]
     fn a_currency_with_a_symbol_has_no_code_to_place() {
         let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
