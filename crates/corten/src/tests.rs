@@ -2921,6 +2921,70 @@ async fn a_caller_is_looked_up_only_by_the_handlers_that_read_it_and_once() {
     assert_eq!((body.as_str(), LOOKUPS.with(|n| n.get())), ("ada", 1), "two readers, one lookup");
 }
 
+/// A caller whose lookup waits (a session store's round trip).
+#[derive(Clone, Hash)]
+struct Slow(&'static str);
+
+impl<S: Sync> crate::Identify<S> for Slow {
+    async fn identify(_: &axum::http::request::Parts, _: &S) -> std::result::Result<Self, crate::Refused> {
+        LOOKUPS.with(|n| n.set(n.get() + 1));
+        tokio::task::yield_now().await;
+        Ok(Slow("ada"))
+    }
+}
+
+/// Reads `Slow` twice at once, as a type over two others that share it would.
+struct TwoAtOnce;
+
+impl<S: Sync + Send> axum::extract::FromRequestParts<S> for TwoAtOnce {
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, state: &S) -> std::result::Result<Self, Response> {
+        let (a, b) = tokio::join!(Caller::<Slow>::find(parts, state), Caller::<Slow>::find(parts, state));
+        a.and(b).map(|_| TwoAtOnce).map_err(IntoResponse::into_response)
+    }
+}
+
+/// Readers of one caller type at the same time wait for the one lookup, and the page's key has
+/// the caller in it as when it is read once (two marks would take it out again).
+#[tokio::test]
+async fn readers_of_a_caller_at_the_same_time_share_one_lookup_and_one_key() {
+    let routes = Router::new()
+        .route("/once", get(|req: Req, _: Caller<Slow>| async move { req.test_page("Who", "ada") }))
+        .route("/joined", get(|req: Req, _: TwoAtOnce| async move { req.test_page("Who", "ada") }))
+        .route("/nobody", get(|req: Req| async move { req.test_page("Who", "ada") }));
+    let router = app(routes, None);
+    let mut keys = Vec::new();
+    for uri in ["/once", "/joined", "/nobody"] {
+        LOOKUPS.with(|n| n.set(0));
+        let (status, headers, _) = call_with(router.clone(), "GET", uri, None, None).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        keys.push((headers["corten-shell"].to_str().unwrap().to_string(), LOOKUPS.with(|n| n.get())));
+    }
+    assert_eq!(keys[1], keys[0], "joined: one lookup, the same key as one reader");
+    assert_eq!(keys[0].1, 1);
+    assert_ne!(keys[0].0, keys[2].0, "the key has the caller in it");
+}
+
+/// A layer outside the app's (`App::layer`) that reads the caller before the request has its
+/// signal shares the lookup with the handler.
+#[tokio::test]
+async fn a_layer_outside_the_app_shares_the_lookup_with_the_handler() {
+    let routes = Router::new().route("/", get(|Caller(v): Caller<Viewer>| async move { v.0 }));
+    let router = App::new(Routes::from(routes))
+        .middleware(AsViewer(Some("ada")))
+        .layer(axum::middleware::from_fn(|req: axum::extract::Request, next: axum::middleware::Next| async move {
+            let (mut parts, body) = req.into_parts();
+            parts.headers.insert("viewer", axum::http::HeaderValue::from_static("ada"));
+            let _ = <Caller<Viewer> as axum::extract::FromRequestParts<()>>::from_request_parts(&mut parts, &()).await;
+            next.run(axum::extract::Request::from_parts(parts, body)).await
+        }))
+        .router();
+    LOOKUPS.with(|n| n.set(0));
+    let (_, _, body) = call_with(router, "GET", "/", None, None).await;
+    assert_eq!((body.as_str(), LOOKUPS.with(|n| n.get())), ("ada", 1));
+}
+
 /// A caller type that is a rule over another (`Staff` reads `Viewer` with `Caller::find`)
 /// shares its lookup, in whichever order the handler takes them.
 #[tokio::test]
@@ -5248,6 +5312,12 @@ async fn the_error_page_shows_who_is_asking() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert!(body.contains("Not allowed") && body.contains("Signed in as eve"), "a refusal, for who was refused: {body}");
     assert_eq!(LOOKUPS.with(|n| n.get()), 1, "the error page reads the viewer the refused handler's Staff found");
+    // A lookup that failed (the store is down) is not tried again for the error page.
+    LOOKUPS.with(|n| n.set(0));
+    let (status, _, body) = guarded(&router, "GET", "/admin", Some("down"), &[("cookie", "viewer=down"), html[0]]).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert!(!body.contains("Signed in"), "{body}");
+    assert_eq!(LOOKUPS.with(|n| n.get()), 1, "one lookup, which failed");
     let (status, _, body) = guarded(&router, "GET", "/nope", None, &[("cookie", "viewer=down"), html[0]]).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "a lookup that fails draws the page signed out: {body}");
     assert!(body.contains("Not found") && !body.contains("Signed in"), "{body}");
@@ -5264,9 +5334,11 @@ async fn the_error_page_after_a_handler_that_read_the_caller_keeps_the_pages_key
         .route("/fail", get(|_: Option<crate::Caller<Viewer>>| async { Err::<Response, _>(Error::new("down")) }));
     let ada = [("cookie", "viewer=ada"), ("corten", "nav")];
     let (_, page, _) = guarded(&app(routes.clone(), None), "GET", "/", None, &ada).await;
+    LOOKUPS.with(|n| n.set(0));
     let (status, failed, body) = guarded(&app(routes, None), "GET", "/fail", None, &ada).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert!(body.contains("Signed in as ada"), "{body}");
+    assert_eq!(LOOKUPS.with(|n| n.get()), 1, "the error page reads the caller the handler found");
     // Marked by the handler and the error page alike, the caller would cancel out of the key.
     assert_eq!(failed["corten-shell"], page["corten-shell"], "the same shell, so the runtime swaps it in");
 }

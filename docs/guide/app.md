@@ -1548,9 +1548,12 @@ Its extractors see the request's URL, `Cookie`, `Authorization`, `Accept-Languag
 not its body (a body extractor does not compile). The caller is looked up only when the error
 page takes one and only for a failure: an unknown URL looks it up once, and a handler that read
 it and then failed (refused, say) gives the error page the caller it found, with no second
-lookup. A middleware's own request extensions do not reach it: the handler took that request,
-and keeping them for a failure would copy every request's. A request id is a header the
-middleware sets on the answer, which the error page keeps; who is asking is a `Caller`.
+lookup: the page shows who the handler saw (a sign-out that removed the session and then failed
+still shows them signed in), and a lookup that failed because the store was down is not tried
+again. A middleware's own request extensions do not reach it: the handler took that request,
+and keeping them for a failure would copy every request's. Who is asking is a `Caller`, and a
+trace span goes in `App::layer`, around the error page too. A request id a middleware makes can
+go on the answer as a header (which the error page keeps), but the page's body cannot show it.
 When the lookup itself fails, an optional caller is `None` there, so the page is drawn signed
 out rather than not at all. Keeping the credentials for it is measured below.
 

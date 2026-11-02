@@ -124,7 +124,7 @@ struct Inner {
     /// Each caller type's lookup ([`crate::Caller`]), kept for the request: its handler, its
     /// middleware, a caller type that is a rule over another and its error page share one.
     /// One entry per caller type read; a request reads one or two, so a list beats a map.
-    found: std::sync::Mutex<Vec<Box<dyn std::any::Any + Send + Sync>>>,
+    found: std::sync::Mutex<Vec<Arc<dyn std::any::Any + Send + Sync>>>,
     /// The app's, for a request it serves: carried here rather than as a request extension of
     /// its own, so the request's extensions stay within their first allocation.
     shared: Option<Arc<crate::page::Shared>>,
@@ -341,15 +341,15 @@ impl Signal {
         self.0.callers.fetch_xor(hash, Ordering::Relaxed);
     }
 
-    /// The lookup kept for its type, if any.
-    pub(crate) fn found<T: Clone + Send + Sync + 'static>(&self) -> Option<T> {
-        let found = self.0.found.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        found.iter().find_map(|kept| kept.downcast_ref::<T>()).cloned()
-    }
-
-    /// Keeps a lookup for the rest of the request.
-    pub(crate) fn keep_found<T: Clone + Send + Sync + 'static>(&self, found: T) {
-        self.0.found.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push(Box::new(found));
+    /// The request's one cell for a lookup of its type, made the first time it is asked for.
+    pub(crate) fn found<T: Send + Sync + 'static>(&self) -> Arc<tokio::sync::OnceCell<T>> {
+        let mut found = self.0.found.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(kept) = found.iter().find(|kept| kept.is::<tokio::sync::OnceCell<T>>()) {
+            return kept.clone().downcast().expect("checked above");
+        }
+        let cell = Arc::new(tokio::sync::OnceCell::new());
+        found.push(cell.clone());
+        cell
     }
 
     /// Marks the answer as differing by something of the visitor's that does not change the page

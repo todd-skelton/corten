@@ -222,24 +222,31 @@ pub(crate) struct SignIn(pub HeaderValue);
 /// request's [`Signal`], which its error page shares; outside one (a bare router in a test), in
 /// the request's extensions, when they can be written.
 async fn find<S: Sync, T: Identify<S>>(parts: &Parts, state: &S) -> Result<T, Why> {
-    let signal = parts.extensions.get::<Signal>();
-    let kept = match signal {
-        Some(signal) => signal.found::<Found<T>>(),
-        None => parts.extensions.get::<Found<T>>().cloned(),
+    let Some(signal) = parts.extensions.get::<Signal>() else {
+        if let Some(Found(found)) = parts.extensions.get::<Found<T>>() {
+            return found.clone();
+        }
+        return T::identify(parts, state).await.map_err(|Refused(why)| why);
     };
-    if let Some(Found(found)) = kept {
-        return found;
-    }
-    let found = T::identify(parts, state).await.map_err(|Refused(why)| why);
-    if let Some(signal) = signal {
-        // The page's key mixes in who it is for: someone, or no one of this type.
-        let mut hasher = std::hash::DefaultHasher::new();
-        std::any::type_name::<T>().hash(&mut hasher);
-        found.as_ref().ok().hash(&mut hasher);
-        signal.mark_caller(hasher.finish());
-        signal.keep_found(Found(found.clone()));
-    }
-    found
+    // One cell per type for the request: readers at the same time (a middleware's two derived
+    // types joined) wait for the one lookup, which alone marks the page's key.
+    let cell = signal.found::<Found<T>>();
+    let Found(found) = cell
+        .get_or_init(|| async {
+            // A layer outside the app's (`App::layer`) read it before the request had its signal.
+            let found = match parts.extensions.get::<Found<T>>() {
+                Some(Found(found)) => found.clone(),
+                None => T::identify(parts, state).await.map_err(|Refused(why)| why),
+            };
+            // The page's key mixes in who it is for: someone, or no one of this type.
+            let mut hasher = std::hash::DefaultHasher::new();
+            std::any::type_name::<T>().hash(&mut hasher);
+            found.as_ref().ok().hash(&mut hasher);
+            signal.mark_caller(hasher.finish());
+            Found(found)
+        })
+        .await;
+    found.clone()
 }
 
 impl<T> Caller<T> {
