@@ -132,6 +132,19 @@ framework's shape, and what it does not do yet.
    read only without `Sec-Fetch-Site`, for a write from a plain `http://` origin off loopback,
    which refuses a `Secure` cookie; never with `Policy::hsts`). Corten would move to
    `Location` once `fetch` can read a redirect's target without following it.
+16. **A look is classes on the app's element, not an element around it.** A component that only
+   styles an element the app writes (a button, a field, a card, a badge) returns
+   `impl ClassList`: `<button type="submit" class={Button { variant, size }}>`. Wrapping the
+   element instead (`<Button><button>..</button></Button>`, with `display: contents` so it takes
+   no box) changes the DOM though not the layout: a script's `parentElement`, a `:first-child`
+   or `> button` rule and a `<summary>` that must be its `<details>`' first child all see the
+   wrapper, and a wrapper's own element (a `<div>` card) cannot be the page's `<section>`, `<li>`
+   or patch target. A look has no markup, so it has no script, refs or view; a component that
+   draws structure or carries semantics (`Alert`'s role, a `<label>` around a control, `Table`'s
+   scrolling box) renders its element. A kit component that
+   styles a corten-ui widget (`Tabs` around `TabGroup`) wraps it, since the widget, not the app,
+   writes the elements it styles; a widget whose one element the app styles takes a `class`
+   instead (`CopyButton`).
 
 ## Rules
 

@@ -31,6 +31,7 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 | `.card` in `Card`'s own stylesheet | `class={Card}` in its markup is the class, `card__card`: name the root class after the component |
 | `class={(Row, cond.then_some(Selected), extra)}` | joined when the page renders; `None` adds nothing, an empty list leaves the attribute out |
 | a class nothing uses | `warning: constant Hot is never used` (an error under `-D warnings`) |
+| `#[component(css)] fn Button(variant: Variant) -> impl ClassList { (Button, variant) }` | a look: a component with no markup, whose classes go on an element the caller writes, `<button class={Button { variant: Variant::Primary }}>`, alone or in a tuple with the caller's own (`class={(Button { .. }, Wide)}`); it counts as rendered where it is used, and takes no script, refs or view ([below](#looks)) |
 | `#[component(css = OfferList)]`, `css = super::offers::OfferList` | a helper component shares the owner's stylesheet from any module of the crate that can see the owner, named by its path (not through a `use`) (a screen's panels in files of their own), and its uses count; classes are in scope only in a component, so a plain `fn` that picks a class is a helper component or a `match` in the markup |
 | `tokens!("tokens/tokens.resolver.json")` ([design tokens](#design-tokens)) | custom properties (`--space-4`), each theme's changes (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed utilities, a function per value (`gap_2()` prints `gap-2`, `mx_auto()` `mx-auto`) and per utility for a value chosen as the page renders or per breakpoint: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
 | `App::components(&[TOKENS, OfferList, ...])` | one `components.css` in the listed order, linked from `<head>` and precached by the PWA; a component rendered but not listed is an error under `corten dev` |
@@ -248,6 +249,45 @@ an element that picks a page is not a flex or grid item. A component's styleshee
 layout's header or navigation, so each layout component hides itself with its own `@media print`
 rule. corten-ui's `PrintButton` opens the print dialog (wrap it in one of your component's
 elements to hide it in print); without a script, the browser's Print command prints the same page.
+
+## Looks
+
+A component that only styles an element the page writes returns its classes instead of markup:
+
+```rust,ignore
+#[component(css)]
+pub fn Button(variant: Variant) -> impl ClassList {
+    let variant = match variant {
+        Variant::Primary => Primary,
+        Variant::Ghost => Ghost,
+    };
+    (Button, variant)
+}
+
+<button type="submit" class={Button { variant: Variant::Primary }}>"Save"</button>
+<a href={url::Home} class={(Button { variant: Variant::Ghost }, Wide)}>"Home"</a>
+```
+
+The element is the caller's, so `html!` checks its attributes as always, a script's
+`parentElement` and a `:first-child` rule see the page as written, and a `<summary>` or `<li>` can
+have the look. Its stylesheet styles the element itself (`.button:hover`, not `.button > :hover`).
+A look's fields are its props, written as a struct (`Card {}` for none). A look has no markup to
+give a script, refs or a view, so those do not compile on it; a component that draws structure
+(a label beside its control) or semantics (a role) renders its element. A widget whose button is
+its own takes a `class` (corten-ui's `PrintButton`), `()` for none.
+
+```
+use corten::prelude::*;
+
+/// Its stylesheet is badge_list.css: `.list`, `.badge`, `.hot`.
+#[component(css)]
+fn BadgeList(hot: bool) -> impl ClassList {
+    (List, hot.then_some(Hot))
+}
+
+let html = html! { <ul class={BadgeList { hot: true }} id="foils"></ul> }.to_html();
+assert_eq!(html, r#"<ul class="badge-list__list badge-list__hot" id="foils"></ul>"#);
+```
 
 ## Utility-first
 

@@ -71,6 +71,7 @@ pub mod url {
     #[route("/orders", get = orders)]
     pub struct Orders {
         pub page: Option<usize>,
+        pub sort: Option<crate::orders::OrderSort>,
     }
 
     #[route("/orders/settings", post = settings)]
@@ -248,7 +249,7 @@ async fn orders(req: Req, Params(q): Params<url::Orders>) -> HtmlResult {
     let (t, photo) = (req.t(), req.asset(Static::FAVICON_SVG).to_string());
     req.page(html! {
         <Layout req={&req} title="Orders | corten-ui" toast={None}>
-            <Orders t={t} page={page} photo={&photo} />
+            <Orders t={t} page={page} sort={q.sort} photo={&photo} />
         </Layout>
     })
 }
@@ -259,7 +260,7 @@ async fn settings(req: Req, Form(form): Form<SettingsForm>) -> HtmlResult {
     let emails = if form.notify { "on" } else { "off" };
     let note = if form.note.trim().is_empty() { "no note" } else { "your note" };
     req.redirect_with_notice(
-        &url::Orders { page: None },
+        &url::Orders { page: None, sort: None },
         format_args!("Saved: ships from {from} in {days} days with {note}; shipping emails {emails}."),
     )
 }
@@ -402,13 +403,16 @@ mod tests {
     async fn the_address_opens_the_sale_sheet_and_its_link_closes_it() {
         let open = send(Request::get("/?sale=last").body(Body::empty()).unwrap()).await;
         assert!(
-            open.contains(r#"<dialog data-scope="sale-sheet" open aria-label="Last sale" data-on="connect:ui.dialog.modalClosedBy($t,@close,$s)">"#),
+            open.contains(r#"<dialog data-scope="sale-sheet" class="sheet__sheet sheet__right" open aria-label="Last sale" data-on="connect:ui.dialog.modalClosedBy($t,@close,$s)">"#),
             "{open}"
         );
-        assert!(open.contains(r#"<a data-ref="close" href="/">Close</a>"#), "{open}");
+        assert!(
+            open.contains(r#"<a class="button__button button__outline button__md" data-ref="close" href="/">Close</a>"#),
+            "{open}"
+        );
         let home = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(!home.contains("Last sale\""), "drawn only when the address names it: {home}");
-        assert!(home.contains(r#"<a href="/?sale=last">Last sale</a>"#), "{home}");
+        assert!(home.contains(r#"<a class="button__button button__link button__sm" href="/?sale=last">Last sale</a>"#), "{home}");
     }
 
     #[tokio::test]
@@ -416,14 +420,14 @@ mod tests {
         let rename = || Request::post("/rename").header("content-type", "application/x-www-form-urlencoded");
         let patch = send(rename().header("corten", "action").body(Body::from("name=+")).unwrap()).await;
         assert!(
-            patch.starts_with(r#"<dialog id="rename" open aria-label="Rename the draft" data-on="connect:ui.dialog.modal($t)">"#),
+            patch.starts_with(r#"<dialog class="dialog__dialog" id="rename" open aria-label="Rename the draft" data-on="connect:ui.dialog.modal($t)">"#),
             "{patch}"
         );
         assert!(patch.contains("aria-invalid=\"true\"") && patch.contains("Give the draft a name."), "{patch}");
         let page = send(rename().body(Body::from("name=")).unwrap()).await;
-        assert!(page.contains("<html") && page.contains(r#"<dialog id="rename" open"#), "{page}");
+        assert!(page.contains("<html") && page.contains(r#"<dialog class="dialog__dialog" id="rename" open"#), "{page}");
         let home = send(Request::get("/").body(Body::empty()).unwrap()).await;
-        assert!(home.contains(r#"<dialog id="rename" aria-label"#), "drawn closed: {home}");
+        assert!(home.contains(r#"<dialog class="dialog__dialog" id="rename" aria-label"#), "drawn closed: {home}");
     }
 
     /// Each page's links are typed routes: the first page's address has no number, and a number
@@ -437,6 +441,26 @@ mod tests {
         let last = send(Request::get("/orders?page=9").body(Body::empty()).unwrap()).await;
         assert!(last.contains(r#"href="/orders?page=3" aria-current="page">3</a>"#), "{last}");
         assert!(last.contains(">JB<") && !last.contains(">AL<"), "{last}");
+    }
+
+    #[tokio::test]
+    async fn the_orders_sort_by_their_total() {
+        let unsorted = send(Request::get("/orders").body(Body::empty()).unwrap()).await;
+        assert!(unsorted.contains(r#"href="/orders?sort=total_up""#) && !unsorted.contains("aria-sort"), "{unsorted}");
+        // The kit's Field writes the label's `for` and the hint's id from the control's id.
+        assert!(
+            unsorted.contains(r#"<label for="handling">"#)
+                && unsorted.contains(r#"id="field-hint-handling">From 1 to 5.</p>"#)
+                && unsorted.contains(r#"aria-describedby="field-hint-handling""#),
+            "{unsorted}"
+        );
+        let up = send(Request::get("/orders?sort=total_up").body(Body::empty()).unwrap()).await;
+        assert!(up.contains(r#"aria-sort="ascending""#) && up.contains(r#"href="/orders?sort=total_down""#), "{up}");
+        assert!(up.contains(">JB<") && up.contains(">BL<") && !up.contains(">AL<"), "the four smallest: {up}");
+        assert!(up.contains(r#"href="/orders?page=2&amp;sort=total_up" rel="next""#), "a page keeps the order: {up}");
+        let down = send(Request::get("/orders?sort=total_down").body(Body::empty()).unwrap()).await;
+        assert!(down.contains(r#"aria-sort="descending""#) && down.contains(r#"href="/orders?sort=total_up""#), "{down}");
+        assert!(down.contains(">ED<") && !down.contains(">JB<"), "the four largest: {down}");
     }
 
     #[tokio::test]
@@ -464,6 +488,22 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(forged.status(), StatusCode::UNPROCESSABLE_ENTITY, "a warehouse the page does not offer");
+    }
+
+    #[test]
+    fn a_field_shows_its_hint_and_its_error_together() {
+        use crate::ui::field::{Field, FieldHintId};
+
+        #[derive(Id)]
+        struct CopiesId;
+        let html = html! {
+            <Field id={CopiesId} label="Copies" hint="From 1 to 5." error="Too many.">
+                <input id={CopiesId} aria-describedby={FieldHintId(&CopiesId)}>
+            </Field>
+        }
+        .to_html();
+        assert!(html.contains(r#"<label for="copies">Copies</label>"#), "{html}");
+        assert!(html.contains(r#"id="field-hint-copies">From 1 to 5.</p>"#) && html.contains(">Too many.</div>"), "{html}");
     }
 
     #[tokio::test]
