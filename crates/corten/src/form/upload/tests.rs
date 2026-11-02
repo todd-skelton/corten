@@ -131,11 +131,12 @@ async fn an_empty_file_input_sends_no_file_and_fields_read_past_files() {
 }
 
 /// A part with bytes is a file even with an empty file name (a client may send none): it is
-/// handed out whole, with an empty name, wherever the pieces split it.
+/// handed out whole, with an empty name, wherever the pieces split it, even when its bytes begin
+/// as the delimiter that would end it does.
 #[tokio::test]
 async fn a_part_with_bytes_and_no_file_name_is_a_file() {
     let bytes = body(&[
-        ("photos", Some(""), Some("image/png"), b"\x89PNG\r\n--"),
+        ("photos", Some(""), Some("image/png"), b"\r\n----corten7MA4YWxkTrZu0g\r\n"),
         ("photos", Some(""), None, b""),
         ("title", None, None, b"Eevee"),
     ]);
@@ -143,7 +144,7 @@ async fn a_part_with_bytes_and_no_file_name_is_a_file() {
         let (files, listing) = read(request(&bytes, size), None).await.unwrap_or_else(|e| panic!("pieces of {size}: {e:?}"));
         assert_eq!(
             files,
-            vec![("photos".into(), String::new(), "image/png".into(), b"\x89PNG\r\n--".to_vec())],
+            vec![("photos".into(), String::new(), "image/png".into(), b"\r\n----corten7MA4YWxkTrZu0g\r\n".to_vec())],
             "pieces of {size}"
         );
         assert_eq!(listing.title, "Eevee", "pieces of {size}");

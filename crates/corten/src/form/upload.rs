@@ -430,10 +430,8 @@ impl Parts {
     /// Whether the current part ends where it begins, reading only as far as it takes to know and
     /// handing nothing out.
     async fn part_is_empty(&mut self) -> Result<bool> {
+        debug_assert!(self.state == State::Body, "called right after a part's headers");
         loop {
-            if self.state != State::Body {
-                return Ok(true);
-            }
             let n = self.buf.len().min(self.delimiter.len());
             if self.buf[..n] != self.delimiter[..n] {
                 return Ok(false);
