@@ -77,8 +77,10 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     out.extend(item);
     // `corten/events` exports one class of a name and the page dispatches one event of a name, so
     // two of either fail to build, at any version (the class carries no prefix).
-    out.extend(crate::id::one_per_program("two_events_are", &name.to_string(), false));
-    out.extend(crate::id::one_per_program("two_events_named", &dom, false));
+    out.extend(crate::id::guards(
+        &name.to_string(),
+        &[("two_events_are", &name.to_string(), false), ("two_events_named", &dom, false)],
+    ));
     out.extend(q(
         "impl ::corten::script::DomEvent for __A0 { const NAME: &'static str = __A1; }
         impl ::corten::script::ev::EventType for __A0 { const TS: &'static str = __A2; }
@@ -97,8 +99,15 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
             style: ::core::option::Option::None,
             event: ::core::option::Option::Some(::corten::script::EventDef { class: __A1, name: __A2, fields: &[__A3] }),
             view: ::core::option::Option::None,
+            anchor: __A4,
         };",
-        &[TokenTree::Ident(name.clone()).into(), literal(&name.to_string()), literal(&dom), list],
+        &[
+            TokenTree::Ident(name.clone()).into(),
+            literal(&name.to_string()),
+            literal(&dom),
+            list,
+            crate::id::anchor(&name.to_string()),
+        ],
     ));
     Ok(out)
 }

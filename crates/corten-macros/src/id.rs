@@ -3,7 +3,7 @@
 //!
 //! `struct DeskStatusId;` is `desk-status`; `struct RowId<'a>(&'a str);` is `row-` and its key.
 //! The name is the type's, without a trailing `Id`, in kebab case (after the library prefix,
-//! `ui-`, in a crate that sets one). Each name is also an exported symbol ([`one_per_program`]), so
+//! `ui-`, in a crate that sets one). Each name is also an exported symbol ([`guards`]), so
 //! two ids with the same name in one program fail to build. A library's symbol (a crate with a prefix) also carries its
 //! version, so two semver-incompatible versions of one library still link together.
 
@@ -36,6 +36,9 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     } else {
         q("__OUT.push_str(__A0);", &[string(&name).into()])
     };
+    // A debug build (every test) points at the guards, so a program that writes this id loads
+    // them; a release build writes the id alone.
+    let write = q("#[cfg(debug_assertions)] ::core::hint::black_box(__A0); __A1", &[anchor(&rust), write]);
     let mut out = item.impl_block(
         "::corten::view::Id",
         q(
@@ -59,28 +62,53 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             &[],
         ),
     ));
-    out.extend(one_per_program("two_ids_are", &name, true));
+    out.extend(guards(&rust, &[("two_ids_are", &name, true)]));
     Ok(out)
 }
 
-/// An exported symbol for a name the whole program shares (an id, a component's classes, a
-/// script's module), so a second item with the same name fails to build, in this crate or in any
-/// other linked into the program, rather than the app when it starts. The symbol says what
-/// clashed (`corten__two_ids_are__settings_form`), since the error names only the symbol. With
+/// Exported symbols for names the whole program shares (an id, a component's classes, a script's
+/// module), so a second item with the same name fails to build, in this crate or in any other
+/// linked into the program, rather than the app when it starts. The symbol says what clashed
+/// (`corten__two_ids_are__settings_form`), since the error names only the symbol. With
 /// `versioned`, a library's (a crate with a prefix, whose names in the page carry it) also carries
 /// its version, so two semver-incompatible versions of one library still link together; a name
 /// the page writes without the prefix (a class) is not versioned, since two versions would write
 /// the same one.
-pub fn one_per_program(what: &str, name: &str, versioned: bool) -> TokenStream {
-    let mut symbol = name.to_string();
-    if versioned && crate::script::prefix().is_some() {
-        symbol = format!("{symbol}__{}", std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
+///
+/// They are in a module of their own, `__corten_guard_{item}`, beside `ANCHOR`, a static of the
+/// item's own that its constant points at ([`anchor`]). A program that uses the item then loads
+/// that module's object, the symbols with it, so two crates' namesakes fail to link on every
+/// platform: a linker that loads an object only for a symbol it needs (a Windows GNU link) would
+/// otherwise leave the library's out, its symbols unseen, and the program would link (#570).
+pub fn guards(item: &str, names: &[(&str, &str, bool)]) -> TokenStream {
+    let mut statics = String::new();
+    let mut symbols = Vec::new();
+    for (i, (what, name, versioned)) in names.iter().enumerate() {
+        let mut symbol = name.to_string();
+        if *versioned && crate::script::prefix().is_some() {
+            symbol = format!("{symbol}__{}", std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
+        }
+        let symbol: String = symbol.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+        statics.push_str(&format!("#[unsafe(export_name = __A{})] #[used] static NAME{i}: u8 = 0; ", i + 1));
+        symbols.push(string(&format!("corten__{what}__{symbol}")).into());
     }
-    let symbol: String = symbol.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+    let mut args = vec![TokenTree::Ident(guard_module(item)).into()];
+    args.extend(symbols);
     q(
-        "const _: () = { #[unsafe(export_name = __A0)] #[used] static __CORTEN_NAME: u8 = 0; };",
-        &[string(&format!("corten__{what}__{symbol}")).into()],
+        &format!(
+            "#[doc(hidden)] #[allow(non_snake_case, dead_code)] pub(crate) mod __A0 {{ {statics} pub static ANCHOR: u8 = 0; }}"
+        ),
+        &args,
     )
+}
+
+/// `&__corten_guard_{item}::ANCHOR`, which the item's constant holds ([`guards`]).
+pub fn anchor(item: &str) -> TokenStream {
+    q("&__A0::ANCHOR", &[TokenTree::Ident(guard_module(item)).into()])
+}
+
+fn guard_module(item: &str) -> proc_macro::Ident {
+    proc_macro::Ident::new(&format!("__corten_guard_{item}"), proc_macro::Span::call_site())
 }
 
 /// The number of comma-separated items at the top level of a group (`<..>` nests).

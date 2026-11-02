@@ -560,6 +560,7 @@ fn generate(tokens: &dtcg::Tokens, path: &str) -> Result<TokenStream, String> {
             event: ::core::option::Option::None,
             view: ::core::option::Option::None,
             style: ::core::option::Option::Some(::corten::style::Style { name: __A1, file: __A1, css: __A2, classes: &[] }),
+            anchor: &0,
         };",
         &[
             literal(&format!(

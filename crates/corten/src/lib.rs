@@ -275,6 +275,11 @@ pub struct Component {
     pub style: Option<Style>,
     pub event: Option<script::EventDef>,
     pub view: Option<script::ViewDef>,
+    /// A static of the component's own, beside the symbols that take its names for the whole
+    /// program: a program that uses the component loads them, so a namesake in another crate
+    /// fails to link on every platform. Written by the macros.
+    #[doc(hidden)]
+    pub anchor: &'static u8,
 }
 
 /// What most files need: `use corten::prelude::*;`.
