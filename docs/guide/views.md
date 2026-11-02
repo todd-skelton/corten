@@ -202,7 +202,10 @@ the patches since, a toast's or a cart count's) stays as a script left it (the t
 button it showed), and what it draws otherwise is updated in place, so a script that holds an
 element there keeps holding the one on the page; an element updated in place takes the server's
 attributes, so one a script set on it (`aria-expanded`, a class) goes, as it does when a patch
-replaces it, while a `<details>` or `<dialog>` the user opened or closed stays so. The page a write sends the browser to is
+replaces it, while a `<details>` or `<dialog>` the user opened or closed stays so. Inside a layout
+element, the elements must be the server's: one whose children a script added to or took from is
+replaced whole, live region and all, so a script adds its own markup beside the layout's elements
+(as the toaster's region is) or inside a live region. The page a write sends the browser to is
 fetched as a document, so when it redirects again, `fetch` follows that redirect itself: a
 `#id` on the second one is not kept, and one to another site loads in full.
 
