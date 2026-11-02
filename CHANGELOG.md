@@ -1400,8 +1400,7 @@ Corten is pre-1.0, so any minor version may change the API.
     paint without a script, and the script modules its handlers use. Markup rendered to a `String`
     and placed with `raw()` brought neither, so its sizes painted at their initial values until a
     patch, with nothing said; under `corten dev` a full page with a `data-vars` value its block has
-    no rule for is now an error that says so. A render that panics (a handler's, which is caught)
-    no longer leaves its thread noting values, modules and components for every later render
+    no rule for is now an error that says so
     ([#576 Sizes from data (data-vars) in markup placed with raw() never reach the page's style block, and nothing says so](https://github.com/todd-skelton/corten/issues/576)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -2811,6 +2810,10 @@ Corten is pre-1.0, so any minor version may change the API.
     instructions a request on the branch, 92,381 to 92,438, against 92,338 on main, 91,474 to
     92,418)
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
+95. A render that panicked (a handler's, which is caught and the thread renders on) left its
+    thread noting the values, script modules and components of every later render outside a page
+    (a patch, a live fragment) into a list that only grew; what was being noted is now put back
+    when a render unwinds.
 
 ### Documentation
 

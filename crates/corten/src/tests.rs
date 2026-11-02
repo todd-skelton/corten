@@ -726,11 +726,13 @@ fn a_rendered_view_brings_what_its_render_noted() {
             })
         })
     });
-    let _ = inner;
     assert!(html.ends_with("<button></button>"), "{html}");
     assert_eq!(modules, ["stock_grid"]);
     if cfg!(debug_assertions) {
         assert_eq!(components.iter().map(|c| c.name).collect::<Vec<_>>(), ["Meter"]);
+        // Placed alone, it reports the component it rendered.
+        let ((), alone) = crate::style::collect(|| inner.render(&mut String::new()));
+        assert_eq!(alone.iter().map(|c| c.name).collect::<Vec<_>>(), ["Meter"], "replayed where it is placed");
     }
     let ((), rules) = crate::style::collect_vars(|| crate::style::replay_vars(&block));
     for value in ["42.5%", "7%", "1%"] {
@@ -738,17 +740,40 @@ fn a_rendered_view_brings_what_its_render_noted() {
     }
 }
 
-/// A render that panics leaves nothing gathering on its thread: a handler's panic is caught and
-/// the thread renders on.
+/// A render that panics inside another puts back what the outer one was gathering, so it keeps
+/// what it noted before and goes on noting after: a handler's panic is caught and the thread
+/// renders on.
 #[test]
 fn a_panicking_render_puts_back_what_was_gathering() {
-    let caught = std::panic::catch_unwind(|| crate::style::collect_vars::<()>(|| panic!("a handler")));
-    assert!(caught.is_err());
-    let (_, modules) = crate::script::collect(|| {
-        let _ = std::panic::catch_unwind(|| crate::script::collect::<()>(|| panic!("a handler")));
-        crate::script::uses("stock_grid");
+    let panics = || panic!("a handler");
+    let ((), modules) = crate::script::collect(|| {
+        crate::script::uses("before");
+        assert!(std::panic::catch_unwind(|| crate::script::collect::<()>(panics)).is_err());
+        crate::script::uses("after");
     });
-    assert_eq!(modules, ["stock_grid"], "the outer collect still gathers");
+    assert_eq!(modules, ["before", "after"]);
+    let ((), rules) = crate::style::collect_vars(|| {
+        Meter { used: 1.0 }.to_html();
+        assert!(std::panic::catch_unwind(|| crate::style::collect_vars::<()>(panics)).is_err());
+        Meter { used: 2.0 }.to_html();
+    });
+    assert!(rules.contains("--meter__fill:1%!important") && rules.contains("--meter__fill:2%!important"), "{rules}");
+    let ((), block) = crate::style::capture_vars(|| {
+        Meter { used: 3.0 }.to_html();
+        assert!(std::panic::catch_unwind(|| crate::style::capture_vars::<()>(panics)).is_err());
+        Meter { used: 4.0 }.to_html();
+    });
+    let ((), rules) = crate::style::collect_vars(|| crate::style::replay_vars(&block));
+    assert!(rules.contains("--meter__fill:3%!important") && rules.contains("--meter__fill:4%!important"), "{rules}");
+    if cfg!(debug_assertions) {
+        const OTHER: crate::Component = crate::Component { name: "Other", ..Meter };
+        let ((), used) = crate::style::collect(|| {
+            crate::style::__private::rendered(&Meter);
+            assert!(std::panic::catch_unwind(|| crate::style::collect::<()>(panics)).is_err());
+            crate::style::__private::rendered(&OTHER);
+        });
+        assert_eq!(used.iter().map(|c| c.name).collect::<Vec<_>>(), ["Meter", "Other"]);
+    }
 }
 
 #[tokio::test]
@@ -4878,6 +4903,16 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
                         )
                     }),
                 )
+                // Rendered ahead, in the handler, before the answer renders.
+                .route(
+                    "/ahead",
+                    get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let part = req.rendered(html! { <p>{t.date_time(at, DateStyle::Medium, TimeStyle::Short)}</p> });
+                        let placed = &part;
+                        req.test_page("Ahead", html! { {placed} })
+                    }),
+                )
                 .route("/offset", get(move |req: Req| async move { req.zone().offset(at).to_string() }))
                 // A calendar day: the same day in every zone (#502).
                 .route(
@@ -4956,6 +4991,8 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
     let (cache, page) = get_with(zoned.clone(), "/", Some("corten-zone=America/Chicago")).await;
     assert!(page.contains(&format!("<p>Mar 22, 2026, 10:04 AM GMT-5</p><p>known</p>{utc}")), "{page}");
     assert!(cache.contains("private"), "written for this visitor: {cache}");
+    let (cache, page) = get_with(zoned.clone(), "/ahead", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains("<p>Mar 22, 2026, 10:04 AM GMT-5</p>") && cache.contains("private"), "rendered ahead: {cache} {page}");
     for cookie in [None, Some("corten-zone=Mars/Olympus")] {
         let (_, page) = get_with(zoned.clone(), "/", cookie).await;
         assert!(page.contains(&format!("{utc}<p>unknown</p>{utc}")), "{cookie:?}: {page}");
