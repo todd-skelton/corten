@@ -127,6 +127,26 @@ async fn an_empty_file_input_sends_no_file_and_fields_read_past_files() {
     assert_eq!(files, vec![("photos".into(), "a.png".into(), "application/octet-stream".into(), b"abc".to_vec())]);
 }
 
+/// A part with bytes is a file even with an empty file name (a client may send none): it is
+/// handed out whole, with an empty name, wherever the pieces split it.
+#[tokio::test]
+async fn a_part_with_bytes_and_no_file_name_is_a_file() {
+    let bytes = body(&[
+        ("photos", Some(""), Some("image/png"), b"\x89PNG\r\n--"),
+        ("photos", Some(""), None, b""),
+        ("title", None, None, b"Eevee"),
+    ]);
+    for size in 1..=bytes.len() {
+        let (files, listing) = read(request(&bytes, size), None).await.unwrap_or_else(|e| panic!("pieces of {size}: {e:?}"));
+        assert_eq!(
+            files,
+            vec![("photos".into(), String::new(), "image/png".into(), b"\x89PNG\r\n--".to_vec())],
+            "pieces of {size}"
+        );
+        assert_eq!(listing.title, "Eevee", "pieces of {size}");
+    }
+}
+
 #[tokio::test]
 async fn a_file_over_its_limit_is_none_and_the_form_still_reads() {
     let bytes = body(&[("photos", Some("big.png"), Some("image/png"), &[7u8; 5000]), ("title", None, None, b"Mew")]);
@@ -245,4 +265,89 @@ fn boundaries_and_parameters_read_as_written() {
     );
     let head = parse_head(b"content-disposition: form-data; name=title").ok().unwrap();
     assert_eq!((head.name.as_str(), head.filename), ("title", None));
+}
+
+#[derive(crate::Route)]
+#[route("/api")]
+struct ImportRoot;
+
+#[derive(crate::Route)]
+#[route("/api/import")]
+struct Import;
+
+/// A JSON route that takes one file: `Upload<()>`, since it reads no text fields.
+async fn import(mut upload: Upload<()>) -> crate::Result<String> {
+    let mut sizes = Vec::new();
+    while let Some(mut file) = upload.next_file().await? {
+        sizes.push(file.bytes_up_to(16).await?.map_or(0, |b| b.len()));
+    }
+    Ok(format!("{sizes:?}"))
+}
+
+/// An API's own failure shape, `{"error": ..}`.
+#[cfg(feature = "json")]
+#[derive(crate::ToJson)]
+struct Refusal {
+    error: String,
+}
+
+/// The status, content type and body an API under `/api` answers `req` with.
+async fn api_call(errors: bool, req: Request) -> (StatusCode, String, String) {
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    let router = crate::App::new(crate::Routes::from(axum::Router::new()))
+        .api::<ImportRoot>(|api| {
+            let api = api.route::<Import>(crate::Methods::writes(axum::routing::post(import)));
+            #[cfg(feature = "json")]
+            let api = if errors { api.errors(|_, message| Refusal { error: message.to_string() }) } else { api };
+            #[cfg(not(feature = "json"))]
+            let _ = errors;
+            api
+        })
+        .router();
+    let res = router.oneshot(req).await.unwrap();
+    let (parts, body) = res.into_parts();
+    let content_type = parts.headers.get(header::CONTENT_TYPE).map(|v| v.to_str().unwrap().to_string()).unwrap_or_default();
+    (parts.status, content_type, String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap())
+}
+
+fn to_import(content_type: &str, bytes: Vec<u8>) -> Request {
+    Request::builder()
+        .method("POST")
+        .uri("/api/import")
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(bytes))
+        .unwrap()
+}
+
+/// Under an API, `Upload` is taken as an argument and its refusals are the API's failures: a body
+/// that is not multipart, one that breaks the format and one over the limit answer as Problem
+/// Details, as a `Json<T>` that does not parse does. A file-only route needs no form struct.
+#[tokio::test]
+async fn under_an_api_an_uploads_refusals_are_the_apis_failures() {
+    let multipart = format!("multipart/form-data; boundary={BOUNDARY}");
+    let (status, _, body) = api_call(false, to_import(&multipart, self::body(&[("file", Some("a.csv"), None, b"a,b")]))).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "[3]"), "Upload<()> reads the file");
+    let (status, content_type, body) = api_call(false, to_import("application/json", b"{}".to_vec())).await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(content_type, "application/problem+json", "{body}");
+    assert!(body.starts_with(r#"{"title":"Unsupported Media Type","status":415,"detail":"Upload requests must have"#), "{body}");
+    let broken = format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.csv\"\r\n\r\na,b");
+    let (status, content_type, body) = api_call(false, to_import(&multipart, broken.into_bytes())).await;
+    assert_eq!((status, &content_type[..]), (StatusCode::BAD_REQUEST, "application/problem+json"), "{body}");
+    assert!(body.contains("the multipart body is malformed"), "an UploadError the handler returns with ?: {body}");
+    let large = vec![b'x'; 3 << 20];
+    let over = self::body(&[("file", Some("a.csv"), None, &large)]);
+    let (status, content_type, body) = api_call(false, to_import(&multipart, over)).await;
+    assert_eq!((status, &content_type[..]), (StatusCode::PAYLOAD_TOO_LARGE, "application/problem+json"), "{body}");
+    assert!(body.contains(r#""status":413"#), "over the 2 MiB default: {body}");
+}
+
+/// An API with an error shape of its own answers an upload's refusal in that shape.
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn an_apis_own_error_shape_holds_for_an_upload() {
+    let (status, content_type, body) = api_call(true, to_import("text/csv", b"a,b".to_vec())).await;
+    assert_eq!((status, &content_type[..]), (StatusCode::UNSUPPORTED_MEDIA_TYPE, "application/json"));
+    assert!(body.starts_with(r#"{"error":"Upload requests must have"#), "{body}");
 }
