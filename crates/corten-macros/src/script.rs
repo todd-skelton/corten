@@ -1908,14 +1908,15 @@ function helper() {}
         for i in 0..40 {
             source += &format!("/** @typedef {{string}} S{i} */\n");
         }
-        for i in 0..400 {
-            source += &format!("/** @typedef {{A{} | null}} A{i} */\n", i + 1);
-        }
-        source += "/** @typedef {{ id: string, data: Json }} Saved */\n/** @param {Json} a @param {Saved} b @param {A0} c */\nexport function f(a, b, c) {}";
-        let started = std::time::Instant::now();
-        let (handlers, _) = parse(&source).unwrap();
-        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
-        assert!(handlers[0].params.iter().all(|(_, p)| *p == Param::Any), "{:?}", handlers[0].params);
+        linear("aliases beside a recursive type, and a chain", 400, |n| {
+            let mut source = source.clone();
+            for i in 0..n {
+                source += &format!("/** @typedef {{A{} | null}} A{i} */\n", i + 1);
+            }
+            source += "/** @typedef {{ id: string, data: Json }} Saved */\n/** @param {Json} a @param {Saved} b @param {A0} c */\nexport function f(a, b, c) {}";
+            let (handlers, _) = parse(&source).unwrap();
+            assert!(handlers[0].params.iter().all(|(_, p)| *p == Param::Any), "{:?}", handlers[0].params);
+        });
     }
 
     #[test]

@@ -2098,10 +2098,13 @@ mod tests {
 
     #[test]
     fn a_large_group_merges_in_linear_time() {
-        // 50,000 tokens in one group, merged over themselves: an index, not a scan per key.
-        crate::growth::linear("a group merged over itself", 50_000, |n| {
+        // 50,000 tokens merged into an empty group, then over themselves: an index for both the keys
+        // it adds and the keys it finds, not a scan per key.
+        crate::growth::linear("a group merged in and over itself", 50_000, |n| {
             let members: Vec<(String, Value)> = (0..n).map(|i| (format!("t{i}"), Value::Null)).collect();
-            let mut into = members.clone();
+            let mut into = Vec::new();
+            merge(&mut into, members.clone());
+            assert_eq!(into.len(), n);
             merge(&mut into, members);
             assert_eq!(into.len(), n);
         });
