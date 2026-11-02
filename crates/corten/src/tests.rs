@@ -701,10 +701,13 @@ async fn markup_rendered_ahead_keeps_its_custom_properties_and_raw_markup_is_rep
     let (status, _, body) = call(placed_meters(true, |body| Box::new(crate::raw(body.as_str().to_string()))), "GET", None).await;
     assert_eq!(status, 500, "{body}");
     assert!(body.contains("data-vars=&quot;--meter__fill:42.5%&quot; and no rule for it"), "{body}");
-    // Under `corten dev`, a component rendered ahead counts as rendered where it is placed.
-    let (status, _, body) = call(placed_meters_listing(true, |body| Box::new(body), &[]), "GET", None).await;
-    assert_eq!(status, 500, "{body}");
-    assert!(body.contains("renders Meter, which the app does not list"), "{body}");
+    // Under `corten dev`, a component rendered ahead counts as rendered where it is placed. A
+    // release build does not note a view's components, so only a debug build reports it.
+    if cfg!(debug_assertions) {
+        let (status, _, body) = call(placed_meters_listing(true, |body| Box::new(body), &[]), "GET", None).await;
+        assert_eq!(status, 500, "{body}");
+        assert!(body.contains("renders Meter, which the app does not list"), "{body}");
+    }
 }
 
 /// What a view rendered ahead noted reaches the render it is placed in: its values beside those
