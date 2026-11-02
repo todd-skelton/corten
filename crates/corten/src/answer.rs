@@ -605,18 +605,26 @@ pub enum JsonError {
 impl From<JsonResponse> for JsonError {
     #[track_caller]
     fn from(answer: JsonResponse) -> Self {
+        JsonError::refusal(answer, cfg!(debug_assertions))
+    }
+}
+
+#[cfg(feature = "json")]
+impl JsonError {
+    /// `answer` as a refusal; one with a status that is not a 4xx or 5xx panics when `strict` (a
+    /// debug build) and is a failure (500) otherwise, never answered as written.
+    #[track_caller]
+    pub(crate) fn refusal(answer: JsonResponse, strict: bool) -> Self {
         let status = answer.status();
-        if !(status.is_client_error() || status.is_server_error()) {
-            let message = format!(
-                "corten: a JSON route refuses with a 4xx or 5xx, not {status} (at {}); answer Ok(..) for any other status",
-                std::panic::Location::caller()
-            );
-            if cfg!(debug_assertions) {
-                panic!("{message}");
-            }
-            return JsonError::Error(Error::new(message));
+        if status.is_client_error() || status.is_server_error() {
+            return JsonError::Own(Box::new(answer));
         }
-        JsonError::Own(Box::new(answer))
+        let message = format!(
+            "a JSON route refuses with a 4xx or 5xx, not {status} (at {}); answer Ok(..) for any other status",
+            std::panic::Location::caller()
+        );
+        assert!(!strict, "corten: {message}");
+        JsonError::Error(Error::new(message))
     }
 }
 

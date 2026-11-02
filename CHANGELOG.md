@@ -1396,7 +1396,7 @@ Corten is pre-1.0, so any minor version may change the API.
 168. `JsonError::Own` and `From<JsonResponse> for JsonError`: a JSON route refuses in its own error
     shape with `?` (`Err(refused(StatusCode::BAD_REQUEST, ".."))?`), answered as written, and a
     helper's `Result<_, JsonError>` stays under clippy's `result_large_err`. A refusal of the
-    app's is now that `Err`, not an `Ok`. A `match` on `JsonError` needs an arm for the new
+    app's is written as that `Err` (an `Ok` one still answers as written). A `match` on `JsonError` needs an arm for the new
     variant, and `JsonResponse`'s `Debug` shows its status and type, not its cookies
     ([#584 A JSON route cannot refuse early in its own error shape: JsonError takes only Corten's, and Result<JsonResponse, JsonResponse> fails clippy's result_large_err](https://github.com/todd-skelton/corten/issues/584)).
 ### Removed

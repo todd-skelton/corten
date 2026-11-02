@@ -3829,7 +3829,7 @@ async fn own_started() -> Result<crate::JsonResponse, JsonError> {
 #[cfg(feature = "json")]
 async fn own_forecast() -> Result<crate::JsonResponse, JsonError> {
     let problem = crate::json::Raw::new(r#"{"error":"No capacity forecast yet"}"#)?;
-    Ok(crate::Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE))
+    Err(crate::Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE).into())
 }
 
 #[cfg(feature = "json")]
@@ -3950,11 +3950,14 @@ fn a_json_error_stays_under_clippys_large_error_limit() {
 
 #[cfg(feature = "json")]
 #[test]
-#[cfg_attr(debug_assertions, should_panic(expected = "refuses with a 4xx or 5xx"))]
 fn a_json_refusal_is_an_error_status() {
-    // In release, a failure: never a shared 2xx.
-    let error = JsonError::from(crate::Json(OwnStarted { ok: true }).with_status(StatusCode::ACCEPTED));
-    assert_eq!(error.into_response().status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let accepted = || crate::Json(OwnStarted { ok: true }).with_status(StatusCode::ACCEPTED);
+    // A debug build panics; a release build answers a failure, never a 2xx as written.
+    let panicked = std::panic::catch_unwind(|| JsonError::refusal(accepted(), true)).unwrap_err();
+    assert!(panicked.downcast_ref::<String>().is_some_and(|m| m.contains("refuses with a 4xx or 5xx")));
+    assert_eq!(JsonError::refusal(accepted(), false).into_response().status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let refused = crate::Json(OwnStarted { ok: false }).with_status(StatusCode::CONFLICT);
+    assert_eq!(JsonError::refusal(refused, true).into_response().status(), StatusCode::CONFLICT);
 }
 
 #[cfg(feature = "json")]
