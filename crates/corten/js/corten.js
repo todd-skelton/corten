@@ -1153,49 +1153,54 @@ const comparable = (html) =>
     .replace(/<a\b[^>]*>/g, (tag) => (tag.includes(" data-nav") ? tag.replace(' aria-current="page"', "") : tag));
 
 /**
- * A patch into a layout element, kept to apply to the markup the server drew it with: what it
- * replaced (`"r"`, by its id, with a copy of the new element), removed (`"x"`) or appended to (`"a"`).
+ * A patch into a layout element: what it replaced (`"r"`, by its id, with the new element), removed
+ * (`"x"`) or appended to (`"a"`).
  * @typedef {["r" | "x" | "a", string, Node[]]} Put
  */
 /**
- * What the server drew as a layout element, and the patches into it since (a cart count, a toast),
- * applied only when a write's page is compared with it ({@link drawnAs}); each patch makes a new one.
- * @typedef {{ base: string, puts: Put[], markup?: string | null }} Patched
+ * The markup the server drew as a layout element with the patches since (a cart count, a toast)
+ * applied, parsed: a copy apart from the page, which scripts do not touch. Each patch makes a new
+ * one around the same copy.
+ * @typedef {{ copy: Element }} Patched
  */
 /**
  * The elements the server drew beside `<main>` and beside each element around it, up to `<body>`,
  * with their markup as it was sent: the layout a write's navigation compares ({@link swapDocument}).
  * Anything a script put there (a toast region, a browser extension's markup) is not one, and is
  * left as it is. An element a patch or a layout change puts in place of one takes its place here.
- * One a patch went into holds the patches too, or, when they went into what a script added, a
- * marker (`\0` and a count) that no markup is.
+ * One a patch went into holds a copy with the patches applied, or, when one went into what a
+ * script added, a marker (`\0` and a count) that no markup is.
  * @type {WeakMap<Element, string | Patched>}
  */
 const drawn = new WeakMap();
 
 /**
  * A patch (`put`) changed what the server drew inside `el`: the layout element around it, if any,
- * keeps it, so the next write's page is compared with what the server and the patches drew there.
+ * applies it to its copy, so the next write's page is compared with what the server and the
+ * patches drew there.
  * @param {Element} el @param {Put} put
  */
-function changedIn(el, put) {
+function changedIn(el, [how, id, nodes]) {
   for (let up = /** @type {Element | null} */ (el); up; up = up.parentElement) {
     const was = drawn.get(up);
     if (was === undefined) continue;
-    put[2] = put[2].map((n) => n.cloneNode(true));
-    /** @type {string | Patched} */
-    let now = typeof was === "string" ? (was.startsWith("\0") ? was : { base: was, puts: [put] }) : { base: was.base, puts: [...was.puts, put] };
-    // A ticker's patches between writes are folded in, so they do not pile up.
-    if (typeof now !== "string" && now.puts.length > 16) {
-      const markup = drawnAs(now);
-      now = markup === null ? "\0" : { base: markup, puts: [] };
+    // Parsed at the first patch into it, not at load.
+    const copy = typeof was !== "string" ? was.copy : was.startsWith("\0") ? null : parse(was).firstElementChild;
+    const at = copy?.querySelector(`[id="${CSS.escape(id)}"]`);
+    if (!copy || !at) {
+      // No markup is the marker, and none is another's.
+      drawn.set(up, `\0${(patched += 1)}`);
+      return;
     }
-    // No markup is the marker, and none is another's.
-    drawn.set(up, typeof now === "string" ? `\0${(patched += 1)}` : now);
+    const fresh = nodes.map((n) => n.cloneNode(true));
+    if (how === "x") at.remove();
+    else if (how === "a") at.append(...fresh);
+    else at.replaceWith(...fresh);
+    drawn.set(up, { copy });
     return;
   }
 }
-/** Patches into the layout so far. */
+/** Patches into what a script added to the layout so far. */
 let patched = 0;
 
 /**
@@ -1204,22 +1209,8 @@ let patched = 0;
  * @param {string | Patched} was @returns {string | null}
  */
 function drawnAs(was) {
-  if (typeof was === "string") return was.startsWith("\0") ? null : was;
-  if (was.markup !== undefined) return was.markup;
-  let copy = parse(was.base).firstElementChild;
-  for (const [how, id, nodes] of was.puts) {
-    // Patches go inside a layout element (`changedIn` starts at the target's parent).
-    const at = copy?.querySelector(`[id="${CSS.escape(id)}"]`);
-    if (!copy || !at) {
-      copy = null;
-      break;
-    }
-    const fresh = nodes.map((n) => n.cloneNode(true));
-    if (how === "x") at.remove();
-    else if (how === "a") at.append(...fresh);
-    else at.replaceWith(...fresh);
-  }
-  return (was.markup = copy ? copy.outerHTML : null);
+  if (typeof was !== "string") return was.copy.outerHTML;
+  return was.startsWith("\0") ? null : was;
 }
 for (let el = document.querySelector("main"); el && el !== document.body; el = el.parentElement) {
   // As sent, made comparable only if a write's page is compared with it, so a load pays for the copy alone.
@@ -1329,7 +1320,11 @@ const LIVE = '[role="status"], [role="alert"], [aria-live]';
  */
 function drawLayout(old, fresh, before, said, inside = false) {
   if (old.localName !== fresh.localName || !(inside || old.matches(LIVE) || old.querySelector(LIVE))) return replaceKeeping(old, fresh, null);
-  const on = old.getAttribute("data-on");
+  const wiring = () => ["data-on", "data-ref", "data-scope"].map((a) => old.getAttribute(a)).join("\n");
+  const was = wiring();
+  // The ref it had too, whose holders look again.
+  const names = new Set();
+  refName(old, names);
   // What the user opened or closed stays as they left it, as a patch keeps it ({@link opened}).
   const toggles = old instanceof HTMLDetailsElement || old instanceof HTMLDialogElement;
   for (const a of Array.from(old.attributes)) if (!fresh.hasAttribute(a.name) && !(toggles && a.name === "open")) old.removeAttribute(a.name);
@@ -1345,8 +1340,12 @@ function drawLayout(old, fresh, before, said, inside = false) {
     }
     served.set(old, want);
   }
-  // Its new handlers are listened for; a kept element's `on:connect` does not run again.
-  if (old.getAttribute("data-on") !== on) scan(old, new Set());
+  // Its new handlers are listened for and its refs found again, as for an element that joined; a
+  // kept element's `on:connect` does not run again.
+  if (wiring() !== was) {
+    scan(old, names);
+    for (const name of names) refChanges.set(name, (refChanges.get(name) ?? 0) + 1);
+  }
   if (old.matches(LIVE)) {
     const content = document.createDocumentFragment();
     content.append(...Array.from(fresh.childNodes));
