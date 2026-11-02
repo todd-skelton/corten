@@ -801,7 +801,9 @@ async function run(browser) {
   check("Table: a text cell wraps, a number cell is end aligned on one line", cells.text === "normal" && cells.number === "end nowrap" && cells.head === "nowrap", JSON.stringify(cells));
   // Sizes are the theme's tokens: one value makes every control a 44 px touch target.
   const heights = await orders.evaluate(() => {
-    const of = () => ["select", "button[class*='button__md']", "button[class*='button__sm']"].map((s) => document.querySelector(s)?.getBoundingClientRect().height);
+    // In rem, as the tokens are: the page's root font size is its own.
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const of = () => ["select", "button[class*='button__md']", "button[class*='button__sm']"].map((s) => (document.querySelector(s)?.getBoundingClientRect().height ?? 0) / rem);
     const before = of();
     document.documentElement.style.setProperty("--control-height", "2.75rem");
     const after = of();
@@ -810,7 +812,7 @@ async function run(browser) {
   });
   check(
     "Sizes: --control-height sets the height of a select and a button of the default size, not a small one",
-    heights.before[0] === 36 && heights.before[1] === 36 && heights.after[0] === 44 && heights.after[1] === 44 && heights.after[2] === heights.before[2],
+    heights.before[0] === 2.25 && heights.before[1] === 2.25 && heights.after[0] === 2.75 && heights.after[1] === 2.75 && heights.after[2] === heights.before[2],
     JSON.stringify(heights),
   );
   // Under forced colors a box shadow is not painted, so a focused field shows its outline, which is
