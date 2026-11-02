@@ -282,7 +282,10 @@ App::new(url::router(db.clone())).area(|area| admin::area(area, db))
 without it does not compile. The area's prefix (`Admin`, a plain path, no parameters) and each
 of its routes are route types: a route outside the prefix, or a prefix with a parameter, does
 not build. A page that shows something either way (a layout's "Sign in") takes
-`Option<Caller<Viewer>>`. Reads and writes at one URL are separate handlers (`get = show,
+`Option<Caller<Viewer>>`. A caller type that is a rule over another (`Staff` over `Viewer`)
+reads it in its `identify` with `Caller::<Viewer>::find(parts, state).await?`, never by calling
+`Viewer::identify`, so the request reads the session once, the error page's caller included.
+Reads and writes at one URL are separate handlers (`get = show,
 post = save`), so each takes what it needs. A private app puts `caller = Staff` on its routes
 module and the sign-in route in a module without it. A route in an area that another caller may
 use (a review form under `/account/purchases/{id}` that needs another permission) is a second

@@ -1259,7 +1259,7 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 
 1. Only a handler that takes a `Caller` pays for the lookup: a public landing page, static
    files and the health checks never touch the session store. Several readers in one request
-   (a middleware and the handler) share one lookup.
+   (a middleware, the handler and the error page) share one lookup.
 2. Reading one makes the answer private (`Cache-Control: private`) and puts the caller in the
    page's key, so after signing in or out the runtime loads the next page in full and the layout
    shows who is asking now. A `Public` answer's handler cannot take one: that does not compile.
@@ -1268,7 +1268,10 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
    now (the session store is down), so no one is sent to sign in again for nothing.
 4. Callers of different kinds are different types with their own lookup: `Caller<Viewer>` from
    a session cookie on the pages, `Caller<Partner>` from an `X-Api-Key` header on a
-   `JsonResult` route, where a missing key is a JSON 401.
+   `JsonResult` route, where a missing key is a JSON 401. A type that is a rule over another
+   (staff is a viewer with a role) reads the other in its `identify` with
+   `let Caller(viewer) = Caller::<Viewer>::find(parts, state).await?;`, so the session is read
+   once in the request whichever of the two the handler, a middleware and the error page take.
 5. A sign-in page whose handler needs a caller would send the browser round in a loop; Corten
    answers it with a 500 instead, and under `corten dev` the page says why.
 6. Signing in and out set the cookie on the answer:
@@ -1544,7 +1547,13 @@ async fn error_page(failure: Failure, req: Req, viewer: Option<Caller<Viewer>>) 
 Its extractors see the request's URL, `Cookie`, `Authorization`, `Accept-Language` and mode,
 not its body (a body extractor does not compile). The caller is looked up only when the error
 page takes one and only for a failure: an unknown URL looks it up once, and a handler that read
-it and then failed has it looked up again, since the error page reads a request of its own.
+it and then failed (refused, say) gives the error page the caller it found, with no second
+lookup: the page shows who the handler saw (a sign-out that removed the session and then failed
+still shows them signed in), and a lookup that failed because the store was down is not tried
+again. A middleware's own request extensions do not reach it: the handler took that request,
+and keeping them for a failure would copy every request's. Who is asking is a `Caller`, and a
+trace span goes in `App::layer`, around the error page too. A request id a middleware makes can
+go on the answer as a header (which the error page keeps), but the page's body cannot show it.
 When the lookup itself fails, an optional caller is `None` there, so the page is drawn signed
 out rather than not at all. Keeping the credentials for it is measured below.
 

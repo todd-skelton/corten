@@ -118,9 +118,13 @@ struct Inner {
     /// The page rendered the request's notice ([`crate::Req::notice`]), so a navigation's answer
     /// does not send it to the runtime as well.
     notice_drawn: AtomicBool,
-    /// The first callers marked, so the error page, which looks them up again, does not mark one
-    /// twice (the key mixes them by XOR, so a second mark would take it out).
+    /// The first callers marked, so the error page, which looks a [`crate::ClientIp`] up again,
+    /// does not mark one twice (the key mixes them by XOR, so a second mark would take it out).
     marked: [AtomicU64; 4],
+    /// Each caller type's lookup ([`crate::Caller`]), kept for the request: its handler, its
+    /// middleware, a caller type that is a rule over another and its error page share one.
+    /// One entry per caller type read; a request reads one or two, so a list beats a map.
+    found: std::sync::Mutex<Vec<Arc<dyn std::any::Any + Send + Sync>>>,
     /// The app's, for a request it serves: carried here rather than as a request extension of
     /// its own, so the request's extensions stay within their first allocation.
     shared: Option<Arc<crate::page::Shared>>,
@@ -335,6 +339,17 @@ impl Signal {
         }
         self.0.personal.store(true, Ordering::Relaxed);
         self.0.callers.fetch_xor(hash, Ordering::Relaxed);
+    }
+
+    /// The request's one cell for a lookup of its type, made the first time it is asked for.
+    pub(crate) fn found<T: Send + Sync + 'static>(&self) -> Arc<tokio::sync::OnceCell<T>> {
+        let mut found = self.0.found.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(kept) = found.iter().find(|kept| kept.is::<tokio::sync::OnceCell<T>>()) {
+            return kept.clone().downcast().expect("checked above");
+        }
+        let cell = Arc::new(tokio::sync::OnceCell::new());
+        found.push(cell.clone());
+        cell
     }
 
     /// Marks the answer as differing by something of the visitor's that does not change the page

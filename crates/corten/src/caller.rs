@@ -42,7 +42,8 @@
 //!
 //! 1. Only a handler that reads a caller pays for the lookup; a page that does not (a public
 //!    landing page) never touches the session store. Several readers in one request (a
-//!    middleware and the handler) share one lookup.
+//!    middleware, the handler, a caller type that is a rule over this one, through
+//!    [`Caller::find`], and the error page) share one lookup.
 //! 2. Reading one makes the answer private (`Cache-Control: private`), and a [`crate::Public`]
 //!    answer's handler cannot take one: that does not compile.
 //! 3. The caller is part of the page's key, so after signing in or out the runtime loads the next
@@ -217,20 +218,83 @@ struct Found<T>(Result<T, Why>);
 #[derive(Clone)]
 pub(crate) struct SignIn(pub HeaderValue);
 
-/// The caller, looked up once per request and type.
-async fn find<S: Sync, T: Identify<S>>(parts: &mut Parts, state: &S) -> Result<T, Why> {
-    if let Some(Found(found)) = parts.extensions.get::<Found<T>>() {
-        return found.clone();
+/// The caller, looked up once per request and type. In an app the lookup is kept on the
+/// request's [`Signal`], which its error page shares; outside one (a bare router in a test), in
+/// the request's extensions, when they can be written.
+async fn find<S: Sync, T: Identify<S>>(parts: &Parts, state: &S) -> Result<T, Why> {
+    let Some(signal) = parts.extensions.get::<Signal>() else {
+        if let Some(Found(found)) = parts.extensions.get::<Found<T>>() {
+            return found.clone();
+        }
+        return T::identify(parts, state).await.map_err(|Refused(why)| why);
+    };
+    // One cell per type for the request: readers at the same time (a middleware's two derived
+    // types joined) wait for the one lookup, which alone marks the page's key.
+    let cell = signal.found::<Found<T>>();
+    let Found(found) = cell
+        .get_or_init(|| async {
+            // A layer outside the app's (`App::layer`) read it before the request had its signal.
+            let found = match parts.extensions.get::<Found<T>>() {
+                Some(Found(found)) => found.clone(),
+                None => T::identify(parts, state).await.map_err(|Refused(why)| why),
+            };
+            // The page's key mixes in who it is for: someone, or no one of this type.
+            let mut hasher = std::hash::DefaultHasher::new();
+            std::any::type_name::<T>().hash(&mut hasher);
+            found.as_ref().ok().hash(&mut hasher);
+            signal.mark_caller(hasher.finish());
+            Found(found)
+        })
+        .await;
+    found.clone()
+}
+
+impl<T> Caller<T> {
+    /// Who is asking as `T`, from the request's one lookup of `T`: for a caller type that is a
+    /// rule over another (a seller is a viewer who may sell), whose [`Identify`] reads the other
+    /// this way rather than calling its `identify`, so the session is read once in the request,
+    /// whichever types the handler, its middleware and the error page take:
+    ///
+    /// ```
+    /// use corten::{axum::http::request::Parts, prelude::*};
+    ///
+    /// #[derive(Clone, Hash)]
+    /// struct Viewer { name: String, sells: bool }
+    ///
+    /// impl<S: Sync> Identify<S> for Viewer {
+    ///     async fn identify(_parts: &Parts, _state: &S) -> Result<Self, Refused> {
+    ///         // A real app reads its session store here.
+    ///         Ok(Viewer { name: "ada".into(), sells: true })
+    ///     }
+    /// }
+    ///
+    /// #[derive(Clone, Hash)]
+    /// struct Seller(Viewer);
+    ///
+    /// impl<S: Sync> Identify<S> for Seller {
+    ///     async fn identify(parts: &Parts, state: &S) -> Result<Self, Refused> {
+    ///         let Caller(viewer) = Caller::<Viewer>::find(parts, state).await?;
+    ///         if viewer.sells { Ok(Seller(viewer)) } else { Err(Refused::forbidden()) }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// A refusal of `T`'s is the derived type's too, unless it maps it. Outside an
+    /// [`crate::App`] (a bare router in a test) each `find` looks `T` up again.
+    pub async fn find<S: Sync>(parts: &Parts, state: &S) -> Result<Self, Refused>
+    where
+        T: Identify<S>,
+    {
+        find::<S, T>(parts, state).await.map(Caller).map_err(Refused)
     }
-    let found = T::identify(parts, state).await.map_err(|Refused(why)| why);
-    // The page's key mixes in who it is for: someone, or no one of this type.
-    let mut hasher = std::hash::DefaultHasher::new();
-    std::any::type_name::<T>().hash(&mut hasher);
-    found.as_ref().ok().hash(&mut hasher);
-    if let Some(signal) = parts.extensions.get::<Signal>() {
-        signal.mark_caller(hasher.finish());
+}
+
+/// [`find`], keeping the lookup in the request's extensions outside an app.
+async fn find_mut<S: Sync, T: Identify<S>>(parts: &mut Parts, state: &S) -> Result<T, Why> {
+    let found = find::<S, T>(parts, state).await;
+    if parts.extensions.get::<Signal>().is_none() {
+        parts.extensions.insert(Found(found.clone()));
     }
-    parts.extensions.insert(Found(found.clone()));
     found
 }
 
@@ -238,7 +302,7 @@ impl<S: Send + Sync, T: Identify<S>> FromRequestParts<S> for Caller<T> {
     type Rejection = Response;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Response> {
-        find::<S, T>(parts, state).await.map(Caller).map_err(|why| Refused(why).into_response())
+        find_mut::<S, T>(parts, state).await.map(Caller).map_err(|why| Refused(why).into_response())
     }
 }
 
@@ -291,7 +355,7 @@ impl<S: Send + Sync, T: Identify<S>> OptionalFromRequestParts<S> for Caller<T> {
     type Rejection = Response;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Option<Self>, Response> {
-        match find::<S, T>(parts, state).await {
+        match find_mut::<S, T>(parts, state).await {
             Ok(caller) => Ok(Some(Caller(caller))),
             Err(Why::Unavailable(_)) if parts.extensions.get::<Signal>().is_some_and(Signal::is_error_page) => Ok(None),
             Err(Why::Unavailable(message)) => Err(unidentified(&message)),
