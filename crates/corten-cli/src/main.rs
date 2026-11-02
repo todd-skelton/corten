@@ -22,8 +22,8 @@ const HELP: &str = "corten: create, run and check Corten apps
 
 Usage:
   corten new <dir> [--name <crate>] [--corten-path <path>]
-                   Create an app in <dir>. --corten-path uses a local checkout of the
-                   corten crate (crates/corten) instead of the crates.io release.
+                   Create an app in <dir>. --corten-path uses a local checkout (its root or
+                   its crates/corten) instead of the crates.io release.
   corten dev [--port <port>]
                    Build and run the app in this directory; rebuild and restart on every
                    change, and reload open pages. Default port 3000.

@@ -17,7 +17,7 @@ test and a Dockerfile.
 
 | Command | What it does |
 |---|---|
-| `corten new <dir>` | Creates an app that depends on the `corten` release matching the command's version. `--name` sets the crate name, `--corten-path` uses a local checkout instead. |
+| `corten new <dir>` | Creates an app that depends on the `corten` release matching the command's version. `--name` sets the crate name, `--corten-path` uses a local checkout instead (the repository's root or its `crates/corten`; another directory is refused before anything is written). |
 | `corten dev` | Builds and runs the app, rebuilds and restarts on every change in the app's directory or a local package its build reads, like a workspace's shared crate (a failed build keeps the last good server running), and reloads open pages. `--port` or `PORT`. |
 | `corten fmt` | Runs `cargo fmt`, then lays out the markup inside `html!`, which rustfmt leaves alone, so it fixes what `corten check` reports (`--check` only reports; given paths, only their markup). |
 | `corten check` | `corten fmt --check` (rustfmt's and the markup's), `cargo clippy -D warnings`, `cargo test`, then `tsc` over the app's scripts (when TypeScript is installed; otherwise a note says they were not checked), after the tests have written `types/app.d.ts`. At a workspace root, each member that depends on `corten` is checked. |
