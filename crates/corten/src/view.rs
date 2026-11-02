@@ -106,6 +106,9 @@ pub use corten_macros::component;
 
 /// Something that writes HTML. Strings and numbers escape themselves; views from `html!` write
 /// their markup.
+#[diagnostic::on_unimplemented(
+    note = "if `{Self}` is a look (a #[component(css)] that returns `impl ClassList`, as the kit's Button, Input, Select and Card are), it is not an element: write it as the classes of the element it styles, `<select class={{Select {{}}}}>` or `<button class={{Button {{ variant, size }}}}>`, rather than `<Select>..</Select>`"
+)]
 pub trait Render {
     fn render(&self, out: &mut String);
 

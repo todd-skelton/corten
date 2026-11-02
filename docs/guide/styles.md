@@ -267,7 +267,9 @@ pub fn Button(variant: Variant) -> impl ClassList {
 The element is the caller's, so `html!` checks its attributes as always, a script's
 `parentElement` and a `:first-child` rule see the page as written, and a `<summary>` or `<li>` can
 have the look. Its stylesheet styles the element itself (`.button:hover`, not `.button > :hover`).
-A look's fields are its props, written as a struct (`Card {}` for none). A look has no markup to
+A look's fields are its props, written as a struct (`Card {}` for none). Written as an element
+(`<Card>..</Card>`), a look does not compile: the compiler says the struct has no field named
+`children` and does not implement `Render`, with a note to write it as a class. A look has no markup to
 give a script, refs or a view, so those do not compile on it; a component that draws structure
 (a label beside its control) or semantics (a role) renders its element. A widget whose button is
 its own takes a `class` (corten-ui's `PrintButton`), `()` for none.
