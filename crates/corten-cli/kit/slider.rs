@@ -1,20 +1,20 @@
 // corten ui {{version}}: slider
-//! A value in a range, on the `<input type="range">` written inside it:
-//! `<Slider><input type="range" name={f.volume} min="0" max="100" value="40"></Slider>`. Give
-//! it a label, as any field (`Field`).
+//! A value in a range, as the classes of the `<input type="range">` you write:
+//! `<input type="range" name={f.volume} min="0" max="100" value="40" class={Slider {}}>`. Give it
+//! a label, as any field (`Field`).
 use corten::prelude::*;
 
-/// A part without a rule does not compile:
+/// A part without a rule in `slider.css` does not compile:
 ///
 /// ```compile_fail
 /// use corten::prelude::*;
 ///
 /// #[component(css)]
-/// fn Slider() -> impl Render {
-///     html! { <span class={(Slider, Vertical)}></span> }
+/// fn Slider() -> impl ClassList {
+///     (Slider, Vertical)
 /// }
 /// ```
 #[component(css)]
-pub fn Slider<C: Render>(children: C) -> impl Render {
-    html! { <span class={Slider}>{children}</span> }
+pub fn Slider() -> impl ClassList {
+    Slider
 }
