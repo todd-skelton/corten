@@ -2099,12 +2099,12 @@ mod tests {
     #[test]
     fn a_large_group_merges_in_linear_time() {
         // 50,000 tokens in one group, merged over themselves: an index, not a scan per key.
-        let members: Vec<(String, Value)> = (0..50_000).map(|n| (format!("t{n}"), Value::Null)).collect();
-        let mut into = members.clone();
-        let started = std::time::Instant::now();
-        merge(&mut into, members);
-        assert_eq!(into.len(), 50_000);
-        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+        crate::growth::linear("a group merged over itself", 50_000, |n| {
+            let members: Vec<(String, Value)> = (0..n).map(|i| (format!("t{i}"), Value::Null)).collect();
+            let mut into = members.clone();
+            merge(&mut into, members);
+            assert_eq!(into.len(), n);
+        });
     }
 
     #[test]

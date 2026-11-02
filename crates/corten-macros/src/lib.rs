@@ -15,6 +15,8 @@ mod dtcg;
 mod event;
 mod from_json;
 mod from_ref;
+#[cfg(test)]
+mod growth;
 mod href;
 mod html;
 mod id;

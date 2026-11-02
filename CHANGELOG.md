@@ -2842,6 +2842,12 @@ Corten is pre-1.0, so any minor version may change the API.
     instructions a request on the branch, 92,381 to 92,438, against 92,338 on main, 91,474 to
     92,418)
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
+100. `corten-macros`' test that a large token group merges in linear time bounded the merge on the
+    wall clock (under 2 s), so check 1 failed on a busy machine (2.15 s) with nothing wrong. It now
+    uses the growth check the script tests use (moved to a test module both share): under a second
+    passes, slower is checked against the time at a quarter of the size. A merge that scans per key
+    still fails it (measured: 32.0 s at 50,000 tokens against 1.7 s at 12,500)
+    ([#593 corten-macros' dtcg merge test has a wall-clock bound (under 2 s) that fails when the machine is busy, as the script tests did before #495](https://github.com/todd-skelton/corten/issues/593)).
 
 ### Documentation
 
