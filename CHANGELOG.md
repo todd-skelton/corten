@@ -2852,7 +2852,8 @@ Corten is pre-1.0, so any minor version may change the API.
 102. `corten ui add` put a new module between the next module and the attributes above it (a
     `ui.rs` whose modules each carry `#[rustfmt::skip]`), so the attribute moved to the new module.
     It now goes before the next module's attributes and doc comment, and takes the attributes every
-    module has
+    module has when there are two or more (not a `#[path]`, which is each module's own); a file with
+    an attribute over several lines is left for the app, as one `add` cannot lay out is
     ([#586 corten ui add puts a new module between the next module and its attribute in a ui.rs whose modules carry #[rustfmt::skip]](https://github.com/todd-skelton/corten/issues/586)).
 
 ### Documentation

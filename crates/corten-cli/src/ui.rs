@@ -1119,14 +1119,25 @@ fn list_in(module: &str, piece: &Piece) -> Option<String> {
         }
         s
     };
-    // The attributes every module has (`#[rustfmt::skip]`), which the new one gets too.
-    let attrs: Vec<&str> = match mods.first() {
-        Some(&m) => lines[head(m)..m]
+    // An attribute over several lines (`#[cfg(any(`, ..) is not laid out here: say so instead.
+    if mods.iter().any(|&m| {
+        head(m) > 0
+            && !(lines[head(m) - 1].trim().is_empty()
+                || lines[head(m) - 1].ends_with([';', '}'])
+                || lines[head(m) - 1].starts_with("//"))
+    }) {
+        return None;
+    }
+    // The attributes every module has (`#[rustfmt::skip]`), which the new one gets too: two at
+    // least, so one module's own are not taken for the file's, and never a `#[path]`, which is a
+    // module's own file.
+    let attrs: Vec<&str> = match mods.as_slice() {
+        [first, _, ..] => lines[head(*first)..*first]
             .iter()
-            .filter(|a| a.starts_with("#[") && mods.iter().all(|&o| lines[head(o)..o].contains(a)))
+            .filter(|a| a.starts_with("#[") && !a.starts_with("#[path") && mods.iter().all(|&o| lines[head(o)..o].contains(a)))
             .copied()
             .collect(),
-        None => Vec::new(),
+        _ => Vec::new(),
     };
     let at = match mods.iter().find(|&&i| lines[i] > decl.as_str()) {
         Some(&i) => head(i),
@@ -1302,6 +1313,16 @@ mod tests {
         let module = "use corten::Component;\n\n#[cfg(test)]\npub mod badge;\npub mod card;\n\npub const COMPONENTS: &[Component] = &[badge::Badge, card::Card];\n";
         let module = list_in(module, piece("alert")).unwrap();
         assert!(module.contains("use corten::Component;\n\npub mod alert;\n#[cfg(test)]\npub mod badge;\n"), "{module}");
+        // One module: its attributes are its own, not the file's.
+        let one = "use corten::Component;\n\n#[cfg(test)]\n#[path = \"kit/badge.rs\"]\npub mod badge;\n\npub const COMPONENTS: &[Component] = &[badge::Badge];\n";
+        let module = list_in(one, piece("button")).unwrap();
+        assert!(module.contains("pub mod badge;\npub mod button;\n"), "{module}");
+        // Every module with one path each: not copied.
+        let paths = "use corten::Component;\n\n#[path = \"kit/badge.rs\"]\npub mod badge;\n#[path = \"kit/badge.rs\"]\npub mod card;\n\npub const COMPONENTS: &[Component] = &[badge::Badge, card::Card];\n";
+        assert!(list_in(paths, piece("table")).unwrap().contains("pub mod card;\npub mod table;\n"));
+        // An attribute over several lines is not laid out: the command says what to add by hand.
+        let wide = "use corten::Component;\n\n#[cfg(any(\n    feature = \"a\",\n))]\n#[rustfmt::skip]\npub mod card;\n\npub const COMPONENTS: &[Component] = &[card::Card];\n";
+        assert_eq!(list_in(wide, piece("button")), None);
     }
 
     #[test]
