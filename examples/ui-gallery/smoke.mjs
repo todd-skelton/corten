@@ -787,6 +787,18 @@ async function run(browser) {
     button: document.querySelector("[class*='button__button']")?.parentElement?.className.includes("button__") ?? "missing",
   }));
   check("Looks: the kit's classes are on the app's elements, with none of its own around them", looks.badge === "SPAN" && looks.wrappers === 0 && looks.button === false, JSON.stringify(looks));
+  // The cells have no specificity of their own (`:where`): a text cell wraps, a number cell is end
+  // aligned on one line, and the header stays on one line.
+  const cells = await orders.evaluate(() => {
+    const style = (/** @type {string} */ sel) => {
+      const el = document.querySelector(sel);
+      return el ? getComputedStyle(el) : null;
+    };
+    const text = style("tbody td:nth-child(2)");
+    const number = style("tbody td[class*='table__numeric']");
+    return { text: text?.whiteSpace, number: number && `${number.textAlign} ${number.whiteSpace}`, head: style("thead th")?.whiteSpace };
+  });
+  check("Table: a text cell wraps, a number cell is end aligned on one line", cells.text === "normal" && cells.number === "end nowrap" && cells.head === "nowrap", JSON.stringify(cells));
   await orders.getByRole("button", { name: "Share the shop" }).click();
   check("Popover: its button opens it", await orders.locator("#share").evaluate((p) => p.matches(":popover-open")));
   await orders.keyboard.press("Escape");

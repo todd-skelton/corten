@@ -57,7 +57,9 @@ pub enum Sort {
 /// `aria-sort` on the column the table is sorted by now (`sort`, `None` for the others). The
 /// direction is drawn, not written, so a screen reader reads the label and the column's sort
 /// state, not an arrow's name. `class` is the header's look (`TableNumeric {}` over a number
-/// column, `()` for none).
+/// column, `()` for none). A page that sorts its rows in place without a request handles the
+/// links' clicks once, on the `<table>` (`on:click`, with `event.target.closest("a")`), so
+/// the link still sorts a page loaded without the script.
 #[component(css = Table)]
 pub fn SortHeader<'a, L: Render, C: ClassList>(
     label: L,

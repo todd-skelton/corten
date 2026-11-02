@@ -447,6 +447,13 @@ mod tests {
     async fn the_orders_sort_by_their_total() {
         let unsorted = send(Request::get("/orders").body(Body::empty()).unwrap()).await;
         assert!(unsorted.contains(r#"href="/orders?sort=total_up""#) && !unsorted.contains("aria-sort"), "{unsorted}");
+        // The kit's Field writes the label's `for` and the hint's id from the control's id.
+        assert!(
+            unsorted.contains(r#"<label for="handling">"#)
+                && unsorted.contains(r#"id="field-hint-handling">From 1 to 5.</p>"#)
+                && unsorted.contains(r#"aria-describedby="field-hint-handling""#),
+            "{unsorted}"
+        );
         let up = send(Request::get("/orders?sort=total_up").body(Body::empty()).unwrap()).await;
         assert!(up.contains(r#"aria-sort="ascending""#) && up.contains(r#"href="/orders?sort=total_down""#), "{up}");
         assert!(up.contains(">JB<") && up.contains(">BL<") && !up.contains(">AL<"), "the four smallest: {up}");
@@ -481,6 +488,22 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(forged.status(), StatusCode::UNPROCESSABLE_ENTITY, "a warehouse the page does not offer");
+    }
+
+    #[test]
+    fn a_field_shows_its_hint_and_its_error_together() {
+        use crate::ui::field::{Field, FieldHintId};
+
+        #[derive(Id)]
+        struct CopiesId;
+        let html = html! {
+            <Field id={CopiesId} label="Copies" hint="From 1 to 5." error="Too many.">
+                <input id={CopiesId} aria-describedby={FieldHintId(&CopiesId)}>
+            </Field>
+        }
+        .to_html();
+        assert!(html.contains(r#"<label for="copies">Copies</label>"#), "{html}");
+        assert!(html.contains(r#"id="field-hint-copies">From 1 to 5.</p>"#) && html.contains(">Too many.</div>"), "{html}");
     }
 
     #[tokio::test]

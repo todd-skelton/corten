@@ -2226,8 +2226,9 @@ Corten is pre-1.0, so any minor version may change the API.
     in place of one variant per look; a soft badge is a 12% tint of its tone, and every pair
     keeps at least 4.5:1 contrast on the page and on a card in both themes, which a test checks
     ([#569 Kit Badge has one look per tone, so an app cannot tell a filled status from an outlined one as MUI Chip does](https://github.com/todd-skelton/corten/issues/569)).
-106. The kit's Field takes the control's `#[derive(Id)]` id, `id={QtyId}`, which its label's `for`
-    and the control share, so the two cannot differ, and a `hint` and an `error` shown together;
+106. The kit's Field takes the control's `#[derive(Id)]` id, `id={QtyId}`, and writes its label's
+    `for` from it, so a misspelled name does not compile (the app still writes the id on the control
+    too, so the two can still name different types), and a `hint` and an `error` shown together;
     `e.aria(f.qty).hint(&FieldHintId(&QtyId))` on the control names the hint before the error
     (`aria-describedby={FieldHintId(&QtyId)}` on a control the server never marks)
     ([#554 Kit Field: the control id is written twice, unchecked, and a field cannot show a hint and its error together](https://github.com/todd-skelton/corten/issues/554)).

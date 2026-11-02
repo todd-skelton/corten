@@ -1,8 +1,10 @@
 // corten ui {{version}}: field
 //! A label, the control it names, a hint and the field's error from the server
 //! (`e.message(f.email)`, drawn in the destructive color). `id` is the control's, a `#[derive(Id)]`
-//! type as every element id is, so the label's `for` and the control's `id` are one type and a
-//! typo does not compile; in a list, the id holds the row's key (`struct PriceId<'a>(&'a str)`).
+//! type as every element id is: the label's `for` is written from it, and the app writes the same
+//! type on the control, so a misspelled name does not compile, though another id type on the control
+//! does and leaves the label naming nothing. In a list, the id holds the row's key
+//! (`struct PriceId<'a>(&'a str)`).
 //! (A label around the control would name its first labelable element, which in corten-ui's
 //! `NumberField` is a step button.)
 //!
@@ -16,7 +18,8 @@
 //! <Field id={QtyId} label={t.quantity()} hint="" error=""><NumberField field={&qty} /></Field>
 //! ```
 //!
-//! `hint=""` and `error=""` draw nothing. A checkbox, a switch and a radio button put their label
+//! `hint=""` and `error=""` show nothing (the hint's element is still written, empty), so name the
+//! hint in the control's description only when it has text. A checkbox, a switch and a radio button put their label
 //! after the control: `Checkbox`, `Switch` and `Radio` do that.
 use corten::prelude::*;
 
