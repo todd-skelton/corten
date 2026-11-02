@@ -1410,6 +1410,13 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#559 Kit Table cannot end-align a number column or let a cell wrap without !important](https://github.com/todd-skelton/corten/issues/559),
     [#562 Kit Table keeps every cell on one line, and an app class cannot let a column wrap without matching the kit's specificity](https://github.com/todd-skelton/corten/issues/562),
     [#567 Kit Table has no sortable column header, so each app hand-writes aria-sort, the sort link and its arrow](https://github.com/todd-skelton/corten/issues/567)).
+169. The kit's sizes are tokens of its theme: `--control-height` (with `-sm` and `-lg`),
+    `--control-padding`, `--control-font-size`, `--card-padding` and `--heading-font-size`, read
+    by the button, field, select, textarea, combobox, menu, tabs, pagination and card stylesheets
+    with today's values as the defaults, so a theme gives every control a 44 px touch target, or a
+    density, in one place
+    ([#561 Kit control heights, spacing and type are literals, so a theme cannot give every control a 44 px touch target without editing each copied file](https://github.com/todd-skelton/corten/issues/561)).
+    An app with its own theme declares them too; `corten ui init` names the ones it lacks.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -2842,6 +2849,11 @@ Corten is pre-1.0, so any minor version may change the API.
     instructions a request on the branch, 92,381 to 92,438, against 92,338 on main, 91,474 to
     92,418)
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
+
+97. The kit's text controls (input, select, textarea, combobox) and menu items showed no focus
+    under forced colors: their ring is a box shadow, which forced colors does not paint, with
+    `outline: none`. They now have a transparent outline, which forced colors paints
+    ([#585 Kit text controls and menu items show no focus under forced colors: the focus ring is a box shadow with outline: none](https://github.com/todd-skelton/corten/issues/585)).
 
 ### Documentation
 

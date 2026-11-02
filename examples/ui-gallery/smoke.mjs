@@ -799,6 +799,34 @@ async function run(browser) {
     return { text: text?.whiteSpace, number: number && `${number.textAlign} ${number.whiteSpace}`, head: style("thead th")?.whiteSpace };
   });
   check("Table: a text cell wraps, a number cell is end aligned on one line", cells.text === "normal" && cells.number === "end nowrap" && cells.head === "nowrap", JSON.stringify(cells));
+  // Sizes are the theme's tokens: one value makes every control a 44 px touch target.
+  const heights = await orders.evaluate(() => {
+    const of = () => ["select", "button[class*='button__md']", "button[class*='button__sm']"].map((s) => document.querySelector(s)?.getBoundingClientRect().height);
+    const before = of();
+    document.documentElement.style.setProperty("--control-height", "2.75rem");
+    const after = of();
+    document.documentElement.style.removeProperty("--control-height");
+    return { before, after };
+  });
+  check(
+    "Sizes: --control-height sets the height of a select and a button of the default size, not a small one",
+    heights.before[0] === 36 && heights.before[1] === 36 && heights.after[0] === 44 && heights.after[1] === 44 && heights.after[2] === heights.before[2],
+    JSON.stringify(heights),
+  );
+  // Under forced colors a box shadow is not painted, so a focused field shows its outline, which is
+  // transparent otherwise.
+  if (engine === "chromium") {
+    const field = orders.getByLabel("Ship from");
+    const ring = async () => {
+      await field.focus();
+      await orders.keyboard.press("Shift");
+      return field.evaluate((el) => ({ visible: el.matches(":focus-visible"), outline: `${getComputedStyle(el).outlineStyle} ${getComputedStyle(el).outlineWidth}` }));
+    };
+    await orders.emulateMedia({ forcedColors: "active" });
+    const forced = await ring();
+    await orders.emulateMedia({ forcedColors: "none" });
+    check("Select: a focused field has an outline under forced colors", forced.visible && forced.outline === "solid 2px", JSON.stringify(forced));
+  } else skip("Select: a focused field has an outline under forced colors", "forced colors are emulated in Chromium only");
   await orders.getByRole("button", { name: "Share the shop" }).click();
   check("Popover: its button opens it", await orders.locator("#share").evaluate((p) => p.matches(":popover-open")));
   await orders.keyboard.press("Escape");

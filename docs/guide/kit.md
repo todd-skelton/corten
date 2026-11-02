@@ -55,6 +55,19 @@ WCAG AA contrast in both themes, which a test of `corten ui` checks: each `-fore
 color, each tone on a card (an alert's text) and the muted text on the page and on a card 4.5:1,
 and `--input` (a field's border) 3:1 on the page.
 
+Sizes are tokens too, so a theme changes them in one place and the copied files stay the kit's:
+`--control-height` (a button, field, select, menu button or page link of the default size; 2.25rem),
+`--control-height-sm` and `--control-height-lg` (2rem and 2.5rem, a small or large button and a
+tab), `--control-padding` (a field's inline padding; .75rem), `--control-font-size` (.875rem),
+`--card-padding` (1.5rem) and `--heading-font-size` (a card's heading; 1rem). A 44 px touch
+target is `"control-height": { "$type": "dimension", "$value": { "value": 2.75, "unit": "rem" } }`;
+a compact density is a modifier context of the app's that sets them lower. A size is the same in
+both themes, so `ui-dark.tokens.json` has none.
+
+A focused field's ring is a box shadow, which forced colors (Windows High Contrast) does not
+paint, so each text control and menu item also has a transparent outline that forced colors
+paints in the system's color: a field shows its focus in either.
+
 ### An app's own theme
 
 An app whose `tokens!` theme has colors when it runs `corten ui init` keeps it, and the components

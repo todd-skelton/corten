@@ -241,12 +241,14 @@ fn init(root: &Path, args: &[String]) -> Result<(), String> {
             let missing: Vec<String> = role_tokens().into_iter().filter(|t| !theme.properties.contains(t)).collect();
             let taken: Vec<&String> = missing.iter().filter(|t| theme.groups.contains(t)).collect();
             if missing.is_empty() {
-                println!("\nThe components read their colors from your theme ({path}), which has every token they read.");
+                println!(
+                    "\nThe components read their colors and sizes from your theme ({path}), which has every token they read."
+                );
             } else {
                 println!(
-                    "\nThe components read their colors from your theme ({path}), which lacks these. Declare each at the top\n\
-                     of a token file, most as a reference to one of yours, so it follows your other themes too\n\
-                     (\"card\": {{ \"$type\": \"color\", \"$value\": \"{{color.surface}}\" }}):\n  {}\n\
+                    "\nThe components read their colors and sizes from your theme ({path}), which lacks these. Declare each at\n\
+                     the top of a token file, most as a reference to one of yours, so it follows your other themes too\n\
+                     (\"card\": {{ \"$type\": \"color\", \"$value\": \"{{color.surface}}\" }}); the kit's sizes are in its ui.tokens.json:\n  {}\n\
                      The app does not start while a component reads one no stylesheet declares, and says which.",
                     missing.join(", ")
                 );
@@ -1325,10 +1327,11 @@ mod tests {
     #[test]
     fn an_app_with_its_own_theme_keeps_it() {
         let names = role_tokens();
-        for name in ["background", "card", "card-foreground", "success", "warning-foreground", "ring", "radius"] {
+        for name in ["background", "card", "card-foreground", "success", "warning-foreground", "ring", "radius", "control-height"]
+        {
             assert!(names.iter().any(|n| n == name), "{names:?}");
         }
-        assert_eq!(names.len(), 26, "{names:?}");
+        assert_eq!(names.len(), 33, "{names:?}");
         let module = list_in(&stamped(OWN_THEME_MODULE), piece("card")).unwrap();
         let module = list_in(&module, piece("alert")).unwrap();
         assert!(module.contains("use corten::Component;\n\npub mod alert;\npub mod card;\n\n/// Each component"), "{module}");
@@ -1595,8 +1598,10 @@ mod tests {
                     if text.contains(&format!("--{name}:")) {
                         continue;
                     }
-                    assert!(light.contains(&format!("\n  \"{name}\": ")), "{file} reads --{name}, which the theme lacks");
-                    if name != "radius" {
+                    let line = light.lines().find(|l| l.starts_with(&format!("  \"{name}\": ")));
+                    assert!(line.is_some(), "{file} reads --{name}, which the theme lacks");
+                    // A size (`radius`, a control's height) is the same in the dark theme.
+                    if !line.is_some_and(|l| l.contains("\"dimension\"")) {
                         assert!(dark.contains(&format!("\n  \"{name}\": ")), "{file} reads --{name}, which the dark theme lacks");
                     }
                 }

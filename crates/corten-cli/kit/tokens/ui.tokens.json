@@ -24,5 +24,12 @@
   "border": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.9059, 0.898, 0.8941], "hex": "#e7e5e4" } },
   "input": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.5686, 0.5412, 0.5216], "hex": "#918a85" } },
   "ring": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.7059, 0.2784, 0.1216], "hex": "#b4471f" } },
-  "radius": { "$type": "dimension", "$value": { "value": 0.625, "unit": "rem" } }
+  "radius": { "$type": "dimension", "$value": { "value": 0.625, "unit": "rem" } },
+  "control-height": { "$type": "dimension", "$value": { "value": 2.25, "unit": "rem" } },
+  "control-height-sm": { "$type": "dimension", "$value": { "value": 2, "unit": "rem" } },
+  "control-height-lg": { "$type": "dimension", "$value": { "value": 2.5, "unit": "rem" } },
+  "control-padding": { "$type": "dimension", "$value": { "value": 0.75, "unit": "rem" } },
+  "control-font-size": { "$type": "dimension", "$value": { "value": 0.875, "unit": "rem" } },
+  "card-padding": { "$type": "dimension", "$value": { "value": 1.5, "unit": "rem" } },
+  "heading-font-size": { "$type": "dimension", "$value": { "value": 1, "unit": "rem" } }
 }
