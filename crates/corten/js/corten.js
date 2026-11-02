@@ -1260,7 +1260,7 @@ function layoutChanges(doc, notice) {
         // page: it stays.
         if (!old.isConnected || drawn.get(old) !== was) continue;
         const markup = markupOf(el);
-        drawLayout(old, el);
+        drawLayout(old, el, was && !was.startsWith("\0") ? parse(was).firstElementChild : null, said);
         const now = old.isConnected ? old : el;
         drawn.set(now, markup);
         setVars(now);
@@ -1274,15 +1274,20 @@ const LIVE = '[role="status"], [role="alert"], [aria-live]';
 /**
  * Draws `fresh`, the server's markup for the layout element `old`, in its place, as a patch
  * replaces an element ({@link replaceKeeping}), except that a live region in it (a toaster's)
- * stays and takes the new content, as a patch inside it would, so its message is announced. The
- * elements on the way to a region stay too, with the new attributes; one whose children are not
- * the same nodes is replaced whole.
- * @param {Element} old @param {Element} fresh
+ * stays and takes the new content, as a patch inside it would, so its message is announced.
+ * Inside an element kept for a region, what the server draws as it drew it before (`before`, its
+ * earlier markup, when known) stays as it is, with what a script did to it (a toaster's button it
+ * showed), unless it shows the notice (`said`); anything else of the same shape is drawn in place,
+ * so an element a script holds stays the one it holds, and one of another shape is replaced.
+ * @param {Element} old @param {Element} fresh @param {Element | null} before @param {string | null} said @param {boolean} [inside]
  */
-function drawLayout(old, fresh) {
-  if (old.localName !== fresh.localName || !(old.matches(LIVE) || old.querySelector(LIVE))) return replaceKeeping(old, fresh, null);
+function drawLayout(old, fresh, before, said, inside = false) {
+  if (old.localName !== fresh.localName || !(inside || old.matches(LIVE) || old.querySelector(LIVE))) return replaceKeeping(old, fresh, null);
+  const on = old.getAttribute("data-on");
   for (const a of Array.from(old.attributes)) if (!fresh.hasAttribute(a.name)) old.removeAttribute(a.name);
   for (const a of Array.from(fresh.attributes)) if (old.getAttribute(a.name) !== a.value) old.setAttribute(a.name, a.value);
+  // Its new handlers are listened for; a kept element's `on:connect` does not run again.
+  if (old.getAttribute("data-on") !== on) scan(old, new Set());
   if (old.matches(LIVE)) {
     const content = document.createDocumentFragment();
     content.append(...Array.from(fresh.childNodes));
@@ -1292,11 +1297,16 @@ function drawLayout(old, fresh) {
   }
   const [mine, theirs] = [Array.from(old.childNodes), Array.from(fresh.childNodes)];
   if (mine.length !== theirs.length || mine.some((n, i) => n.nodeName !== theirs[i].nodeName)) return replaceKeeping(old, fresh, null);
+  const then = before && before.childNodes.length === theirs.length ? before.childNodes : null;
   mine.forEach((n, i) => {
-    const there = theirs[i];
+    const [there, was] = [theirs[i], then?.[i]];
     if (!(n instanceof Element)) {
-      if (n.nodeValue !== there.nodeValue) n.nodeValue = there.nodeValue;
-    } else if (comparable(n.outerHTML) !== markupOf(/** @type {Element} */ (there))) drawLayout(n, /** @type {Element} */ (there));
+      if (was?.nodeValue !== there.nodeValue && n.nodeValue !== there.nodeValue) n.nodeValue = there.nodeValue;
+      return;
+    }
+    const fresh = /** @type {Element} */ (there);
+    const same = was instanceof Element && was.localName === n.localName && comparable(was.outerHTML) === markupOf(fresh);
+    if (!same || (said && fresh.textContent?.includes(said))) drawLayout(n, fresh, was instanceof Element ? was : null, said, true);
   });
 }
 

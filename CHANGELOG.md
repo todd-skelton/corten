@@ -2208,9 +2208,11 @@ Corten is pre-1.0, so any minor version may change the API.
     (`ReadAgain`) after a write's page stays as it is while nothing changed. A whole document now
     carries its notice in `corten-notice` too, so the runtime announces one the page did not draw.
     A live region in the layout (a toaster's `role="status"`) stays, with the new message put in it,
-    so a screen reader announces it as it does a patch's.
-    Measured: the runtime is 1,240 bytes larger gzipped (10,091 to 11,331; brotli 9,119 to 10,268;
-    27,882 to 31,687 minified), which every first load pays once (it is cached after); a full load
+    so a screen reader announces it as it does a patch's; around it, what the server draws as
+    before stays as a script left it, and the rest is updated in place, so the toaster's close
+    button stays the one its script holds.
+    Measured: the runtime is 1,352 bytes larger gzipped (10,091 to 11,443; brotli 9,119 to 10,376;
+    27,882 to 32,068 minified), which every first load pays once (it is cached after); a full load
     after each such write instead (the issue's first option) costs nothing there but takes each
     write from about 53 ms to about 88 ms below, and marking the layout parts a write may change
     (its second) leaves a part nobody marked stale, which is the bug; keeping the layout to compare (its markup as loaded; it is

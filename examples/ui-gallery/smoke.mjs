@@ -462,7 +462,15 @@ async function run(browser) {
     "the same notice again is shown again",
     "the toaster's live region stays, so its message is announced",
     "a notice whose page loads in full instead reaches the toaster after the load",
+    "the toaster's Dismiss button stays the one its script holds after a dismiss and a write",
+    "a write while the toast shows keeps the button, and it closes the toast",
   ];
+  /** The Dismiss button, marked by `__mine` when it is still the one first drawn, and whether it shows. */
+  const dismissState = () =>
+    page.evaluate(() => {
+      const button = Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.trim() === "Dismiss");
+      return { mine: (/** @type {any} */ (button))?.__mine === 1, visible: !!button?.checkVisibility() };
+    });
   if (engine !== "webkit") {
     // A full load would draw the same toast: the marker says the document was kept.
     await page.evaluate(() => {
@@ -476,6 +484,7 @@ async function run(browser) {
     const renamed = await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Spring draft.", null, { timeout: 5000 }).then(() => true, () => false);
     check(noticeChecks[0], renamed && (await keptDoc()) && (await page.locator("#ui-toast").isVisible()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)), await page.locator("#ui-toast").textContent());
     check(noticeChecks[1], await page.getByRole("button", { name: "Dismiss" }).isVisible());
+    await page.getByRole("button", { name: "Dismiss" }).evaluate((b) => ((/** @type {any} */ (b)).__mine = 1));
     await page.getByRole("button", { name: "Dismiss" }).click();
     check(noticeChecks[2], !(await page.evaluate(async () => (await (await fetch("/")).text()).includes("Renamed to"))));
     // The layout draws the same toast as before, which the user dismissed: it is shown again.
@@ -492,7 +501,19 @@ async function run(browser) {
     });
     check(noticeChecks[4], region.same && region.role === "status", JSON.stringify(region));
     check(noticeChecks[3], again && (await keptDoc()), await page.locator("#ui-toast").evaluate((t) => JSON.stringify({ text: t.textContent, hidden: /** @type {HTMLElement} */ (t).hidden })));
-    await page.getByRole("button", { name: "Dismiss" }).click();
+    const afterDismiss = await dismissState();
+    check(noticeChecks[6], afterDismiss.mine && afterDismiss.visible, JSON.stringify(afterDismiss));
+    // Another write while that toast still shows.
+    await page.getByRole("button", { name: "Rename draft" }).click();
+    await page.locator("#draft-name").fill("Summer draft");
+    await page.getByRole("button", { name: "Rename", exact: true }).click();
+    const summer = await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Summer draft.", null, { timeout: 5000 }).then(() => true, () => false);
+    const whileShown = await dismissState();
+    await page.getByRole("button", { name: "Dismiss" }).click({ timeout: 3000 }).catch(() => {});
+    const closed = await page
+      .waitForFunction(() => !(/** @type {HTMLElement | null} */ (document.querySelector("#ui-toast"))?.checkVisibility()), null, { timeout: 3000 })
+      .then(() => true, () => false);
+    check(noticeChecks[7], summer && whileShown.mine && whileShown.visible && closed, `${summer} ${JSON.stringify(whileShown)} closed ${closed}`);
     // The write's page comes with another frame (here an attribute on <html> changed on the way):
     // the runtime loads it in full, and the notice, whose cookie that answer removed, goes with it.
     await page.route("**/*", async (route) => {
