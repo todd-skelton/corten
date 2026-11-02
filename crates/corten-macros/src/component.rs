@@ -195,6 +195,8 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     // `data-patch` answer can send, which must be a patch (see `corten::view::Patch`).
     let mut returns_doc = false;
     let mut returns_patch = false;
+    // `-> impl ClassList`: a look, the classes it puts on an element the caller writes.
+    let mut returns_classes = false;
     let body = loop {
         match tokens.get(i) {
             Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace && i + 1 == tokens.len() => break g.clone(),
@@ -205,6 +207,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             Some(token) if in_where => where_clause.push(token.clone()),
             Some(TokenTree::Ident(id)) if id.to_string() == "Document" => returns_doc = true,
             Some(TokenTree::Ident(id)) if id.to_string() == "Patch" => returns_patch = true,
+            Some(TokenTree::Ident(id)) if id.to_string() == "ClassList" => returns_classes = true,
             Some(_) => {}
             None => return err(span, "expected the function body"),
         }
@@ -328,6 +331,12 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     let takes_scope = handlers_take_scope(&body.stream(), js_owner.as_ref().map(|_| false));
     let scoped = has_refs || takes_scope || script.as_ref().is_some_and(|s| s.keeps);
     let owner_scope = js_owner.is_some() && handlers_take_scope(&body.stream(), Some(true));
+    if returns_classes && (script.is_some() || js_owner.is_some() || view.is_some() || scoped) {
+        return err(
+            name.span(),
+            format!("{name} returns classes, which a caller puts on its own element, so it has no markup to give a script, refs, a scope or a view"),
+        );
+    }
     let body = if scoped { mark_root(&body, &scope_name)? } else { body };
 
     let css = args.css;
@@ -470,6 +479,45 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         Some(owner) => q("#[cfg(debug_assertions)] ::corten::style::__private::rendered(&__A0);", &[owner]),
         None => TokenStream::new(),
     };
+    if returns_classes {
+        if css.is_none() {
+            return err(
+                name.span(),
+                format!(
+                    "{name} returns classes, so it is a look: #[component(css)] (or css = Owner), its classes from a stylesheet"
+                ),
+            );
+        }
+        // The classes, with the stylesheet's constants in scope, written where `class={..}` is.
+        let mut markup = scope;
+        markup.extend(q(
+            "::corten::style::ClassList::write_classes(&__A0, __corten_component_out);",
+            &[TokenTree::Group(body).into()],
+        ));
+        let markup = TokenTree::Group(Group::new(Delimiter::Brace, markup));
+        let write = q(
+            "fn write_classes(&self, __corten_component_out: &mut ::std::string::String) {
+                #[allow(unused_imports)]
+                use ::corten::view::__private::{ParamCopy as _, ParamRef as _};
+                __A0
+                __A1
+                __A2
+            }",
+            &[lets, markup.into(), used],
+        );
+        out.extend(q(
+            "#[automatically_derived] impl __A0 ::corten::style::ClassList for __A1 __A2 __A3",
+            &[
+                impl_generics,
+                TokenTree::Ident(Ident::new(&name.to_string(), name.span())).into(),
+                type_generics,
+                stream(where_clause),
+            ],
+        ));
+        out.extend([TokenTree::Group(Group::new(Delimiter::Brace, write))]);
+        out.extend(items);
+        return Ok(out);
+    }
     let doc_body = body.clone();
     let render_fn = if returns_patch { "::corten::view::__private::render_patch" } else { "::corten::view::Render::render" };
     let draw = if scoped {

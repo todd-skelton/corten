@@ -291,6 +291,7 @@ pub mod prelude {
         raw,
         route::{delete, get, post, put},
         script::{el, refs, Handler, Ref},
+        style::ClassList,
         view::Id,
         Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Files, Form, FromRef, HtmlResult, Identify,
         Methods, Middleware, Mode, Next, NoStore, Notice, Params, Patch, Public, ReadAgain, Refused, Render, Req, Route, Routes,

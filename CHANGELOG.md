@@ -1393,6 +1393,23 @@ Corten is pre-1.0, so any minor version may change the API.
     (the app's `Field` beside the kit's), naming the app's file, before it writes anything: the two
     would style one class prefix, and the program would not link
     ([#550 A kit component and an app component with the same name fail at link time, and corten ui add does not warn](https://github.com/todd-skelton/corten/issues/550)).
+167. A look: a component that returns `impl ClassList` (`#[component(css)] fn Button(variant:
+    ButtonVariant, size: ButtonSize) -> impl ClassList`) is its classes, written on the app's own
+    element, `<button type="submit" class={Button { variant, size }}>`, so the element is the
+    app's: no wrapper, no `display: contents`, and a script's `parentElement`, a `> button` rule or
+    a `<summary>` sees the element it expects. It takes a stylesheet (its own or an owner's) and no
+    script, refs or view, and used as an element (`<Button>`) it does not compile (design.md
+    Choice 16; [Looks](docs/guide/styles.md#looks))
+    ([#558 Kit wrappers accept any children, so a Switch without role="switch" or a Button around a summary compiles and silently breaks](https://github.com/todd-skelton/corten/issues/558):
+    its Button around a `<summary>` and Input on a `<select>`; a Switch's role is still the app's).
+168. The kit's Table has a `TableNumeric` look for a number column (aligned to its end, tabular
+    figures, on one line) and a `SortHeader` for a column the table sorts by: a typed link to the
+    page sorted by it, `aria-sort` on the column sorted now, and an arrow drawn, not written. Its
+    cell rules have no specificity (`:where`), so one class of the app's on a cell wins, and
+    cells wrap as text does while headers stay on one line
+    ([#559 Kit Table cannot end-align a number column or let a cell wrap without !important](https://github.com/todd-skelton/corten/issues/559),
+    [#562 Kit Table keeps every cell on one line, and an app class cannot let a column wrap without matching the kit's specificity](https://github.com/todd-skelton/corten/issues/562),
+    [#567 Kit Table has no sortable column header, so each app hand-writes aria-sort, the sort link and its arrow](https://github.com/todd-skelton/corten/issues/567)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -2194,6 +2211,30 @@ Corten is pre-1.0, so any minor version may change the API.
     stylesheet that sets `color-scheme` as it is, saying what to add; `corten ui add` lists
     `corten_ui::COMPONENTS` beside the kit's list wherever it is, and not again when a file has it
     ([#551 corten ui init on an app that already has tokens adds a second theme instead of mapping onto the app's](https://github.com/todd-skelton/corten/issues/551)).
+104. The kit's Button, Input, Textarea, Select, Slider, Badge, Card, CardHeader, CardContent,
+    CardFooter, Dialog, DialogFooter, Sheet, Popover and Accordion are looks:
+    `<button class={Button { variant: ButtonVariant::Primary, size: ButtonSize::Md }}>` where it was `<Button ..><button>..</button></Button>`, and
+    `<section class={Card {}}>` (or an `<article>`, an `<li>`, a form, a patch target) where
+    `Card` drew a `<div>`, and `<dialog class={Dialog {}}>` where `Dialog` wrapped the
+    `<dialog>`. Alert, Switch, Checkbox and Field still draw their element, for a
+    role or a label. A copy made before is replaced with `corten ui add --force <name>`, and its
+    uses change as shown
+    ([#563 Kit Card and Alert render their own div, so a card cannot be the page's section, article or list item](https://github.com/todd-skelton/corten/issues/563),
+    [#565 Kit Card draws its own div, so a card cannot be a patch target, a labelled section or a form without a wrapper](https://github.com/todd-skelton/corten/issues/565)).
+105. The kit's Badge takes a tone (`Neutral`, `Primary`, `Info`, `Success`, `Warning`,
+    `Destructive`) and an emphasis (`Solid`, `Soft`, `Outline`), `class={Badge { tone, emphasis }}`,
+    in place of one variant per look; a soft badge is a 12% tint of its tone, and every pair
+    keeps at least 4.5:1 contrast on the page and on a card in both themes, which a test checks
+    ([#569 Kit Badge has one look per tone, so an app cannot tell a filled status from an outlined one as MUI Chip does](https://github.com/todd-skelton/corten/issues/569)).
+106. The kit's Field takes the control's `#[derive(Id)]` id, `id={QtyId}`, and writes its label's
+    `for` from it, so a misspelled name does not compile (the app still writes the id on the control
+    too, so the two can still name different types), and a `hint` and an `error` shown together;
+    `e.aria(f.qty).hint(&FieldHintId(&QtyId))` on the control names the hint before the error
+    (`aria-describedby={FieldHintId(&QtyId)}` on a control the server never marks)
+    ([#554 Kit Field: the control id is written twice, unchecked, and a field cannot show a hint and its error together](https://github.com/todd-skelton/corten/issues/554)).
+107. corten-ui's `PrintButton` and `CopyButton` take a `class`, the button's look
+    (`class={Button { .. }}` from the kit, `class={()}` for none), so a kit app styles them as its
+    other buttons.
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

@@ -138,6 +138,56 @@
 //! # fn main() {}
 //! ```
 //!
+//! A look (`-> impl ClassList`) is classes the caller puts on its own element, alone or with its own:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn BadgeList(hot: bool) -> impl ClassList {
+//!     (List, hot.then_some(Hot))
+//! }
+//!
+//! let html = html! { <li class={(BadgeList { hot: true }, "mine")}>"Foil"</li> }.to_html();
+//! assert_eq!(html, r#"<li class="badge-list__list badge-list__hot mine">Foil</li>"#);
+//! ```
+//!
+//! It has no markup, so it is not an element:
+//!
+//! ```compile_fail,E0277
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn BadgeList() -> impl ClassList {
+//!     List
+//! }
+//!
+//! let _ = html! { <ul><BadgeList /></ul> };
+//! ```
+//!
+//! nor has refs or a scope for a script:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(css)]
+//! fn BadgeList() -> impl ClassList {
+//!     let row = refs();
+//!     List
+//! }
+//! ```
+//!
+//! and its classes are a stylesheet's:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component]
+//! fn BadgeList() -> impl ClassList {
+//!     "list"
+//! }
+//! ```
+//!
 //! A class the stylesheet does not have does not compile:
 //!
 //! ```compile_fail
@@ -611,6 +661,12 @@ impl ClassList for Class {
     }
 }
 
+/// No classes: for a component that takes a `class` (corten-ui's `PrintButton`) and is given none.
+impl ClassList for () {
+    #[inline]
+    fn write_classes(&self, _: &mut String) {}
+}
+
 impl<const N: usize> ClassList for Classes<N> {
     #[inline]
     fn write_classes(&self, out: &mut String) {
@@ -881,6 +937,12 @@ mod tests {
         html! { <span class={Badge}>{n}</span> }
     }
 
+    /// A look with the stylesheet of BadgeList: classes the caller puts on its own element.
+    #[component(css = BadgeList)]
+    fn BadgeLook(hot: bool) -> impl ClassList {
+        (Badge, hot.then_some(Hot))
+    }
+
     #[test]
     fn classes_are_scoped_static_where_possible_and_lists_skip_empty_values() {
         let html = BadgeList { badges: &["a", "b"], hot: false, extra: Some("x<y") }.to_html();
@@ -1080,5 +1142,9 @@ mod tests {
         let (html, used) = collect(|| BadgeCount { n: 1 }.to_html());
         assert!(html.contains("badge-list__badge"));
         assert_eq!(used.iter().map(|c| c.name).collect::<Vec<_>>(), ["BadgeList"], "a helper reports its stylesheet's owner");
+        // A look counts as rendered where its classes are written, as its stylesheet's owner.
+        let (html, used) = collect(|| html! { <li class={BadgeLook { hot: true }}>"Foil"</li> }.to_html());
+        assert_eq!(html, r#"<li class="badge-list__badge badge-list__hot">Foil</li>"#);
+        assert_eq!(used.iter().map(|c| c.name).collect::<Vec<_>>(), ["BadgeList"], "a look reports its stylesheet's owner");
     }
 }
