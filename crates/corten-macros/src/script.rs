@@ -1686,6 +1686,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::growth::linear;
 
     #[test]
     fn a_script_that_imports_keep_keeps_state() {
@@ -1907,14 +1908,15 @@ function helper() {}
         for i in 0..40 {
             source += &format!("/** @typedef {{string}} S{i} */\n");
         }
-        for i in 0..400 {
-            source += &format!("/** @typedef {{A{} | null}} A{i} */\n", i + 1);
-        }
-        source += "/** @typedef {{ id: string, data: Json }} Saved */\n/** @param {Json} a @param {Saved} b @param {A0} c */\nexport function f(a, b, c) {}";
-        let started = std::time::Instant::now();
-        let (handlers, _) = parse(&source).unwrap();
-        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
-        assert!(handlers[0].params.iter().all(|(_, p)| *p == Param::Any), "{:?}", handlers[0].params);
+        linear("aliases beside a recursive type, and a chain", 400, |n| {
+            let mut source = source.clone();
+            for i in 0..n {
+                source += &format!("/** @typedef {{A{} | null}} A{i} */\n", i + 1);
+            }
+            source += "/** @typedef {{ id: string, data: Json }} Saved */\n/** @param {Json} a @param {Saved} b @param {A0} c */\nexport function f(a, b, c) {}";
+            let (handlers, _) = parse(&source).unwrap();
+            assert!(handlers[0].params.iter().all(|(_, p)| *p == Param::Any), "{:?}", handlers[0].params);
+        });
     }
 
     #[test]
@@ -2052,40 +2054,6 @@ export function f(a, b, c, d, e) {}"#;
             let why = refusal(&format!("/** @param {{{many}}} a */\nexport function f(a) {{}}"));
             assert!(why.contains("generated declaration"));
         });
-    }
-
-    /// `case` at size `n` runs in about linear time. Under a second is (a quadratic parse of these
-    /// sizes takes far longer); slower, on a busy machine, it is checked by its growth instead: at
-    /// `n` about four times as long as at `n / 4`, not sixteen, the fastest of two runs at each
-    /// size, so the load slows both alike rather than failing a bound on the clock.
-    fn linear(name: &str, n: usize, case: impl Fn(usize)) {
-        let time = |n: usize| {
-            let started = std::time::Instant::now();
-            case(n);
-            started.elapsed()
-        };
-        let first = time(n);
-        if first < std::time::Duration::from_secs(1) {
-            return;
-        }
-        let (quarter, whole) = (time(n / 4).min(time(n / 4)), first.min(time(n)));
-        // Ten times, with 20 ms for a size so small that timer noise is most of it.
-        let bound = quarter * 10 + std::time::Duration::from_millis(20);
-        assert!(whole < bound, "{name}: {whole:?} at {n}, {quarter:?} at {}", n / 4);
-    }
-
-    /// The growth check fails a case that grows with the square of its size once it takes a
-    /// second: 16 times the time at a quarter of the size, past the bound of 10.
-    #[test]
-    #[should_panic(expected = "quadratic")]
-    fn linear_fails_a_quadratic_case() {
-        linear("quadratic", 1_000, |n| std::thread::sleep(std::time::Duration::from_micros((n * n) as u64 * 11 / 10)));
-    }
-
-    /// And passes one that grows with its size, however slow the machine makes it.
-    #[test]
-    fn linear_passes_a_linear_case() {
-        linear("linear", 1_000, |n| std::thread::sleep(std::time::Duration::from_micros(n as u64 * 1_100)));
     }
 
     #[test]
