@@ -2,7 +2,8 @@
 
 [Back to the guides](../../README.md#documentation)
 
-Corten has two ways to keep a page current, both over server-sent events.
+Corten has two ways to keep a page current, both over server-sent events, and a third for a
+script of the app's own: named events of JSON.
 
 ## Fragments: `<corten-live>`
 
@@ -242,3 +243,42 @@ with clients back on the other instance after 1.1 s at the median (measured,
 
 Native apps and agents follow the same feed with `corten-protocol`'s `Replica`; see
 [Surfaces](../architecture.md).
+
+## Named events: `corten::events`
+
+For a script that reads a stream itself with `EventSource` (a job's progress drawn in a bar, a
+status a native client follows), `corten::events(stream)` (feature `json`) sends each
+`Message` as `event: <name>` with `data: <JSON>`. The route is a JSON route: a failure before
+the stream starts is answered as JSON. As with `corten::live`, the stream is kept alive with a
+comment every 15 seconds and ends when the app starts shutting down, so a deploy is not held open
+by its clients.
+
+```rust,ignore
+// GET /jobs/{job}/progress: the job's state each time it moves, then a last word
+async fn progress(State(jobs): State<Jobs>, job: JobId, since: LiveSince) -> EventsResponse {
+    corten::events(jobs.changes(job, since).map(|state| match state {
+        Some(state) => Message::new("progress", &state).cursor(state.version.to_string()),
+        None => Message::new("gone", &()),
+    }))
+}
+```
+
+```js
+/** @param {string} url @param {AbortSignal} signal */
+export function follow(url, signal) {
+  const progress = new EventSource(url);
+  signal.addEventListener("abort", () => progress.close());
+  progress.addEventListener("progress", (event) => draw(JSON.parse(event.data)));
+  progress.addEventListener("gone", () => progress.close());
+}
+```
+
+A message's cursor is the event's `id`, which a reconnecting `EventSource` sends back as
+`Last-Event-ID`; `LiveSince` reads it, so the handler resumes after it. When the stream ends,
+an `EventSource` connects again, so a stream that has a last word sends a message the script
+closes on. A name is one line without a colon (another panics); a cursor with a line break or NUL
+panics in debug builds and is dropped in release.
+
+Prefer `<corten-live>` when the server can draw the part, and a feed when the script keeps rows:
+both already resume, reconnect and stop with the element. Named events are for the data a script
+of the app's own draws.

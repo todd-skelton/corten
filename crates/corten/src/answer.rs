@@ -79,7 +79,7 @@ pub enum Format {
 /// What a handler named in `#[corten::routes]` returns: the type says how the route's failures are
 /// answered ([`Answer::FORMAT`]) and what the handler may read ([`Answer::Inputs`]). Implemented
 /// for [`HtmlResult`], [`JsonResult<T>`], `Result<JsonResponse, JsonError>`, [`Public`], [`NoStore`], text, a bare `StatusCode`,
-/// [`LiveResponse`], feeds, [`Media`], a [`Relay`], [`PageOr`] and [`crate::seo::File`]; a crate may add
+/// [`LiveResponse`], [`EventsResponse`], feeds, [`Media`], a [`Relay`], [`PageOr`] and [`crate::seo::File`]; a crate may add
 /// its own.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer a route can name",
@@ -294,6 +294,8 @@ macro_rules! for_everyone {
 }
 
 for_everyone!(&'static str, String, StatusCode, Relay, Media, LiveResponse);
+#[cfg(feature = "json")]
+for_everyone!(EventsResponse);
 
 #[cfg(feature = "feed")]
 impl<T> ForEveryone for corten_feed::FeedResponse<T> {
@@ -997,6 +999,24 @@ impl IntoResponse for LiveResponse {
 
 impl Answer for LiveResponse {
     const FORMAT: Format = Format::Html;
+    type Inputs = AnyInputs;
+    type Rows = NotAFeed;
+}
+
+/// Named events of JSON: what [`crate::events`] gives.
+#[cfg(feature = "json")]
+pub struct EventsResponse(pub(crate) Response);
+
+#[cfg(feature = "json")]
+impl IntoResponse for EventsResponse {
+    fn into_response(self) -> Response {
+        self.0
+    }
+}
+
+#[cfg(feature = "json")]
+impl Answer for EventsResponse {
+    const FORMAT: Format = Format::Json;
     type Inputs = AnyInputs;
     type Rows = NotAFeed;
 }

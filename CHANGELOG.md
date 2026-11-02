@@ -1393,6 +1393,11 @@ Corten is pre-1.0, so any minor version may change the API.
     (the app's `Field` beside the kit's), naming the app's file, before it writes anything: the two
     would style one class prefix, and the program would not link
     ([#550 A kit component and an app component with the same name fail at link time, and corten ui add does not warn](https://github.com/todd-skelton/corten/issues/550)).
+167. `corten::events(stream)` and `Message` (feature `json`): a route answers server-sent events
+    of the app's own JSON, `event: <name>` with `data: <JSON>` and the message's cursor as its `id`,
+    for a script's `EventSource` or a native client. It is kept alive and ends at shutdown like
+    `corten::live`, and a failure before the stream starts is answered as JSON
+    ([#583 A route cannot answer server-sent events of its own JSON, only live HTML patches or a feed's rows, so a progress stream is sent as a Relay and holds the shutdown open](https://github.com/todd-skelton/corten/issues/583)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

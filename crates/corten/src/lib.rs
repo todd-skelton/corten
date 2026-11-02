@@ -111,7 +111,7 @@ pub use answer::{
     Answer, FileAnswer, ForAll, ForOne, HtmlResponse, HtmlResult, LiveResponse, Media, NoStore, PageOr, Public, Relay,
 };
 #[cfg(feature = "json")]
-pub use answer::{JsonError, JsonResponse, JsonResult};
+pub use answer::{EventsResponse, JsonError, JsonResponse, JsonResult};
 pub use api::Api;
 pub use app::{listeners, serve, serve_on, serve_wrapped, App, Area};
 /// The axum version Corten is built on, so an app never depends on a second one.
@@ -447,16 +447,93 @@ impl Fragment {
     /// would end the event: that panics in debug builds, and in release the fragment is sent
     /// without its cursor (logged), so a reconnect draws the part again.
     pub fn cursor(mut self, cursor: impl Into<String>) -> Self {
-        let cursor = cursor.into();
-        if cursor.contains(['\n', '\r', '\0']) {
-            let message = format!("corten: a live fragment's cursor holds a line break or NUL: {cursor:?}");
-            if cfg!(debug_assertions) {
-                panic!("{message}");
-            }
-            tracing::error!("{message}");
-            return self;
+        self.cursor = event_cursor(cursor.into(), "live fragment");
+        self
+    }
+}
+
+/// `cursor`, unless it holds a line break or NUL, which would end the event: that panics in debug
+/// builds, and in release it is dropped (logged), so a reconnect starts from the beginning.
+fn event_cursor(cursor: String, of: &str) -> Option<String> {
+    if cursor.contains(['\n', '\r', '\0']) {
+        let message = format!("corten: a {of}'s cursor holds a line break or NUL: {cursor:?}");
+        if cfg!(debug_assertions) {
+            panic!("{message}");
         }
-        self.cursor = Some(cursor);
+        tracing::error!("{message}");
+        return None;
+    }
+    Some(cursor)
+}
+
+/// Streams named events of JSON, server-sent events the app's own script (`EventSource`), a
+/// native client or an agent reads: a job's progress, a status that changes. Each item is a
+/// [`Message`], `event: <name>` with `data: <JSON>`, and its cursor, if any, as the event's `id`,
+/// which a reconnecting client sends back as `Last-Event-ID` ([`LiveSince`]). As with [`live`],
+/// the stream is kept alive with a comment every 15 seconds, and it ends when the app starts
+/// shutting down, so a graceful shutdown is not held open by its clients (an `EventSource`
+/// reconnects, to another instance or this one restarted).
+///
+/// When `messages` ends, the response ends. An `EventSource` reconnects after that, so a stream
+/// with a last word (done, or no such job) sends a message the script closes on.
+///
+/// ```
+/// use corten::{prelude::*, EventsResponse, Message};
+/// use futures_util::stream;
+///
+/// #[derive(ToJson)]
+/// struct Progress { done: u32, of: u32 }
+///
+/// async fn progress() -> EventsResponse {
+///     corten::events(stream::iter((1..=3).map(|done| Message::new("progress", &Progress { done, of: 3 }).cursor(done.to_string()))))
+/// }
+/// ```
+///
+/// A route answering it is a JSON route: a failure before the stream starts is answered as JSON.
+#[cfg(feature = "json")]
+pub fn events<S>(messages: S) -> crate::EventsResponse
+where
+    S: Stream<Item = Message> + Send + 'static,
+{
+    let events = messages.map(|Message { name, data, cursor }| {
+        let event = Event::default().event(name);
+        Ok::<_, Infallible>(
+            match cursor {
+                Some(cursor) => event.id(cursor),
+                None => event,
+            }
+            .data(data),
+        )
+    });
+    crate::answer::EventsResponse(Sse::new(events.take_until(draining())).keep_alive(KeepAlive::default()).into_response())
+}
+
+/// One event of an [`events`] stream: its name, its data as JSON and the app's cursor after it.
+#[cfg(feature = "json")]
+pub struct Message {
+    name: &'static str,
+    data: String,
+    cursor: Option<String>,
+}
+
+#[cfg(feature = "json")]
+impl Message {
+    /// The event `name` (what `addEventListener(name, ..)` listens for) with `data`'s JSON. A name
+    /// is one line of text: one with a line break, a NUL or a colon panics, since it would end the
+    /// event or be read as another field.
+    pub fn new(name: &'static str, data: &(impl crate::ToJson + ?Sized)) -> Self {
+        assert!(
+            !name.is_empty() && !name.contains(['\n', '\r', '\0', ':']),
+            "corten: an event's name is one line of text without a colon: {name:?}"
+        );
+        Message { name, data: data.to_json(), cursor: None }
+    }
+
+    /// The app's cursor after this message: the point in its data a reconnect resumes from
+    /// ([`LiveSince`]). A cursor cannot hold a line break or a NUL: that panics in debug builds,
+    /// and in release the message is sent without it (logged).
+    pub fn cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.cursor = event_cursor(cursor.into(), "message");
         self
     }
 }
@@ -467,7 +544,7 @@ impl From<String> for Fragment {
     }
 }
 
-/// Where a [`live`] stream resumes: the cursor of the last [`Fragment`] the browser received,
+/// Where a [`live`] or [`events`] stream resumes: the cursor of the last [`Fragment`] the browser received,
 /// from `Last-Event-ID` when it reconnects, or else the `since` the page gave its element,
 /// `<corten-live src={..} since={cursor}>`, on the first connection. `None` when there is
 /// neither, and the handler draws the part as it is now.

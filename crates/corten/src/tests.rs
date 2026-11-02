@@ -400,6 +400,42 @@ async fn a_live_watch_sends_the_latest_value_from_where_the_page_is() {
     assert_eq!(body(current).await, "event: end\ndata: end\n\n", "nothing to send");
 }
 
+/// Named events of the app's own JSON, each with its cursor when it has one; a line break in the
+/// JSON is split into data lines, which a client joins back.
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn an_events_stream_sends_named_json_with_its_cursor() {
+    use crate::Message;
+    #[derive(crate::ToJson)]
+    struct Batch {
+        done: u32,
+        note: &'static str,
+    }
+    let messages = || {
+        futures_util::stream::iter([
+            Message::new("batch", &Batch { done: 3, note: "a" }).cursor("v3"),
+            Message::new("error", "no such batch"),
+            Message::new("raw", &crate::json::Raw::new(b"{\n\"a\": 1}".to_vec()).unwrap()),
+        ])
+    };
+    let router = Router::new().route("/", get(move || async move { crate::events(messages()) }));
+    let (status, headers, body) = call(router, "GET", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["content-type"], "text/event-stream");
+    assert_eq!(
+        body,
+        "event: batch\nid: v3\ndata: {\"done\":3,\"note\":\"a\"}\n\nevent: error\ndata: \"no such batch\"\n\nevent: raw\ndata: {\ndata: \"a\": 1}\n\n",
+        "no end event of Corten's: the app's script reads only its own"
+    );
+}
+
+#[cfg(feature = "json")]
+#[test]
+#[should_panic(expected = "one line of text without a colon")]
+fn an_event_name_is_one_line() {
+    let _ = crate::Message::new("batch\nevent: other", &1);
+}
+
 #[tokio::test]
 async fn a_live_fragment_carries_its_cursor_and_a_reconnect_reads_it_back() {
     use crate::{Fragment, LiveSince};
