@@ -86,7 +86,7 @@ was sent (every `listing` sent must agree, a flag set by any `dimension.*`) impl
 `corten::route::FromQuery` with two derived sets of the same names: `type Link<'a>` (writes links,
 as narrow as the value, via `link`) and `type Read` (owned, `Vec` fields, read back and turned into
 the value by `from_query`; an older name it still reads but links never write is a
-`#[route(read_only)]` field on `Read` alone, never a field the link sets to `None`); never
+`#[route(read_only)]` field on `Read` alone, which only a `Read` set may have); never
 implement `QueryParams` by hand or reach into
 `corten::route::__private`, and keep a set of plain fields derived. Parameters whose names are data (an option per dimension) are a
 `#[route(prefix = "dimension.")] dimensions: &BTreeMap<String, String>` field, never a query string

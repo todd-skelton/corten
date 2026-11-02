@@ -3357,11 +3357,9 @@ fn an_older_name_is_read_and_never_written() {
         let read = <SearchRoute as FromUrl>::__read((), query).unwrap();
         assert_eq!(read.terms, Terms(words.map(str::to_owned)), "{query}");
     }
-    // A read set's read-only field is never written, even by the set itself.
-    let read = TermsRead { q: vec!["mew".into()], search: vec!["pika".into()] };
-    let mut out = String::new();
-    crate::route::QueryParams::write_params(&read, &mut true, false, &mut out);
-    assert_eq!(out, "?q=mew");
+    // The route counts the older name with its own, though no link writes it.
+    use crate::route::__private::{Key, ReadKeys};
+    assert!(<Terms as ReadKeys>::__KEYS.iter().any(|k| matches!(k, Key::ReadOnly("search"))));
 }
 
 /// A `FromQuery` set inside a derived one, beside the outer set's own names.
