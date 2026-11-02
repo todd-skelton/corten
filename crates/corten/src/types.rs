@@ -154,11 +154,13 @@ impl Types {
     }
 
     /// Writes [`Types::typescript`] to `path` when it differs from what is there, and then panics
-    /// with the file name, so a test that calls it fails until the new file is committed.
+    /// with the file name, so a test that calls it fails until the new file is committed. Line
+    /// endings do not count: a checkout that writes the file with CRLF (Git's `core.autocrlf` on
+    /// Windows) has it as committed.
     pub fn sync(&self, path: impl AsRef<Path>) {
         let path = path.as_ref();
         let text = self.typescript();
-        if std::fs::read_to_string(path).ok().as_deref() == Some(text.as_str()) {
+        if std::fs::read_to_string(path).is_ok_and(|was| was.replace("\r\n", "\n") == text) {
             return;
         }
         if let Some(dir) = path.parent() {
@@ -420,5 +422,9 @@ export {};
         assert!(stale.is_err(), "a missing file fails once");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), types.typescript());
         types.sync(&path);
+        // A checkout with CRLF line endings (`core.autocrlf`) is the same file (#600).
+        std::fs::write(&path, types.typescript().replace('\n', "\r\n")).unwrap();
+        types.sync(&path);
+        assert!(std::fs::read_to_string(&path).unwrap().contains("\r\n"), "left as it was");
     }
 }

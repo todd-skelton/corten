@@ -2849,6 +2849,11 @@ Corten is pre-1.0, so any minor version may change the API.
     directory that is neither (or a corten crate in a directory not named `corten`, beside
     which `corten ui add` would not find corten-ui) is refused before anything is written
     ([#560 corten new --corten-path takes the repository root and writes a corten dependency that does not build](https://github.com/todd-skelton/corten/issues/560)).
+103. `Types::sync` compared the types file byte for byte, so a Windows checkout whose Git writes
+    CRLF line endings (`core.autocrlf`, Git for Windows' default) failed the types test once,
+    saying the Rust types had changed, and rewrote the file with LF, which Git shows as no change.
+    Line endings no longer count
+    ([#600 Types::sync fails once on every Windows checkout with core.autocrlf: a CRLF types file counts as out of date, is rewritten as LF, and git shows no change](https://github.com/todd-skelton/corten/issues/600)).
 
 ### Documentation
 
