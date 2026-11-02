@@ -404,7 +404,7 @@ async fn a_live_watch_sends_the_latest_value_from_where_the_page_is() {
 /// JSON is split into data lines, which a client joins back.
 #[cfg(feature = "json")]
 #[tokio::test]
-async fn an_events_stream_sends_named_json_with_its_cursor() {
+async fn an_event_stream_sends_named_json_with_its_cursor() {
     use crate::StreamEvent;
     #[derive(crate::ToJson)]
     struct Batch {
@@ -429,13 +429,35 @@ async fn an_events_stream_sends_named_json_with_its_cursor() {
     );
 }
 
-#[cfg(feature = "json")]
+#[cfg(all(feature = "json", debug_assertions))]
 #[test]
-#[cfg_attr(debug_assertions, should_panic(expected = "one line of text that is not empty"))]
+#[should_panic(expected = "one line of text that is not empty")]
 fn an_event_name_is_one_line() {
-    // In release, the event is not sent.
     let _ = crate::StreamEvent::new("batch\nevent: other", &1);
+}
+
+#[cfg(all(feature = "json", debug_assertions))]
+#[test]
+#[should_panic(expected = "one line of text that is not empty")]
+fn an_event_name_is_not_empty() {
     let _ = crate::StreamEvent::new("", &1);
+}
+
+/// In release, an event whose name would break the stream is not sent; the others are.
+#[cfg(all(feature = "json", not(debug_assertions)))]
+#[tokio::test]
+async fn an_event_with_a_broken_name_is_not_sent() {
+    use crate::StreamEvent;
+    let events = || {
+        futures_util::stream::iter([
+            StreamEvent::new("batch\nevent: other", &1),
+            StreamEvent::new("", &2),
+            StreamEvent::new("kept", &3),
+        ])
+    };
+    let router = Router::new().route("/", get(move || async move { crate::event_stream(events()) }));
+    let (_, _, body) = call(router, "GET", None).await;
+    assert_eq!(body, "event: kept\ndata: 3\n\n");
 }
 
 /// An event stream in a routes module: a failure before it starts is JSON, as on any JSON route,

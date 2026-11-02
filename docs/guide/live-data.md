@@ -258,7 +258,7 @@ by its clients.
 async fn progress(State(jobs): State<Jobs>, Params(at): Params<url::JobProgress>, since: LiveSince)
     -> Result<EventStreamResponse, JsonError> {
     let job = jobs.find(at.job).await?.ok_or(Error::status(StatusCode::NOT_FOUND))?;
-    if job.is_done() && since.0.as_deref() == Some(&job.last_version()) {
+    if job.is_done() && since.0.as_deref() == Some(job.last_version().as_str()) {
         return Ok(EventStreamResponse::ended()); // 204: the EventSource stops
     }
     Ok(corten::event_stream(jobs.changes(job, since).map(|state| {
@@ -268,7 +268,7 @@ async fn progress(State(jobs): State<Jobs>, Params(at): Params<url::JobProgress>
 ```
 
 The markup passes the route to the script, never a URL written as text:
-`<div data-ref={bar} on:connect={js::follow(url::JobProgress { job: id }, signal)}>`.
+`<div on:connect={js::follow(url::JobProgress { job: id }, signal)}>`.
 
 ```js
 /** @param {string} url @param {AbortSignal} signal */
@@ -278,7 +278,7 @@ export function follow(url, signal) {
   progress.addEventListener("progress", (event) => {
     const state = JSON.parse(event.data);
     draw(state);
-    if (state.done) progress.close(); // saves the reconnect ended() would answer
+    if (state.finished) progress.close(); // saves the reconnect ended() would answer
   });
 }
 ```
