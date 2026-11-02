@@ -5504,7 +5504,8 @@ async fn a_step_before_http_is_counted_and_timed_as_the_connection() {
     let addr = listeners[0].local_addr().unwrap();
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let routes = Routes::from(Router::new().route("/", get(|| async { "hi" })));
-    let app = App::new(routes).header_timeout(Duration::from_millis(300)).max_connections(1);
+    // Long enough that the two clocks below differ by far more than a loaded machine's delay.
+    let app = App::new(routes).header_timeout(Duration::from_millis(600)).max_connections(1);
     let server = tokio::spawn(crate::app::run(listeners, hello, app, async {
         let _ = stopped.await;
     }));
@@ -5533,20 +5534,22 @@ async fn a_step_before_http_is_counted_and_timed_as_the_connection() {
     let mut rest = Vec::new();
     let closed = tokio::time::timeout(Duration::from_secs(3), stalled.read_to_end(&mut rest)).await;
     assert!(closed.is_ok(), "a stalled step is not held past the header timeout");
-    assert!(started.elapsed() >= Duration::from_millis(250), "{:?}", started.elapsed());
+    assert!(started.elapsed() >= Duration::from_millis(550), "{:?}", started.elapsed());
     let answer = tokio::time::timeout(Duration::from_secs(3), next).await.expect("answered once it closes").unwrap();
     assert!(answer.ends_with("hi"), "{answer}");
 
     // One clock from the accept to the head: a step that takes most of the timeout leaves the
-    // rest for the head, not the whole timeout again.
+    // rest for the head, not the whole timeout again. It closes at 600 ms from the accept; a second
+    // clock would close it at 1,000 ms. The bound is between them, 250 ms from each, so a loaded
+    // machine's delay does not fail it (#594).
     let started = Instant::now();
     let mut slow = tokio::net::TcpStream::connect(addr).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
     slow.write_all(b"hello\n").await.unwrap();
     let mut rest = Vec::new();
     let closed = tokio::time::timeout(Duration::from_secs(3), slow.read_to_end(&mut rest)).await;
     assert!(closed.is_ok(), "a connection with no head after its step is closed");
-    assert!(started.elapsed() < Duration::from_millis(420), "at the header timeout from the accept: {:?}", started.elapsed());
+    assert!(started.elapsed() < Duration::from_millis(850), "at the header timeout from the accept: {:?}", started.elapsed());
 
     stop.send(()).unwrap();
     server.await.unwrap().unwrap();
