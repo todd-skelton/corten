@@ -5,7 +5,7 @@
 //! `corten_ui::COMPONENTS` too.
 //!
 //! ```rust,ignore
-//! <Field label={t.color()} note=""><Combobox><ComboBox field={&picker} /></Combobox></Field>
+//! <Field id={ColorId} label={t.color()} hint="" error=""><Combobox><ComboBox field={&picker} /></Combobox></Field>
 //! ```
 use corten::prelude::*;
 

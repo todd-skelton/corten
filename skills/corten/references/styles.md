@@ -27,6 +27,11 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
    string does not compile. An unused class is a warning, which is an error under
    `corten check` (clippy runs with `-D warnings`).
 3. Variants are a Rust `match` from an enum to class constants.
+   A component that only styles an element the app writes is a look: `-> impl ClassList`,
+   returning its classes, used as `class={Button { variant, size }}` on the app's own `<button>`
+   (no wrapper element, no `display: contents`). Draw an element only when a role or structure
+   needs it (an alert's role, a label around a switch). The kit's Button, Input, Textarea,
+   Select, Slider, Badge, Card and `TableNumeric` are looks.
 4. A helper that shares the file: `#[component(css = OfferList)]` in the owner's module,
    `#[component(css = super::offers::OfferList)]` from another (one stylesheet for a screen whose
    panels are in several files). Classes are in scope only in components; never write a plain
