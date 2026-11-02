@@ -1410,6 +1410,14 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#559 Kit Table cannot end-align a number column or let a cell wrap without !important](https://github.com/todd-skelton/corten/issues/559),
     [#562 Kit Table keeps every cell on one line, and an app class cannot let a column wrap without matching the kit's specificity](https://github.com/todd-skelton/corten/issues/562),
     [#567 Kit Table has no sortable column header, so each app hand-writes aria-sort, the sort link and its arrow](https://github.com/todd-skelton/corten/issues/567)).
+169. `corten::event_stream(stream)`, `StreamEvent` and `EventStreamResponse` (feature `json`): a
+    route answers server-sent events of the app's own JSON, `event: <name>` with `data: <JSON>` and
+    the event's cursor as its `id`, for a script's `EventSource` or a native client. It is kept
+    alive and ends at shutdown like `corten::live`, a failure before the stream starts is answered
+    as JSON, and `EventStreamResponse::ended()` (204) stops a reconnect once the stream is over.
+    The names and data are not yet typed in the script
+    ([#591 An event stream's names and data are strings the script reads untyped, where a feed's rows are checked from the route to the script](https://github.com/todd-skelton/corten/issues/591))
+    ([#583 A route cannot answer server-sent events of its own JSON, only live HTML patches or a feed's rows, so a progress stream is sent as a Relay and holds the shutdown open](https://github.com/todd-skelton/corten/issues/583)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
