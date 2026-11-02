@@ -99,7 +99,7 @@ with, which allows neither, so the runtime sets those values through the CSSOM
 `rows()` copies out of a `<template>` gets the server's values for the template's row the same
 way, not its own: a script that fills rows draws their sizes itself. The block has the values
 written while the page renders: markup rendered ahead (a body that is also a live stream's
-fragment) goes in a `corten::Rendered`, which keeps them and places them with its markup
+fragment) goes in a `corten::Rendered` (`req.rendered(view)`), which keeps them and places them with its markup
 (`{body}`, a reference to it); text placed with `raw()` carries none, and under `corten dev` a page with a
 `data-vars` value its block has no rule for is an error. A property registered with another syntax
 (`<color>`, to animate it) is scoped the same way and has no constant.
