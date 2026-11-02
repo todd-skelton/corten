@@ -405,7 +405,7 @@ async fn a_live_watch_sends_the_latest_value_from_where_the_page_is() {
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn an_events_stream_sends_named_json_with_its_cursor() {
-    use crate::Message;
+    use crate::StreamEvent;
     #[derive(crate::ToJson)]
     struct Batch {
         done: u32,
@@ -413,12 +413,12 @@ async fn an_events_stream_sends_named_json_with_its_cursor() {
     }
     let messages = || {
         futures_util::stream::iter([
-            Message::new("batch", &Batch { done: 3, note: "a" }).cursor("v3"),
-            Message::new("error", "no such batch"),
-            Message::new("raw", &crate::json::Raw::new(b"{\n\"a\": 1}".to_vec()).unwrap()),
+            StreamEvent::new("batch", &Batch { done: 3, note: "a" }).cursor("v3"),
+            StreamEvent::new("error", "no such batch"),
+            StreamEvent::new("raw", &crate::json::Raw::new(b"{\n\"a\": 1}".to_vec()).unwrap()),
         ])
     };
-    let router = Router::new().route("/", get(move || async move { crate::events(messages()) }));
+    let router = Router::new().route("/", get(move || async move { crate::event_stream(messages()) }));
     let (status, headers, body) = call(router, "GET", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers["content-type"], "text/event-stream");
@@ -431,9 +431,53 @@ async fn an_events_stream_sends_named_json_with_its_cursor() {
 
 #[cfg(feature = "json")]
 #[test]
-#[should_panic(expected = "one line of text without a colon")]
+#[cfg_attr(debug_assertions, should_panic(expected = "one line of text that is not empty"))]
 fn an_event_name_is_one_line() {
-    let _ = crate::Message::new("batch\nevent: other", &1);
+    // In release, the event is not sent.
+    let _ = crate::StreamEvent::new("batch\nevent: other", &1);
+    let _ = crate::StreamEvent::new("", &1);
+}
+
+/// An event stream in a routes module: a failure before it starts is JSON, as on any JSON route,
+/// and a stream that is over answers a reconnect `204`, which an `EventSource` does not retry.
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn an_event_stream_route_fails_as_json_and_ends_with_204() {
+    let router = App::new(event_stream_url::router()).router();
+    let (status, headers, body) = call_with(router.clone(), "GET", "/jobs/7/progress", None, Some("text/html")).await;
+    assert_eq!(
+        (status, headers["content-type"].to_str().unwrap()),
+        (StatusCode::NOT_FOUND, "application/problem+json"),
+        "{body}"
+    );
+    let (status, _, body) = call_with(router.clone(), "GET", "/jobs/1/progress", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "event: progress\nid: 3\ndata: 3\n\n"));
+    let res =
+        router.oneshot(Request::get("/jobs/1/progress").header("last-event-id", "3").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+}
+
+#[cfg(feature = "json")]
+#[crate::routes]
+mod event_stream_url {
+    #[route("/jobs/{job}/progress", get = job_progress)]
+    pub struct JobProgress {
+        pub job: u32,
+    }
+}
+
+#[cfg(feature = "json")]
+async fn job_progress(
+    crate::Params(at): crate::Params<event_stream_url::JobProgress>,
+    since: crate::LiveSince,
+) -> Result<crate::EventStreamResponse, JsonError> {
+    if at.job != 1 {
+        return Err(Error::status(StatusCode::NOT_FOUND).into());
+    }
+    if since.0.as_deref() == Some("3") {
+        return Ok(crate::EventStreamResponse::ended());
+    }
+    Ok(crate::event_stream(futures_util::stream::iter([crate::StreamEvent::new("progress", &3).cursor("3")])))
 }
 
 #[tokio::test]

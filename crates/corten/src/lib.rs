@@ -111,7 +111,7 @@ pub use answer::{
     Answer, FileAnswer, ForAll, ForOne, HtmlResponse, HtmlResult, LiveResponse, Media, NoStore, PageOr, Public, Relay,
 };
 #[cfg(feature = "json")]
-pub use answer::{EventsResponse, JsonError, JsonResponse, JsonResult};
+pub use answer::{EventStreamResponse, JsonError, JsonResponse, JsonResult};
 pub use api::Api;
 pub use app::{listeners, serve, serve_on, serve_wrapped, App, Area};
 /// The axum version Corten is built on, so an app never depends on a second one.
@@ -453,7 +453,8 @@ impl Fragment {
 }
 
 /// `cursor`, unless it holds a line break or NUL, which would end the event: that panics in debug
-/// builds, and in release it is dropped (logged), so a reconnect starts from the beginning.
+/// builds, and in release it is dropped (logged), so the event keeps the cursor before it and a
+/// reconnect resumes from there, sending this event again.
 fn event_cursor(cursor: String, of: &str) -> Option<String> {
     if cursor.contains(['\n', '\r', '\0']) {
         let message = format!("corten: a {of}'s cursor holds a line break or NUL: {cursor:?}");
@@ -468,72 +469,88 @@ fn event_cursor(cursor: String, of: &str) -> Option<String> {
 
 /// Streams named events of JSON, server-sent events the app's own script (`EventSource`), a
 /// native client or an agent reads: a job's progress, a status that changes. Each item is a
-/// [`Message`], `event: <name>` with `data: <JSON>`, and its cursor, if any, as the event's `id`,
-/// which a reconnecting client sends back as `Last-Event-ID` ([`LiveSince`]). As with [`live`],
-/// the stream is kept alive with a comment every 15 seconds, and it ends when the app starts
-/// shutting down, so a graceful shutdown is not held open by its clients (an `EventSource`
+/// [`StreamEvent`], `event: <name>` with `data: <JSON>`, and its cursor, if any, as the event's
+/// `id`, which a reconnecting client sends back as `Last-Event-ID` ([`LiveSince`]). As with
+/// [`live`], the stream is kept alive with a comment every 15 seconds, and it ends when the app
+/// starts shutting down, so a graceful shutdown is not held open by its clients (an `EventSource`
 /// reconnects, to another instance or this one restarted).
 ///
-/// When `messages` ends, the response ends. An `EventSource` reconnects after that, so a stream
-/// with a last word (done, or no such job) sends a message the script closes on.
+/// When `events` ends, the response ends, and an `EventSource` connects again a few seconds
+/// later. A stream that is over (the job is done) answers that reconnect with
+/// [`EventStreamResponse::ended`], a `204`, which the standard says stops it: send the last event
+/// with its cursor, and answer `ended()` to a `LiveSince` at that cursor. A script that closes
+/// its `EventSource` on the last event saves the request.
+///
+/// The event names and their data are not checked against the script that reads them (see
+/// `docs/design.md`, Limits).
 ///
 /// ```
-/// use corten::{prelude::*, EventsResponse, Message};
+/// use corten::{prelude::*, EventStreamResponse, StreamEvent};
 /// use futures_util::stream;
 ///
 /// #[derive(ToJson)]
 /// struct Progress { done: u32, of: u32 }
 ///
-/// async fn progress() -> EventsResponse {
-///     corten::events(stream::iter((1..=3).map(|done| Message::new("progress", &Progress { done, of: 3 }).cursor(done.to_string()))))
+/// async fn progress() -> EventStreamResponse {
+///     corten::event_stream(stream::iter((1..=3).map(|done| StreamEvent::new("progress", &Progress { done, of: 3 }).cursor(done.to_string()))))
 /// }
 /// ```
 ///
 /// A route answering it is a JSON route: a failure before the stream starts is answered as JSON.
 #[cfg(feature = "json")]
-pub fn events<S>(messages: S) -> crate::EventsResponse
+pub fn event_stream<S>(events: S) -> crate::EventStreamResponse
 where
-    S: Stream<Item = Message> + Send + 'static,
+    S: Stream<Item = StreamEvent> + Send + 'static,
 {
-    let events = messages.map(|Message { name, data, cursor }| {
+    let events = events.filter_map(|StreamEvent { name, data, cursor }| async move {
+        let name = name?;
         let event = Event::default().event(name);
-        Ok::<_, Infallible>(
+        Some(Ok::<_, Infallible>(
             match cursor {
                 Some(cursor) => event.id(cursor),
                 None => event,
             }
             .data(data),
-        )
+        ))
     });
-    crate::answer::EventsResponse(Sse::new(events.take_until(draining())).keep_alive(KeepAlive::default()).into_response())
+    crate::answer::EventStreamResponse(Sse::new(events.take_until(draining())).keep_alive(KeepAlive::default()).into_response())
 }
 
-/// One event of an [`events`] stream: its name, its data as JSON and the app's cursor after it.
+/// One event of an [`event_stream`]: its name, its data as JSON and the app's cursor after it.
 #[cfg(feature = "json")]
-pub struct Message {
-    name: &'static str,
+pub struct StreamEvent {
+    /// None for a name that would break the stream, which is not sent.
+    name: Option<&'static str>,
     data: String,
     cursor: Option<String>,
 }
 
 #[cfg(feature = "json")]
-impl Message {
+impl StreamEvent {
     /// The event `name` (what `addEventListener(name, ..)` listens for) with `data`'s JSON. A name
-    /// is one line of text: one with a line break, a NUL or a colon panics, since it would end the
-    /// event or be read as another field.
+    /// is one line of text that is not empty: another would end the event or be read as the
+    /// default `message`, so it panics in debug builds, and in release the event is not sent
+    /// (logged).
     pub fn new(name: &'static str, data: &(impl crate::ToJson + ?Sized)) -> Self {
-        assert!(
-            !name.is_empty() && !name.contains(['\n', '\r', '\0', ':']),
-            "corten: an event's name is one line of text without a colon: {name:?}"
-        );
-        Message { name, data: data.to_json(), cursor: None }
+        let name = if name.is_empty() || name.contains(['\n', '\r', '\0']) {
+            let message = format!("corten: an event's name is one line of text that is not empty: {name:?}");
+            if cfg!(debug_assertions) {
+                panic!("{message}");
+            }
+            tracing::error!("{message}");
+            None
+        } else {
+            Some(name)
+        };
+        StreamEvent { name, data: data.to_json(), cursor: None }
     }
 
-    /// The app's cursor after this message: the point in its data a reconnect resumes from
-    /// ([`LiveSince`]). A cursor cannot hold a line break or a NUL: that panics in debug builds,
-    /// and in release the message is sent without it (logged).
+    /// The app's cursor after this event: the point in its data a reconnect resumes from
+    /// ([`LiveSince`]). An event without one keeps the cursor before it, so a reconnect sends it
+    /// again. A cursor cannot hold a line break or a NUL: that panics in debug builds, and in
+    /// release the event is sent without it (logged).
     pub fn cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.cursor = event_cursor(cursor.into(), "message");
+        self.cursor = event_cursor(cursor.into(), "stream event");
         self
     }
 }
@@ -544,9 +561,10 @@ impl From<String> for Fragment {
     }
 }
 
-/// Where a [`live`] or [`events`] stream resumes: the cursor of the last [`Fragment`] the browser received,
-/// from `Last-Event-ID` when it reconnects, or else the `since` the page gave its element,
-/// `<corten-live src={..} since={cursor}>`, on the first connection. `None` when there is
+/// Where a [`live`] or [`event_stream`] stream resumes: the cursor of the last event the client
+/// received, from `Last-Event-ID` when it reconnects, or else the `since` query parameter on the
+/// first connection: the one the page gave its element, `<corten-live src={..} since={cursor}>`,
+/// or, for an event stream, the one on the URL the script opens. `None` when there is
 /// neither, and the handler draws the part as it is now.
 ///
 /// A handler sends what changed after the cursor, or nothing until the next change when the

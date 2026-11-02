@@ -79,7 +79,7 @@ pub enum Format {
 /// What a handler named in `#[corten::routes]` returns: the type says how the route's failures are
 /// answered ([`Answer::FORMAT`]) and what the handler may read ([`Answer::Inputs`]). Implemented
 /// for [`HtmlResult`], [`JsonResult<T>`], `Result<JsonResponse, JsonError>`, [`Public`], [`NoStore`], text, a bare `StatusCode`,
-/// [`LiveResponse`], [`EventsResponse`], feeds, [`Media`], a [`Relay`], [`PageOr`] and [`crate::seo::File`]; a crate may add
+/// [`LiveResponse`], [`EventStreamResponse`], feeds, [`Media`], a [`Relay`], [`PageOr`] and [`crate::seo::File`]; a crate may add
 /// its own.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer a route can name",
@@ -294,8 +294,6 @@ macro_rules! for_everyone {
 }
 
 for_everyone!(&'static str, String, StatusCode, Relay, Media, LiveResponse);
-#[cfg(feature = "json")]
-for_everyone!(EventsResponse);
 
 #[cfg(feature = "feed")]
 impl<T> ForEveryone for corten_feed::FeedResponse<T> {
@@ -1003,19 +1001,39 @@ impl Answer for LiveResponse {
     type Rows = NotAFeed;
 }
 
-/// Named events of JSON: what [`crate::events`] gives.
+/// Named events of JSON: what [`crate::event_stream`] gives. It answers the client that asked,
+/// from where that client is in the stream, so it is never [`Public`]:
+///
+/// ```compile_fail,E0277
+/// use std::time::Duration;
+/// use corten::{prelude::*, EventStreamResponse};
+///
+/// async fn progress() -> Public<EventStreamResponse> {
+///     Public::new(Duration::from_secs(60), corten::event_stream(futures_util::stream::empty()))
+/// }
+/// ```
 #[cfg(feature = "json")]
-pub struct EventsResponse(pub(crate) Response);
+pub struct EventStreamResponse(pub(crate) Response);
 
 #[cfg(feature = "json")]
-impl IntoResponse for EventsResponse {
+impl EventStreamResponse {
+    /// The stream is over (the job is done, or there is no such job): `204 No Content`, which an
+    /// `EventSource` takes as the end and does not reconnect after. Answer it to a reconnect from
+    /// the last event's cursor ([`crate::LiveSince`]).
+    pub fn ended() -> Self {
+        EventStreamResponse(StatusCode::NO_CONTENT.into_response())
+    }
+}
+
+#[cfg(feature = "json")]
+impl IntoResponse for EventStreamResponse {
     fn into_response(self) -> Response {
         self.0
     }
 }
 
 #[cfg(feature = "json")]
-impl Answer for EventsResponse {
+impl Answer for EventStreamResponse {
     const FORMAT: Format = Format::Json;
     type Inputs = AnyInputs;
     type Rows = NotAFeed;
