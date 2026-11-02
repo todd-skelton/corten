@@ -22,7 +22,7 @@
   "info": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.1137, 0.3059, 0.8471], "hex": "#1d4ed8" } },
   "info-foreground": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [1, 1, 1], "hex": "#ffffff" } },
   "border": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.8902, 0.898, 0.9255], "hex": "#e3e5ec" } },
-  "input": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.5294, 0.549, 0.6118], "hex": "#878c9c" } },
+  "input": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.4902, 0.5098, 0.5725], "hex": "#7d8292" } },
   "ring": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.0588, 0.4627, 0.4314], "hex": "#0f766e" } },
   "radius": { "$type": "dimension", "$value": { "value": 0.5, "unit": "rem" } }
 }

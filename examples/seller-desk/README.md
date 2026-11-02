@@ -8,14 +8,14 @@ more in the browser than forms and links.
 
 It is also the example styled with the UI kit as `corten ui` gives it: the bulk bar's and dialog's
 buttons, the search field, the dialog and the statement table are the kit's components, copied
-into [`src/ui/`](src/ui) and unedited, and the kit's theme tokens are recolored to the desk's teal in
+into [`src/ui/`](src/ui) and unedited, and the kit's theme tokens take the desk's teal and radius in
 [`tokens/`](tokens) (light and dark). Two parts of the grid write a kit look in their own CSS: the
 table, because the kit's table scrolls sideways and the grid's header stays as the rows scroll,
 and the price cell, because the kit's classes on 500 of them made the page slower to render
 (the numbers are in [`price_cell.css`](src/views/price_cell.css)).
 
 This repository formats wider than rustfmt's defaults, so [`src/ui.rs`](src/ui.rs) differs from
-what `corten ui` writes in two ways: a `#[rustfmt::skip]` on each module keeps the copies as the
+what `corten ui` writes: a comment says why, a `#[rustfmt::skip]` on each module keeps the copies as the
 kit lays them out, and `COMPONENTS` is on one line. After a `corten ui add` here, give the new
 module its own skip line (and the module it was put under its own back) and run `cargo fmt`.
 

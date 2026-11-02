@@ -373,6 +373,20 @@ try {
   check("a row rows() copies from a <template> gets the template row's values", cloned === "12.5%", cloned);
 
 
+  // The grid's header stays at the top of its scroll box as the rows scroll: the reason the grid
+  // writes the kit table's look itself (the kit's table wrapper scrolls sideways, and would be the
+  // box the header sticks to).
+  const grid = await (await browser.newContext({ viewport: { width: 1200, height: 800 } })).newPage();
+  await grid.goto(base);
+  const sticky = await grid.evaluate(() => {
+    const box = /** @type {HTMLElement} */ (document.querySelector("tbody")?.closest("div"));
+    box.scrollTop = 600;
+    const th = /** @type {Element} */ (box.querySelector("thead th"));
+    return { scrolled: box.scrollTop, gap: Math.round(th.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientTop) };
+  });
+  check("the grid's header stays at the top of its box as the rows scroll", sticky.scrolled > 0 && sticky.gap === 0, JSON.stringify(sticky));
+  await grid.context().close();
+
   // The kit's theme, recolored to the desk's palette, in the scheme the system asks for: the page,
   // a price field (a field at rest, not only under the pointer) and the Save button take the
   // colors of the token file for that scheme, as do the kit's own components: the search field

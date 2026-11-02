@@ -16,4 +16,4 @@
   border: 0; border-radius: calc(var(--radius) - 2px); background: var(--primary); color: var(--primary-foreground);
 }
 .form button:hover { background: color-mix(in oklab, var(--primary) 88%, var(--foreground)); }
-.form p { margin: 0; color: var(--destructive); font-size: 12px; }
+.form p { margin: 0; color: var(--destructive); font-size: .75rem; }

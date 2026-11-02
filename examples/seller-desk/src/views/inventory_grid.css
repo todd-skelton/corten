@@ -39,7 +39,7 @@
    whose cells each have their header, and they show in a muted line under the name. */
 @media (max-width: 40rem) {
   .table :is(th, td):is(:nth-child(3), :nth-child(4)) { display: none; }
-  .table td small { display: block; color: var(--muted-foreground); font-size: 12px; }
+  .table td small { display: block; color: var(--muted-foreground); font-size: .75rem; }
   .table :is(th, td) { padding: 8px 6px; }
   .table th:first-child, .table td:first-child { width: 32px; }
   .toolbar input[type="search"] { width: 100%; }

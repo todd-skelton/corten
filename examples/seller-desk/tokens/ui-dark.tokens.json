@@ -22,6 +22,6 @@
   "info": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.3765, 0.6471, 0.9804], "hex": "#60a5fa" } },
   "info-foreground": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.1059, 0.1137, 0.1412], "hex": "#1b1d24" } },
   "border": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.1725, 0.1843, 0.2275], "hex": "#2c2f3a" } },
-  "input": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.4196, 0.4392, 0.502], "hex": "#6b7080" } },
+  "input": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.451, 0.4706, 0.5373], "hex": "#737889" } },
   "ring": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.1765, 0.8314, 0.749], "hex": "#2dd4bf" } }
 }

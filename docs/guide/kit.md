@@ -162,7 +162,7 @@ Every component is in use in the [ui-gallery](../../examples/ui-gallery) example
 kit's own files, and its browser test (`examples/ui-gallery/smoke.mjs`) runs them in Chromium and
 WebKit, with and without JavaScript. The [seller-desk](../../examples/seller-desk) example is
 an app styled with the kit: four components copied and unedited, and the theme's tokens
-recolored to the app's palette in light and dark.
+set to the app's palette and radius in light and dark.
 
 ## Size
 
