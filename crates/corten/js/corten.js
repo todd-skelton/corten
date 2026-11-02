@@ -765,7 +765,7 @@ async function apply(html, signal, sent, took) {
       // Focus in it goes to the nearest element around it that can take focus.
       const up = target?.contains(document.activeElement) && target.parentElement;
       navs ||= !!target && holdsNav(target);
-      if (target?.parentElement) changedIn(target.parentElement);
+      if (target?.parentElement) changedIn(target.parentElement, ["x", target.id, []]);
       target?.remove();
       if (up) focusNear(up);
     }
@@ -773,10 +773,10 @@ async function apply(html, signal, sent, took) {
     else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-append")) {
       put.push(...Array.from(el.content.children));
       serve(el.content);
-      changedIn(target);
+      changedIn(target, ["a", target.id, Array.from(el.content.childNodes)]);
       target.append(el.content);
     } else {
-      if (target.parentElement) changedIn(target.parentElement);
+      if (target.parentElement) changedIn(target.parentElement, ["r", target.id, [el]]);
       replaceKeeping(target, el, sent, took);
       put.push(el);
     }
@@ -1153,30 +1153,74 @@ const comparable = (html) =>
     .replace(/<a\b[^>]*>/g, (tag) => (tag.includes(" data-nav") ? tag.replace(' aria-current="page"', "") : tag));
 
 /**
+ * A patch into a layout element, kept to apply to the markup the server drew it with: what it
+ * replaced (`"r"`, by its id, with a copy of the new element), removed (`"x"`) or appended to (`"a"`).
+ * @typedef {["r" | "x" | "a", string, Node[]]} Put
+ */
+/**
+ * What the server drew as a layout element, and the patches into it since (a cart count, a toast),
+ * applied only when a write's page is compared with it ({@link drawnAs}); each patch makes a new one.
+ * @typedef {{ base: string, puts: Put[], markup?: string | null }} Patched
+ */
+/**
  * The elements the server drew beside `<main>` and beside each element around it, up to `<body>`,
  * with their markup as it was sent: the layout a write's navigation compares ({@link swapDocument}).
  * Anything a script put there (a toast region, a browser extension's markup) is not one, and is
  * left as it is. An element a patch or a layout change puts in place of one takes its place here.
- * @type {WeakMap<Element, string>}
+ * One a patch went into holds the patches too, or, when they went into what a script added, a
+ * marker (`\0` and a count) that no markup is.
+ * @type {WeakMap<Element, string | Patched>}
  */
 const drawn = new WeakMap();
 
 /**
- * A patch changed what the server drew inside `el`: the layout element around it, if any, no longer
- * has the markup it was drawn with, so the next write's page draws it again whatever that page has.
- * @param {Element} el
+ * A patch (`put`) changed what the server drew inside `el`: the layout element around it, if any,
+ * keeps it, so the next write's page is compared with what the server and the patches drew there.
+ * @param {Element} el @param {Put} put
  */
-function changedIn(el) {
+function changedIn(el, put) {
   for (let up = /** @type {Element | null} */ (el); up; up = up.parentElement) {
-    if (drawn.has(up)) {
-      // No markup is this, and no patch's is another's.
-      drawn.set(up, `\0${(patched += 1)}`);
-      return;
+    const was = drawn.get(up);
+    if (was === undefined) continue;
+    put[2] = put[2].map((n) => n.cloneNode(true));
+    /** @type {string | Patched} */
+    let now = typeof was === "string" ? (was.startsWith("\0") ? was : { base: was, puts: [put] }) : { base: was.base, puts: [...was.puts, put] };
+    // A ticker's patches between writes are folded in, so they do not pile up.
+    if (typeof now !== "string" && now.puts.length > 16) {
+      const markup = drawnAs(now);
+      now = markup === null ? "\0" : { base: markup, puts: [] };
     }
+    // No markup is the marker, and none is another's.
+    drawn.set(up, typeof now === "string" ? `\0${(patched += 1)}` : now);
+    return;
   }
 }
 /** Patches into the layout so far. */
 let patched = 0;
+
+/**
+ * The markup the server and the patches since drew as a layout element (`was`, from {@link drawn}),
+ * or null when a patch went where the server's markup has no element of its id.
+ * @param {string | Patched} was @returns {string | null}
+ */
+function drawnAs(was) {
+  if (typeof was === "string") return was.startsWith("\0") ? null : was;
+  if (was.markup !== undefined) return was.markup;
+  let copy = parse(was.base).firstElementChild;
+  for (const [how, id, nodes] of was.puts) {
+    // Patches go inside a layout element (`changedIn` starts at the target's parent).
+    const at = copy?.querySelector(`[id="${CSS.escape(id)}"]`);
+    if (!copy || !at) {
+      copy = null;
+      break;
+    }
+    const fresh = nodes.map((n) => n.cloneNode(true));
+    if (how === "x") at.remove();
+    else if (how === "a") at.append(...fresh);
+    else at.replaceWith(...fresh);
+  }
+  return (was.markup = copy ? copy.outerHTML : null);
+}
 for (let el = document.querySelector("main"); el && el !== document.body; el = el.parentElement) {
   // As sent, made comparable only if a write's page is compared with it, so a load pays for the copy alone.
   for (const beside of Array.from(el.parentElement?.children ?? [])) if (beside !== el) drawn.set(beside, beside.outerHTML);
@@ -1229,7 +1273,7 @@ function layoutChanges(doc, notice) {
   const parts = frameOf(doc);
   const sent = parts.join("\n");
   if (frame.sent === null ? !parts.every((part) => frame.parts.has(part)) : sent !== frame.sent) return null;
-  /** @type {[Element, Element, string | undefined][]} */
+  /** @type {[Element, Element, string | Patched | undefined][]} */
   const changed = [];
   let here = document.querySelector("main");
   let there = doc.querySelector("main");
@@ -1244,7 +1288,8 @@ function layoutChanges(doc, notice) {
       if (mine[i] === here) continue;
       if (mine[i].localName !== theirs[i].localName) return null;
       const was = drawn.get(mine[i]);
-      if (comparable(was ?? "") !== markupOf(theirs[i]) || (said && theirs[i].textContent?.includes(said))) changed.push([mine[i], theirs[i], was]);
+      const as = was === undefined ? "" : drawnAs(was);
+      if (as === null || comparable(as) !== markupOf(theirs[i]) || (said && theirs[i].textContent?.includes(said))) changed.push([mine[i], theirs[i], was]);
     }
     here = up;
     there = upThere;
@@ -1260,7 +1305,8 @@ function layoutChanges(doc, notice) {
         // page: it stays.
         if (!old.isConnected || drawn.get(old) !== was) continue;
         const markup = markupOf(el);
-        drawLayout(old, el, was && !was.startsWith("\0") ? parse(was).firstElementChild : null, said);
+        const as = was === undefined ? null : drawnAs(was);
+        drawLayout(old, el, as === null ? null : parse(as).firstElementChild, said);
         const now = old.isConnected ? old : el;
         drawn.set(now, markup);
         setVars(now);
@@ -1284,8 +1330,21 @@ const LIVE = '[role="status"], [role="alert"], [aria-live]';
 function drawLayout(old, fresh, before, said, inside = false) {
   if (old.localName !== fresh.localName || !(inside || old.matches(LIVE) || old.querySelector(LIVE))) return replaceKeeping(old, fresh, null);
   const on = old.getAttribute("data-on");
-  for (const a of Array.from(old.attributes)) if (!fresh.hasAttribute(a.name)) old.removeAttribute(a.name);
-  for (const a of Array.from(fresh.attributes)) if (old.getAttribute(a.name) !== a.value) old.setAttribute(a.name, a.value);
+  // What the user opened or closed stays as they left it, as a patch keeps it ({@link opened}).
+  const toggles = old instanceof HTMLDetailsElement || old instanceof HTMLDialogElement;
+  for (const a of Array.from(old.attributes)) if (!fresh.hasAttribute(a.name) && !(toggles && a.name === "open")) old.removeAttribute(a.name);
+  for (const a of Array.from(fresh.attributes)) if (old.getAttribute(a.name) !== a.value && !(toggles && a.name === "open")) old.setAttribute(a.name, a.value);
+  if (toggles) {
+    const [now, want] = [old.open, fresh.hasAttribute("open")];
+    // Left as the server sent it: the server's state now. A modal one closes by `close()`, which
+    // also ends the rest of the page being inert; taking away its `open` would not.
+    if ((!served.has(old) || served.get(old) === now) && now !== want) {
+      if (!(old instanceof HTMLDialogElement)) old.open = want;
+      else if (want) old.show();
+      else old.close();
+    }
+    served.set(old, want);
+  }
   // Its new handlers are listened for; a kept element's `on:connect` does not run again.
   if (old.getAttribute("data-on") !== on) scan(old, new Set());
   if (old.matches(LIVE)) {

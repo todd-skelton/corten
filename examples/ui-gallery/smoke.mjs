@@ -464,6 +464,7 @@ async function run(browser) {
     "a notice whose page loads in full instead reaches the toaster after the load",
     "the toaster's Dismiss button stays the one its script holds after a dismiss and a write",
     "a write while the toast shows keeps the button, and it closes the toast",
+    "after a toast's patch, what a script set on the layout stays through a write",
   ];
   /** The Dismiss button, marked by `__mine` when it is still the one first drawn, and whether it shows. */
   const dismissState = () =>
@@ -478,12 +479,16 @@ async function run(browser) {
       (/** @type {any} */ (document.querySelector("#ui-toast")?.parentElement)).__region = 1;
     });
     const keptDoc = () => page.evaluate(() => (/** @type {any} */ (window)).__kept === 1);
+    // The toasts above were patches into the toaster: what the server draws there as before
+    // (the button) still stays as a script left it, here with an attribute of its own.
+    await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.trim() === "Dismiss")?.setAttribute("data-smoke", "kept"));
     await page.getByRole("button", { name: "Rename draft" }).click();
     await page.locator("#draft-name").fill("Spring draft");
     await page.getByRole("button", { name: "Rename", exact: true }).click();
     const renamed = await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Spring draft.", null, { timeout: 5000 }).then(() => true, () => false);
     check(noticeChecks[0], renamed && (await keptDoc()) && (await page.locator("#ui-toast").isVisible()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)), await page.locator("#ui-toast").textContent());
     check(noticeChecks[1], await page.getByRole("button", { name: "Dismiss" }).isVisible());
+    check(noticeChecks[8], (await page.getByRole("button", { name: "Dismiss" }).getAttribute("data-smoke")) === "kept");
     await page.getByRole("button", { name: "Dismiss" }).evaluate((b) => ((/** @type {any} */ (b)).__mine = 1));
     await page.getByRole("button", { name: "Dismiss" }).click();
     check(noticeChecks[2], !(await page.evaluate(async () => (await (await fetch("/")).text()).includes("Renamed to"))));
