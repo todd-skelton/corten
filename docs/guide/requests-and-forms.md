@@ -826,7 +826,11 @@ async fn create(req: Req, mut upload: Upload<NewListing>) -> HtmlResult {
 The body is read as the handler asks for it. `next_file` reads the text fields before the next
 file and keeps them. `fields` reads the rest and reads the fields into `T` by `Form`'s rules (a
 422 when they do not fit). A file the handler does not read is skipped, not stored. A file input
-left empty sends no file.
+left empty is no file: the browser sends it as a part with an empty file name and no bytes, which
+`FormData` keeps as an empty `File`, and `next_file` passes over it, since the user chose
+nothing. A route cannot tell such an input from one the form does not have; both are no file
+([design](../design.md#limits)). A part with bytes is a file even when it comes with no name;
+`filename()` is then empty.
 
 To hand a file on without holding it (to an object store or a storage API), read it piece by
 piece with `file.chunk()`. Each piece is passed on as it arrives, and the request keeps one piece
@@ -858,6 +862,36 @@ still sending when the answer comes reports a network error and never shows the 
 that the connection is closed. The limit for one file, the types a field accepts and how many files
 it takes are the handler's rules, so it checks them and adds a message to `Errors`. The form
 is then drawn again with its other fields kept and the message next to the input.
+
+A JSON route takes an upload the same way. One with no text fields still names its file input
+with a `Files` field and takes the file by that name (`file.is(..)`); the struct is not dead code,
+since `#[derive(Fields)]` marks a `Files` field read. In an [API](app.md#json-only-routes) its
+refusals are the API's failures, as a `Json<T>` body that does not parse is: a body that is not multipart
+(415), one that breaks the format (400) or is over the limit (413), each in Problem Details, or the
+API's own shape when it sets `Api::errors`. `?` on an `UploadError` makes it a `JsonError` with
+its status:
+
+```rust
+use corten::{axum::http::StatusCode, prelude::*, Error};
+
+/// A CSV export a client posts as `multipart/form-data` in its `file` input.
+#[derive(serde::Deserialize, Fields)]
+struct Export { file: Files }
+
+async fn import(mut upload: Upload<Export>) -> JsonResult<serde_json::Value> {
+    upload.limit(5 << 20);
+    let missing = || Error::new("A CSV file is required.").with_status(StatusCode::BAD_REQUEST);
+    let Some(mut file) = upload.next_file().await? else { return Err(missing().into()) };
+    if !file.is(Export::FIELDS.file) {
+        return Err(missing().into());
+    }
+    let Some(csv) = file.bytes_up_to(4 << 20).await? else {
+        return Err(Error::new("The export can be up to 4 MB.").with_status(StatusCode::PAYLOAD_TOO_LARGE).into());
+    };
+    Ok(Json(serde_json::json!({ "rows": csv.split(|b| *b == b'\n').count() })))
+}
+# let _: Methods = post(import);
+```
 
 The `content_type` a file arrives with is what the client said, as its name is. It decides which
 message the user sees, never how the bytes are sent back: a file named `me.png` may hold HTML.

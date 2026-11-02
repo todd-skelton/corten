@@ -2842,6 +2842,12 @@ Corten is pre-1.0, so any minor version may change the API.
     instructions a request on the branch, 92,381 to 92,438, against 92,338 on main, 91,474 to
     92,418)
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
+101. `Upload::next_file` passed over every part with an empty file name, so a file a client sent
+    with bytes and no name was dropped without a word. Only a part with an empty name and no bytes
+    (a file input left empty) is passed over now; one with bytes reaches the handler as a file whose
+    `filename()` is empty. Telling the two apart reads only as far as the part's first bytes and
+    copies nothing
+    ([#587 Upload is built for HTML forms: a JSON route taking one file needs a dead form struct, gets HTML refusals, and cannot see an empty file input FormData keeps](https://github.com/todd-skelton/corten/issues/587)).
 
 95. Two components with one name in two crates (a library's `Dialog` with a stylesheet and the
     app's) failed to link on Linux and linked on Windows (GNU), where the linker loads a library's
@@ -3131,6 +3137,13 @@ Corten is pre-1.0, so any minor version may change the API.
     none an app's scale would make, so the two themes do not replace each other's values) and how a
     utility over them is written, with its values (`fg_success()`)
     ([#553 Kit role tokens are loose top-level properties, so utilities like fg/bg cannot be generated from a group](https://github.com/todd-skelton/corten/issues/553)).
+46. The requests guide shows a JSON route taking an upload: one with no text fields names its
+    file input with a `Files` field (which `#[derive(Fields)]` marks read, so it is not dead code)
+    and takes the file by that name. In an API every refusal of an upload (not multipart, malformed,
+    over the limit, fields that do not fit) is the API's failure, in Problem Details or its own
+    shape, which tests now hold. That an empty file input is no file,
+    where `FormData` keeps an empty `File`, is a limit in `docs/design.md`
+    ([#587 Upload is built for HTML forms: a JSON route taking one file needs a dead form struct, gets HTML refusals, and cannot see an empty file input FormData keeps](https://github.com/todd-skelton/corten/issues/587)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

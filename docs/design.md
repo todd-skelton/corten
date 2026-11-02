@@ -300,3 +300,9 @@ framework's shape, and what it does not do yet.
     Text that must match another service's is the app's own (`Raw`, or serde_json's `RawValue`
     where `Serialize` writes it), and a shared checksum is over RFC 8785 (the app guide, Numbers in
     JSON).
+18. A file input left empty is no file to `Upload`: the browser sends a part with an empty file
+    name and no bytes, which `FormData` keeps as an empty `File` and `next_file` passes over. A
+    route cannot tell that input from one the form lacks. Handing out empty files would make every
+    handler that loops over files skip them to get the same answer, and a file the user did choose
+    is never both nameless and empty, so the distinction is left out. A part with bytes is a file
+    whatever its name.

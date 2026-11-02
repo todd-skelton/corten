@@ -27,8 +27,9 @@ const READ_PAST: usize = 64 * 1024 * 1024;
 type Result<T, E = UploadError> = std::result::Result<T, E>;
 
 /// Why an [`Upload`] could not be read. `?` turns it into an [`Error`] with its status (the
-/// error page). Any read can find the body over its limit, so a handler that answers that with
-/// the form reads in one block and matches [`UploadError::TooLarge`] once:
+/// error page, or under an [`Api`](crate::Api) the API's failure). Any read can find the body over
+/// its limit, so a handler that answers that with the form reads in one block and matches
+/// [`UploadError::TooLarge`] once:
 ///
 /// ```
 /// use corten::prelude::*;
@@ -127,9 +128,16 @@ const HEAD_LIMIT: usize = 8 * 1024;
 /// The body is read as the handler asks for it, and nothing it skips is kept: a file the loop
 /// passes over is read past, not stored, and [`File::chunk`] hands a file on piece by piece (to an
 /// object store, say) without holding it. Text fields are kept for [`Upload::fields`], which reads
-/// what is left. A file input left empty sends no file. The whole body may be 2 MiB unless the
-/// handler sets [`Upload::limit`] before reading; past it the request is a 413. A body that is not
-/// multipart is a 415, one that breaks the format a 400, and fields that do not fit `T` a 422.
+/// what is left. A file input left empty is no file: the browser sends a part with an empty file
+/// name and no bytes (which `FormData` keeps as an empty `File`), and [`Upload::next_file`] passes
+/// over it (design.md, Limits). A part with bytes is a file, with an empty name if it came with
+/// none. The whole body may be 2 MiB unless the handler sets [`Upload::limit`] before reading;
+/// past it the request is a 413. A body that is not multipart is a 415, one that breaks the format
+/// a 400, and fields that do not fit `T` a 422. Under an [`Api`](crate::Api) each is the API's
+/// failure, in its JSON shape.
+///
+/// A route with no text fields still names its file input with a `Files` field, so it takes the
+/// file by its typed name ([`File::is`]), never by comparing [`File::field`] with a string.
 pub struct Upload<T> {
     parts: Parts,
     fields: Vec<(String, String)>,
@@ -139,6 +147,22 @@ pub struct Upload<T> {
 /// A file input of a form struct: `photos: Files` names the input (`name={f.photos}`) and its
 /// errors (`errors.add(f.photos, ..)`); its files come from [`Upload::next_file`], so it holds
 /// nothing itself.
+///
+/// Nothing reads a `Files` field, and `#[derive(Fields)]` marks it read, so it is not dead code:
+///
+/// ```
+/// #![deny(dead_code)]
+/// use corten::prelude::*;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Export {
+///     file: Files,
+/// }
+///
+/// fn main() {
+///     let _ = Export::FIELDS.file;
+/// }
+/// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Files;
 
@@ -180,9 +204,13 @@ impl<T> Upload<T> {
                     let value = self.parts.text().await?;
                     self.fields.push((head.name, value));
                 }
-                // A file input left empty sends a part with no file name and nothing in it.
-                Some(name) if name.is_empty() => {}
                 Some(filename) => {
+                    // A file input left empty sends a part with no file name and nothing in it: no
+                    // file. A part with bytes is a file whatever its name (a client may send none,
+                    // or a path that ends in a separator), so it is handed out with an empty name.
+                    if filename.is_empty() && self.parts.part_is_empty().await? {
+                        continue;
+                    }
                     let content_type = head.content_type.unwrap_or_else(|| "application/octet-stream".into());
                     return Ok(Some(File { parts: &mut self.parts, field: head.name, filename, content_type }));
                 }
@@ -265,7 +293,7 @@ impl File<'_> {
     }
 
     /// The file's name as the browser sent it, without a path: the user's to choose, so never a
-    /// path to write to as it is.
+    /// path to write to as it is. Empty when the client sent none (or only a path) with the bytes.
     pub fn filename(&self) -> &str {
         &self.filename
     }
@@ -392,6 +420,24 @@ impl Parts {
             let held = partial(&self.buf, &self.delimiter);
             if self.buf.len() > held {
                 return Ok(Some(self.buf.split_to(self.buf.len() - held)));
+            }
+            if !self.more().await? {
+                return Err(malformed("it ended inside a part"));
+            }
+        }
+    }
+
+    /// Whether the current part ends where it begins, reading only as far as it takes to know and
+    /// handing nothing out.
+    async fn part_is_empty(&mut self) -> Result<bool> {
+        debug_assert!(self.state == State::Body, "called right after a part's headers");
+        loop {
+            let n = self.buf.len().min(self.delimiter.len());
+            if self.buf[..n] != self.delimiter[..n] {
+                return Ok(false);
+            }
+            if n == self.delimiter.len() {
+                return Ok(true);
             }
             if !self.more().await? {
                 return Err(malformed("it ended inside a part"));
