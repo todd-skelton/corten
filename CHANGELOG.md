@@ -1393,13 +1393,15 @@ Corten is pre-1.0, so any minor version may change the API.
     (the app's `Field` beside the kit's), naming the app's file, before it writes anything: the two
     would style one class prefix, and the program would not link
     ([#550 A kit component and an app component with the same name fail at link time, and corten ui add does not warn](https://github.com/todd-skelton/corten/issues/550)).
-167. `corten::Rendered::new(view)`: a view rendered once, to place in several answers (a page's
+167. `req.rendered(view)`, a `corten::Rendered`: a view rendered once, as the page would render it
+    (in the visitor's time zone under `App::zoned_dates`), to place in several answers (a page's
     body that is also a live stream's fragment). Placed in a page, it brings what its render noted:
     the values of its `style={..}`, so the page's style block has their rules and sizes from data
     paint without a script, and the script modules its handlers use. Markup rendered to a `String`
     and placed with `raw()` brought neither, so its sizes painted at their initial values until a
     patch, with nothing said; under `corten dev` a full page with a `data-vars` value its block has
-    no rule for is now an error that says so
+    no rule for is now an error that says so. A render that panics (a handler's, which is caught)
+    no longer leaves its thread noting values, modules and components for every later render
     ([#576 Sizes from data (data-vars) in markup placed with raw() never reach the page's style block, and nothing says so](https://github.com/todd-skelton/corten/issues/576)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

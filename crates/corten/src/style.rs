@@ -687,10 +687,8 @@ thread_local! {
 /// Runs `render` and returns the components with a script or stylesheet it rendered (debug
 /// builds of the app only; release builds record nothing).
 pub(crate) fn collect<T>(render: impl FnOnce() -> T) -> (T, Vec<&'static crate::Component>) {
-    let previous = RENDERED.with(|r| r.replace(Some(Vec::new())));
-    let value = render();
-    let list = RENDERED.with(|r| r.replace(previous)).unwrap_or_default();
-    (value, list)
+    let (value, list) = crate::gather(&RENDERED, Vec::new(), render);
+    (value, list.unwrap_or_default())
 }
 
 /// Used by the code `html!` and `#[component]` generate. Not a public API.

@@ -1202,6 +1202,14 @@ impl Req {
         nav_links(self.uri.path(), entries)
     }
 
+    /// Renders `view` once, as the page would (in the visitor's time zone under
+    /// [`crate::App::zoned_dates`]), to place in several answers: see [`crate::Rendered`].
+    pub fn rendered(&self, view: impl Render) -> crate::Rendered {
+        #[cfg(feature = "zones")]
+        let _zone = self.zone_scope();
+        crate::Rendered::new(view)
+    }
+
     /// This request's CSP nonce, for the layout's own inline scripts. Empty without a policy.
     ///
     /// Asking for it makes one and puts it in the CSP, so the page is different bytes on every

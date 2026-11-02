@@ -663,14 +663,23 @@ async fn a_page_s_custom_properties_are_one_style_block_its_csp_allows_by_hash()
 
 /// Meters rendered ahead, placed with `place`, on a page served under `corten dev` or not.
 fn placed_meters(dev: bool, place: fn(crate::Rendered) -> Box<dyn crate::Render>) -> Router {
+    placed_meters_listing(dev, place, &[Meter])
+}
+
+/// `placed_meters`, with the app listing `components`.
+fn placed_meters_listing(
+    dev: bool,
+    place: fn(crate::Rendered) -> Box<dyn crate::Render>,
+    components: &'static [crate::Component],
+) -> Router {
     let page = move |req: Req| async move {
-        let body = crate::Rendered::new(html! { <Meter used={42.5} /> <Meter used={7.0} /> });
+        let body = req.rendered(html! { <Meter used={42.5} /> <Meter used={7.0} /> });
         req.test_page("Meters", place(body))
     };
     App::new(Routes::from(Router::new().route("/", get(page))))
         .dev(dev)
         .error_page(test_error_page, ())
-        .components(&[Meter])
+        .components(components)
         .router()
 }
 
@@ -689,6 +698,57 @@ async fn markup_rendered_ahead_keeps_its_custom_properties_and_raw_markup_is_rep
     let (status, _, body) = call(placed_meters(true, |body| Box::new(crate::raw(body.as_str().to_string()))), "GET", None).await;
     assert_eq!(status, 500, "{body}");
     assert!(body.contains("data-vars=&quot;--meter__fill:42.5%&quot; and no rule for it"), "{body}");
+    // Under `corten dev`, a component rendered ahead counts as rendered where it is placed.
+    let (status, _, body) = call(placed_meters_listing(true, |body| Box::new(body), &[]), "GET", None).await;
+    assert_eq!(status, 500, "{body}");
+    assert!(body.contains("renders Meter, which the app does not list"), "{body}");
+}
+
+/// What a view rendered ahead noted reaches the render it is placed in: its values beside those
+/// the outer render wrote before and after it was made, its script modules and its components.
+#[test]
+fn a_rendered_view_brings_what_its_render_noted() {
+    struct Handled;
+    impl crate::Render for Handled {
+        fn render(&self, out: &mut String) {
+            out.push_str("<button></button>");
+            crate::script::uses("stock_grid");
+        }
+    }
+    let ((((html, inner), components), modules), block) = crate::style::capture_vars(|| {
+        crate::script::collect(|| {
+            crate::style::collect(|| {
+                let mut out = Meter { used: 42.5 }.to_html();
+                let inner = crate::Rendered::new(html! { <Meter used={7.0} /> {Handled} });
+                Meter { used: 1.0 }.render(&mut out);
+                inner.render(&mut out);
+                (out, inner)
+            })
+        })
+    });
+    let _ = inner;
+    assert!(html.ends_with("<button></button>"), "{html}");
+    assert_eq!(modules, ["stock_grid"]);
+    if cfg!(debug_assertions) {
+        assert_eq!(components.iter().map(|c| c.name).collect::<Vec<_>>(), ["Meter"]);
+    }
+    let ((), rules) = crate::style::collect_vars(|| crate::style::replay_vars(&block));
+    for value in ["42.5%", "7%", "1%"] {
+        assert!(rules.contains(&format!("{{--meter__fill:{value}!important}}")), "{value}: {rules}");
+    }
+}
+
+/// A render that panics leaves nothing gathering on its thread: a handler's panic is caught and
+/// the thread renders on.
+#[test]
+fn a_panicking_render_puts_back_what_was_gathering() {
+    let caught = std::panic::catch_unwind(|| crate::style::collect_vars::<()>(|| panic!("a handler")));
+    assert!(caught.is_err());
+    let (_, modules) = crate::script::collect(|| {
+        let _ = std::panic::catch_unwind(|| crate::script::collect::<()>(|| panic!("a handler")));
+        crate::script::uses("stock_grid");
+    });
+    assert_eq!(modules, ["stock_grid"], "the outer collect still gathers");
 }
 
 #[tokio::test]

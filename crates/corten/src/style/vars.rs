@@ -239,7 +239,8 @@ macro_rules! tuples {
 }
 tuples!((A, B), (A, B, C), (A, B, C, D), (A, B, C, D, E), (A, B, C, D, E, F), (A, B, C, D, E, F, G), (A, B, C, D, E, F, G, H));
 
-/// The values a full page's render wrote, one after another, and where each ends.
+/// The values a render wrote (a full page's, or a [`crate::Rendered`]'s), one after another, and
+/// where each ends.
 #[derive(Default)]
 pub(crate) struct Written {
     text: String,
@@ -253,10 +254,8 @@ thread_local! {
 /// Runs `render` and returns the values it wrote, for [`replay`] where its markup is placed
 /// (`view::Rendered`).
 pub(crate) fn capture<T>(render: impl FnOnce() -> T) -> (T, Written) {
-    let previous = WRITTEN.with(|w| w.replace(Some(Written::default())));
-    let value = render();
-    let written = WRITTEN.with(|w| w.replace(previous)).unwrap_or_default();
-    (value, written)
+    let (value, written) = crate::gather(&WRITTEN, Written::default(), render);
+    (value, written.unwrap_or_default())
 }
 
 /// Notes values a render wrote earlier (`capture`) as written by the page rendering now.
@@ -277,9 +276,8 @@ pub(crate) fn replay(earlier: &Written) {
 /// for each distinct one, sorted, so a page whose values are the same is the same bytes (and the
 /// same CSP hash). Empty when it wrote none.
 pub(crate) fn collect<T>(render: impl FnOnce() -> T) -> (T, String) {
-    let previous = WRITTEN.with(|w| w.replace(Some(Written { text: String::new(), ends: Vec::new() })));
-    let value = render();
-    let written = WRITTEN.with(|w| w.replace(previous)).expect("set above");
+    let (value, written) = crate::gather(&WRITTEN, Written::default(), render);
+    let written = written.expect("set above");
     if written.ends.is_empty() {
         return (value, String::new());
     }

@@ -784,3 +784,25 @@ mod doc_examples {
     #[doc = include_str!("../../../docs/guide/views.md")]
     struct Views;
 }
+
+/// Runs `render` with `slot` holding `Some(start)` and returns what it returned and what the slot
+/// held after. The slot's earlier value is put back even if `render` panics: a handler's panic is
+/// caught and the thread renders on, so a slot left set would gather every later render's notes.
+pub(crate) fn gather<S: 'static, T>(
+    slot: &'static std::thread::LocalKey<std::cell::RefCell<Option<S>>>,
+    start: S,
+    render: impl FnOnce() -> T,
+) -> (T, Option<S>) {
+    struct Restore<S: 'static>(&'static std::thread::LocalKey<std::cell::RefCell<Option<S>>>, Option<Option<S>>);
+    impl<S> Drop for Restore<S> {
+        fn drop(&mut self) {
+            if let Some(earlier) = self.1.take() {
+                self.0.with(|s| *s.borrow_mut() = earlier);
+            }
+        }
+    }
+    let mut restore = Restore(slot, Some(slot.with(|s| s.replace(Some(start)))));
+    let value = render();
+    let gathered = slot.with(|s| s.replace(restore.1.take().expect("set above")));
+    (value, gathered)
+}
