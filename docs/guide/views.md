@@ -9,7 +9,7 @@ render of the same call site.
 | Write | Means |
 |---|---|
 | `"Price"` | text (source whitespace between tags is never output) |
-| `{expr}` | an expression, escaped: anything that implements `Render` (strings, numbers, `Option`, other views) or else `Display`. `raw(html)` prints trusted HTML. Not inside `<script>` or `<style>`, which do not read escaped text back: there it does not compile |
+| `{expr}` | an expression, escaped: anything that implements `Render` (strings, numbers, `Option`, other views) or else `Display`. `raw(html)` prints trusted HTML; markup a view rendered ahead goes in `req.rendered(view)` (a `corten::Rendered`) instead, which keeps the sizes and scripts its render noted. Not inside `<script>` or `<style>`, which do not read escaped text back: there it does not compile |
 | `href={url}`, `href={("/items/", &id)}` | an attribute; a tuple prints its parts without building a string |
 | `hidden={flag}`, `class={maybe}` | `bool` prints the bare name or nothing; `None` leaves the attribute out |
 | `<input {..e.aria(field)}>` | spreads `Attrs` |

@@ -763,6 +763,130 @@ async fn a_page_s_custom_properties_are_one_style_block_its_csp_allows_by_hash()
     assert!(headers["content-security-policy"].to_str().unwrap().contains("style-src 'self';"), "a page with none is as before");
 }
 
+/// Meters rendered ahead, placed with `place`, on a page served under `corten dev` or not.
+fn placed_meters(dev: bool, place: fn(crate::Rendered) -> Box<dyn crate::Render>) -> Router {
+    placed_meters_listing(dev, place, &[Meter])
+}
+
+/// `placed_meters`, with the app listing `components`.
+fn placed_meters_listing(
+    dev: bool,
+    place: fn(crate::Rendered) -> Box<dyn crate::Render>,
+    components: &'static [crate::Component],
+) -> Router {
+    let page = move |req: Req| async move {
+        let body = req.rendered(html! {
+            <Meter used={42.5} />
+            <Meter used={7.0} />
+        });
+        req.test_page("Meters", place(body))
+    };
+    App::new(Routes::from(Router::new().route("/", get(page))))
+        .dev(dev)
+        .error_page(test_error_page, ())
+        .components(components)
+        .router()
+}
+
+/// Markup rendered ahead into a `Rendered` keeps its values, so its page's style block has their
+/// rules; the same markup placed with `raw` has none, which `corten dev` reports.
+#[tokio::test]
+async fn markup_rendered_ahead_keeps_its_custom_properties_and_raw_markup_is_reported() {
+    let rules = r#"[data-vars="--meter__fill:42.5%"]{--meter__fill:42.5%!important}[data-vars="--meter__fill:7%"]{--meter__fill:7%!important}"#;
+    for dev in [false, true] {
+        let (status, _, body) = call(placed_meters(dev, |body| Box::new(body)), "GET", None).await;
+        assert_eq!(status, 200, "{body}");
+        assert!(body.contains(&format!("<style>{rules}</style></head>")), "{body}");
+    }
+    let (status, _, body) = call(placed_meters(false, |body| Box::new(crate::raw(body.as_str().to_string()))), "GET", None).await;
+    assert!(status == 200 && !body.contains("<style>"), "raw markup's values are not noted: {body}");
+    let (status, _, body) = call(placed_meters(true, |body| Box::new(crate::raw(body.as_str().to_string()))), "GET", None).await;
+    assert_eq!(status, 500, "{body}");
+    assert!(body.contains("data-vars=&quot;--meter__fill:42.5%&quot; and no rule for it"), "{body}");
+    // Under `corten dev`, a component rendered ahead counts as rendered where it is placed. A
+    // release build does not note a view's components, so only a debug build reports it.
+    if cfg!(debug_assertions) {
+        let (status, _, body) = call(placed_meters_listing(true, |body| Box::new(body), &[]), "GET", None).await;
+        assert_eq!(status, 500, "{body}");
+        assert!(body.contains("renders Meter, which the app does not list"), "{body}");
+    }
+}
+
+/// What a view rendered ahead noted reaches the render it is placed in: its values beside those
+/// the outer render wrote before and after it was made, its script modules and its components.
+#[test]
+fn a_rendered_view_brings_what_its_render_noted() {
+    struct Handled;
+    impl crate::Render for Handled {
+        fn render(&self, out: &mut String) {
+            out.push_str("<button></button>");
+            crate::script::uses("stock_grid");
+        }
+    }
+    let ((((html, inner), components), modules), block) = crate::style::capture_vars(|| {
+        crate::script::collect(|| {
+            crate::style::collect(|| {
+                let mut out = Meter { used: 42.5 }.to_html();
+                let inner = crate::Rendered::new(html! {
+                    <Meter used={7.0} />
+                    {Handled}
+                });
+                Meter { used: 1.0 }.render(&mut out);
+                inner.render(&mut out);
+                (out, inner)
+            })
+        })
+    });
+    assert!(html.ends_with("<button></button>"), "{html}");
+    assert_eq!(modules, ["stock_grid"]);
+    if cfg!(debug_assertions) {
+        assert_eq!(components.iter().map(|c| c.name).collect::<Vec<_>>(), ["Meter"]);
+        // Placed alone, it reports the component it rendered.
+        let ((), alone) = crate::style::collect(|| inner.render(&mut String::new()));
+        assert_eq!(alone.iter().map(|c| c.name).collect::<Vec<_>>(), ["Meter"], "replayed where it is placed");
+    }
+    let ((), rules) = crate::style::collect_vars(|| crate::style::replay_vars(&block));
+    for value in ["42.5%", "7%", "1%"] {
+        assert!(rules.contains(&format!("{{--meter__fill:{value}!important}}")), "{value}: {rules}");
+    }
+}
+
+/// A render that panics inside another puts back what the outer one was gathering, so it keeps
+/// what it noted before and goes on noting after: a handler's panic is caught and the thread
+/// renders on.
+#[test]
+fn a_panicking_render_puts_back_what_was_gathering() {
+    let panics = || panic!("a handler");
+    let ((), modules) = crate::script::collect(|| {
+        crate::script::uses("before");
+        assert!(std::panic::catch_unwind(|| crate::script::collect::<()>(panics)).is_err());
+        crate::script::uses("after");
+    });
+    assert_eq!(modules, ["before", "after"]);
+    let ((), rules) = crate::style::collect_vars(|| {
+        Meter { used: 1.0 }.to_html();
+        assert!(std::panic::catch_unwind(|| crate::style::collect_vars::<()>(panics)).is_err());
+        Meter { used: 2.0 }.to_html();
+    });
+    assert!(rules.contains("--meter__fill:1%!important") && rules.contains("--meter__fill:2%!important"), "{rules}");
+    let ((), block) = crate::style::capture_vars(|| {
+        Meter { used: 3.0 }.to_html();
+        assert!(std::panic::catch_unwind(|| crate::style::capture_vars::<()>(panics)).is_err());
+        Meter { used: 4.0 }.to_html();
+    });
+    let ((), rules) = crate::style::collect_vars(|| crate::style::replay_vars(&block));
+    assert!(rules.contains("--meter__fill:3%!important") && rules.contains("--meter__fill:4%!important"), "{rules}");
+    if cfg!(debug_assertions) {
+        const OTHER: crate::Component = crate::Component { name: "Other", ..Meter };
+        let ((), used) = crate::style::collect(|| {
+            crate::style::__private::rendered(&Meter);
+            assert!(std::panic::catch_unwind(|| crate::style::collect::<()>(panics)).is_err());
+            crate::style::__private::rendered(&OTHER);
+        });
+        assert_eq!(used.iter().map(|c| c.name).collect::<Vec<_>>(), ["Meter", "Other"]);
+    }
+}
+
 #[tokio::test]
 async fn the_app_refuses_cross_site_writes() {
     let router = app(routes(), None);
@@ -4890,6 +5014,16 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
                         )
                     }),
                 )
+                // Rendered ahead, in the handler, before the answer renders.
+                .route(
+                    "/ahead",
+                    get(move |req: Req| async move {
+                        let t: ZoneMsg = req.t();
+                        let part = req.rendered(html! { <p>{t.date_time(at, DateStyle::Medium, TimeStyle::Short)}</p> });
+                        let placed = &part;
+                        req.test_page("Ahead", html! { {placed} })
+                    }),
+                )
                 .route("/offset", get(move |req: Req| async move { req.zone().offset(at).to_string() }))
                 // A calendar day: the same day in every zone (#502).
                 .route(
@@ -4968,6 +5102,8 @@ async fn dates_are_written_in_the_visitors_zone_while_corten_renders_the_answer(
     let (cache, page) = get_with(zoned.clone(), "/", Some("corten-zone=America/Chicago")).await;
     assert!(page.contains(&format!("<p>Mar 22, 2026, 10:04 AM GMT-5</p><p>known</p>{utc}")), "{page}");
     assert!(cache.contains("private"), "written for this visitor: {cache}");
+    let (cache, page) = get_with(zoned.clone(), "/ahead", Some("corten-zone=America/Chicago")).await;
+    assert!(page.contains("<p>Mar 22, 2026, 10:04 AM GMT-5</p>") && cache.contains("private"), "rendered ahead: {cache} {page}");
     for cookie in [None, Some("corten-zone=Mars/Olympus")] {
         let (_, page) = get_with(zoned.clone(), "/", cookie).await;
         assert!(page.contains(&format!("{utc}<p>unknown</p>{utc}")), "{cookie:?}: {page}");

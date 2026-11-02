@@ -1602,10 +1602,8 @@ pub(crate) fn uses(name: &'static str) {
 
 /// Runs `render` and returns the script modules its handlers use, in first-use order.
 pub(crate) fn collect<T>(render: impl FnOnce() -> T) -> (T, Vec<&'static str>) {
-    let previous = MODULES.with(|m| m.replace(Some(Vec::new())));
-    let value = render();
-    let list = MODULES.with(|m| m.replace(previous)).unwrap_or_default();
-    (value, list)
+    let (value, list) = crate::gather(&MODULES, Vec::new(), render);
+    (value, list.unwrap_or_default())
 }
 
 /// Used by the code `#[component]`, `html!`, `script!` and `#[event]` generate. Not a public API.

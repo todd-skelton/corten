@@ -801,7 +801,10 @@ impl<T: Patch> Patch for Vec<T> {}
 /// Trusted HTML, written without escaping. Only for markup the app produced itself.
 pub struct Raw<T>(pub T);
 
-/// Prints `html` as is: `{raw(&cached_fragment)}`. Never pass it user input.
+/// Prints `html` as is: `{raw(&markup)}`. Never pass it user input. Markup a view rendered goes
+/// in a [`Rendered`] (`req.rendered(view)`) instead, which keeps what the render noted (sizes from data, the script
+/// modules its handlers use) for the page it is placed in; text placed with `raw` carries only
+/// its attributes, so under `corten dev` a page whose `data-vars` have no rule is an error.
 pub fn raw<T: AsRef<str>>(html: T) -> Raw<T> {
     Raw(html)
 }
@@ -809,6 +812,69 @@ pub fn raw<T: AsRef<str>>(html: T) -> Raw<T> {
 impl<T: AsRef<str>> Render for Raw<T> {
     fn render(&self, out: &mut String) {
         out.push_str(self.0.as_ref());
+    }
+}
+
+/// A view rendered once, to place in several answers: a page's body that is also a live stream's
+/// fragment, a part kept while it has not changed. [`crate::Req::rendered`] renders it as the page
+/// would (in the visitor's time zone under [`crate::App::zoned_dates`]), and placed in a page
+/// (`{placed}`, a reference to it) it brings, beside its markup, what its render noted: the values its `style={..}`
+/// wrote (a full page's style block has a rule for each, so sizes from data paint without a
+/// script), the script modules its handlers use (the page loads them) and, in debug builds, the
+/// components that rendered (checked under `corten dev`). Its dates are the visitor's who asked,
+/// and only that request's answer is marked private for them: place it in that answer, not in
+/// another visitor's or a [`crate::Public`] one.
+///
+/// ```
+/// use corten::{prelude::*, Fragment, Rendered};
+///
+/// #[derive(Id)]
+/// struct CountId;
+///
+/// fn answers(req: &Req) -> (String, Fragment) {
+///     let body: Rendered = req.rendered(html! { <p id={CountId}>"3 open"</p> });
+///     let placed = &body; // a reference: html! takes what it names by value
+///     let page = html! { <main>{placed}</main> }.to_html(); // in the handler: req.page(..)
+///     (page, Fragment::new(body.into_string())) // the same markup, for a live stream
+/// }
+/// # let _ = answers;
+/// ```
+pub struct Rendered {
+    html: String,
+    vars: crate::style::Written,
+    modules: Vec<&'static str>,
+    components: Vec<&'static crate::Component>,
+}
+
+impl Rendered {
+    /// Renders `view`, keeping what its render noted ([`crate::Req::rendered`]).
+    pub(crate) fn new(view: impl Render) -> Self {
+        let (((html, components), modules), vars) =
+            crate::style::capture_vars(|| crate::script::collect(|| crate::style::collect(|| view.to_html())));
+        Rendered { html, vars, modules, components }
+    }
+
+    /// The markup.
+    pub fn as_str(&self) -> &str {
+        &self.html
+    }
+
+    /// The markup, without a copy (a live stream's `Fragment::new`).
+    pub fn into_string(self) -> String {
+        self.html
+    }
+}
+
+impl Render for Rendered {
+    fn render(&self, out: &mut String) {
+        out.push_str(&self.html);
+        crate::style::replay_vars(&self.vars);
+        for module in &self.modules {
+            crate::script::uses(module);
+        }
+        for component in &self.components {
+            crate::style::__private::rendered(component);
+        }
     }
 }
 

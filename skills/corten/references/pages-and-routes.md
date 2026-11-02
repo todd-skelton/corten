@@ -109,7 +109,9 @@ pub fn Price(amount: &str) -> impl Render {
 ```
 
 Text in `{...}` and attribute values are escaped. `raw(..)` is the only way around escaping;
-use it only for HTML the app produced itself. A view that is one component and passes it
+use it only for HTML the app produced itself. Markup a view rendered ahead (a page's body that is
+also a live stream's fragment) is `req.rendered(view)`, placed through a reference (`let placed = &body;`, `{placed}`), which keeps the sizes
+and scripts its render noted; `raw` keeps neither. A view that is one component and passes it
 something it builds makes it in the markup: `html! { let title = format!(..); <Dialog title={&title} /> }`.
 
 ## Messages

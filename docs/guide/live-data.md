@@ -107,6 +107,11 @@ settled batch is sent once more if the page has not drawn it, and the stream end
 ends sends `end`, and the element keeps the last state it drew. How often to read, what to read
 less often (a costly part every few reads), when the job is done and what giving up draws are
 the app's to choose, so this loop is written in the app; what many pages share is `live_watch`.
+A handler that renders one part for two uses in its answer (the page, and the cursor or
+fragment it also keeps) renders it once with `req.rendered(view)` and places a reference to it
+(`let placed = &part;`, then `{placed}`), which keeps the sizes and scripts its render noted; text
+from `to_html()` placed with `raw` keeps neither. A stream renders its own parts as it is read,
+as above.
 
 `App::task` starts its tasks with the app, so jobs that start while it runs share one task: it
 reads each running job and sends to that job's `watch` channel (a map from the job to its

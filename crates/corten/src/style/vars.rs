@@ -239,8 +239,10 @@ macro_rules! tuples {
 }
 tuples!((A, B), (A, B, C), (A, B, C, D), (A, B, C, D, E), (A, B, C, D, E, F), (A, B, C, D, E, F, G), (A, B, C, D, E, F, G, H));
 
-/// The values a full page's render wrote, one after another, and where each ends.
-struct Written {
+/// The values a render wrote (a full page's, or a [`crate::Rendered`]'s), one after another, and
+/// where each ends.
+#[derive(Default)]
+pub(crate) struct Written {
     text: String,
     ends: Vec<usize>,
 }
@@ -249,13 +251,33 @@ thread_local! {
     static WRITTEN: RefCell<Option<Written>> = const { RefCell::new(None) };
 }
 
+/// Runs `render` and returns the values it wrote, for [`replay`] where its markup is placed
+/// (`view::Rendered`).
+pub(crate) fn capture<T>(render: impl FnOnce() -> T) -> (T, Written) {
+    let (value, written) = crate::gather(&WRITTEN, Written::default(), render);
+    (value, written.unwrap_or_default())
+}
+
+/// Notes values a render wrote earlier (`capture`) as written by the page rendering now.
+pub(crate) fn replay(earlier: &Written) {
+    if earlier.ends.is_empty() {
+        return;
+    }
+    WRITTEN.with(|w| {
+        if let Some(written) = w.borrow_mut().as_mut() {
+            let base = written.text.len();
+            written.text.push_str(&earlier.text);
+            written.ends.extend(earlier.ends.iter().map(|end| base + end));
+        }
+    });
+}
+
 /// Runs `render` and returns the page's style block for the values it wrote: `[data-vars="X"]{X!important}`
 /// for each distinct one, sorted, so a page whose values are the same is the same bytes (and the
 /// same CSP hash). Empty when it wrote none.
 pub(crate) fn collect<T>(render: impl FnOnce() -> T) -> (T, String) {
-    let previous = WRITTEN.with(|w| w.replace(Some(Written { text: String::new(), ends: Vec::new() })));
-    let value = render();
-    let written = WRITTEN.with(|w| w.replace(previous)).expect("set above");
+    let (value, written) = crate::gather(&WRITTEN, Written::default(), render);
+    let written = written.expect("set above");
     if written.ends.is_empty() {
         return (value, String::new());
     }
