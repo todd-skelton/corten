@@ -426,5 +426,10 @@ export {};
         std::fs::write(&path, types.typescript().replace('\n', "\r\n")).unwrap();
         types.sync(&path);
         assert!(std::fs::read_to_string(&path).unwrap().contains("\r\n"), "left as it was");
+        // CRLF does not hide a real change.
+        std::fs::write(&path, "stale\r\n").unwrap();
+        let crlf_stale = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| types.sync(&path)));
+        assert!(crlf_stale.is_err(), "a CRLF file of other text is stale");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), types.typescript());
     }
 }
