@@ -1130,6 +1130,7 @@ async function swapPage(html, signal, stay, notice = null, layout = null, conten
   view?.();
   if (stay) scrollTo(x, y);
   swapped = html;
+  swappedWhole = "";
   markCurrent();
   readAgainLater();
   readPartsAgain(main);
@@ -1189,9 +1190,11 @@ for (let el = document.querySelector("main"); el && el !== document.body; el = e
  */
 function frameOf(doc) {
   const parts = [];
-  for (let el = doc.querySelector("main"); el; el = el.parentElement) {
-    parts.push(`<${el.localName}`);
-    for (const a of Array.from(el.attributes)) if (a.name !== "nonce" && a.name !== "aria-busy") parts.push(`${el.localName} ${a.name}="${a.value}"`);
+  // Each element by its distance from <main>, so two <div>s around it are two entries.
+  let depth = 0;
+  for (let el = doc.querySelector("main"); el; el = el.parentElement, depth++) {
+    parts.push(`${depth}<${el.localName}`);
+    for (const a of Array.from(el.attributes)) if (a.name !== "nonce" && a.name !== "aria-busy") parts.push(`${depth} ${a.name}="${a.value}"`);
   }
   for (const el of Array.from(doc.head.children)) {
     // The page's values (`style={..}`) are its own, set on what is swapped in (`setVars`).
@@ -1205,9 +1208,11 @@ function frameOf(doc) {
  * extension added before the runtime ran (an attribute on `<html>`, a `<style>` in the head), so
  * a write's page only has to have nothing it lacks: one that adds or changes an entry loads in
  * full, and one that only stops writing an entry leaves it until the next full load. Once a
- * write's page is swapped in, it is that page's, as the server sent it, and must match.
+ * write's page is swapped in, it is that page's, as the server sent it (`sent`, its entries in
+ * order), and must match.
+ * @type {{ parts: Set<string>, sent: string | null }}
  */
-let frame = { parts: new Set(frameOf(document)), sent: false };
+let frame = { parts: new Set(frameOf(document)), sent: null };
 
 /**
  * What `doc`, a whole page, draws around `<main>` otherwise than the server drew it here: at each
@@ -1222,7 +1227,8 @@ let frame = { parts: new Set(frameOf(document)), sent: false };
 function layoutChanges(doc, notice) {
   const said = notice?.has("d") ? notice.get("m") || null : null;
   const parts = frameOf(doc);
-  if (!parts.every((part) => frame.parts.has(part)) || (frame.sent && parts.length !== frame.parts.size)) return null;
+  const sent = parts.join("\n");
+  if (frame.sent === null ? !parts.every((part) => frame.parts.has(part)) : sent !== frame.sent) return null;
   /** @type {[Element, Element, string | undefined][]} */
   const changed = [];
   let here = document.querySelector("main");
@@ -1247,7 +1253,8 @@ function layoutChanges(doc, notice) {
   return {
     fresh: changed.map(([, el]) => el),
     apply() {
-      frame = { parts: new Set(parts), sent: true };
+      frame = { parts: frame.parts, sent };
+      stale = false;
       for (const [old, el, was] of changed) {
         // One a patch replaced, or changed inside, while the page was on its way is newer than the
         // page: it stays.
@@ -1288,7 +1295,9 @@ async function swapDocument(html, signal, notice) {
   // The nodes parsed above, not the text parsed again.
   const content = document.createDocumentFragment();
   content.append(...head, ...Array.from(main.childNodes));
-  return swapPage(text, signal, false, notice, layout, content);
+  const swappedIn = await swapPage(text, signal, false, notice, layout, content);
+  if (swappedIn) swappedWhole = comparableText(text);
+  return swappedIn;
 }
 
 /**
@@ -1579,7 +1588,7 @@ async function visit(url, signal, redirected, again, place, source, written) {
     signal.throwIfAborted();
     // Read again with nothing new (the write has not landed yet): the page stays as it is, with
     // what the user typed and its live streams.
-    if (again && html === swapped) {
+    if (again && (html === swapped || (swappedWhole !== "" && comparableText(html) === swappedWhole))) {
       readAgainLater();
       return;
     }
@@ -1597,6 +1606,19 @@ const busyBy = new WeakMap();
 
 /** The last page `visit` swapped in, as the server sent it. */
 let swapped = "";
+/**
+ * The last page, when a write's whole page was swapped in: as `comparableText` writes it, since
+ * `swapped` then holds the parsed page written out again, and a read again answers as a
+ * navigation does, in the server's text.
+ */
+let swappedWhole = "";
+/** @param {string} html */
+function comparableText(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  for (const noscript of Array.from(template.content.querySelectorAll("noscript"))) noscript.replaceChildren();
+  return template.innerHTML;
+}
 
 /** Bumped by each page, so a read-again timer of an earlier one does nothing. */
 let readAgainPage = 0;
@@ -1656,6 +1678,12 @@ const SOURCE = Symbol("corten.source");
  * again too ({@link swapDocument}).
  */
 const WRITTEN = Symbol("corten.written");
+/**
+ * A write redirected and no whole page has been swapped in since (the user went elsewhere before
+ * it came): every navigation reads the whole page until one is, so what the write changed in the
+ * layout is drawn.
+ */
+let stale = false;
 
 /**
  * Whether the first document has fired `load`. Before it, a navigation is the browser's own (a
@@ -1726,7 +1754,7 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   // The page is about to change: replies to its pending submits would patch the wrong page.
   if (!again) for (const pending of submits.values()) pending.controller.abort();
   const redirected = event.info?.[REDIRECTED];
-  const written = !!event.info?.[WRITTEN];
+  const written = !!event.info?.[WRITTEN] || stale;
   // The same page read again, or a form or link marked `data-keep-place` (filters applied as they
   // change): the page changes under the user, who stays where they were reading, on the control
   // they used. Kept across a redirect the server answers with.
@@ -1734,7 +1762,7 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   if (place === undefined) {
     // Back and forward: the browser puts the user back where they were on that entry.
     if (event.navigationType === "traverse") {
-      event.intercept({ handler: () => visit(url, event.signal, redirected) });
+      event.intercept({ handler: () => visit(url, event.signal, redirected, false, undefined, undefined, stale) });
       return;
     }
     // A new page starts at its `#id`, else at the top. Scrolled here, not left to the browser:
@@ -1925,8 +1953,10 @@ async function send(form, submitter, sends) {
     if (location_) {
       renew();
       submits.delete(form);
-      if (navigation) navigation.navigate(location_, { info: { [LOAD]: true, [WRITTEN]: method !== "GET" } });
-      else {
+      if (navigation) {
+        stale ||= method !== "GET";
+        navigation.navigate(location_, { info: { [LOAD]: true, [WRITTEN]: method !== "GET" } });
+      } else {
         // Without the Navigation API, a URL that differs only in its `#id` would only scroll.
         const to = new URL(location_, location.href);
         const same = pageKey(to) === pageKey(new URL(location.href));

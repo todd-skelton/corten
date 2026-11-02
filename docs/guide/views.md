@@ -185,9 +185,13 @@ which are set on what is swapped in). The frame the first write's page is compar
 read from the page as it loaded, so what a browser extension added before the runtime started (an
 attribute on `<html>`, a `<style>` in `<head>`) is in it: a write's page only has to add or change
 nothing there, and an attribute the server stops writing stays until a full load. After that the
-frame is the last write's page, as the server sent it. An element an extension adds beside
-`<main>`'s ancestors in `<body>` stays, as a script's does. A patch that lands while the write's
-page is on its way, in a layout element that page would replace, wins: the element keeps the patch. A layout element
+frame is the last write's page, as the server sent it. An element a script or an extension adds
+beside `<main>`'s ancestors after the runtime starts stays; one an extension adds to `<body>`
+before it starts is taken as the layout's, so each write's page, which lacks it, loads in full.
+Until a write's page is swapped in, every navigation reads the whole page, so one the user starts
+before it arrives draws what the write changed as well. A patch that lands in a layout element
+after the write's page has come and before it is drawn (while the stylesheets or scripts it needs
+load) is newer than the page and wins: the element keeps the patch. A layout element
 whose markup differs on every render (a form with a submit key, a `<corten-live>` with its
 position) is replaced on every such write, losing what scripts did to it; keep it out of the
 layout, or draw it in a component a patch updates. A layout element that shows the redirect's

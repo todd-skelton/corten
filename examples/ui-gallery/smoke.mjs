@@ -463,11 +463,14 @@ async function run(browser) {
     "a notice whose page loads in full instead reaches the toaster after the load",
   ];
   if (engine !== "webkit") {
+    // A full load would draw the same toast: the marker says the document was kept.
+    await page.evaluate(() => ((/** @type {any} */ (window)).__kept = 1));
+    const kept = () => page.evaluate(() => (/** @type {any} */ (window)).__kept === 1);
     await page.getByRole("button", { name: "Rename draft" }).click();
     await page.locator("#draft-name").fill("Spring draft");
     await page.getByRole("button", { name: "Rename", exact: true }).click();
     const renamed = await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Spring draft.", null, { timeout: 5000 }).then(() => true, () => false);
-    check(noticeChecks[0], renamed && (await page.locator("#ui-toast").isVisible()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)), await page.locator("#ui-toast").textContent());
+    check(noticeChecks[0], renamed && (await kept()) && (await page.locator("#ui-toast").isVisible()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)), await page.locator("#ui-toast").textContent());
     check(noticeChecks[1], await page.getByRole("button", { name: "Dismiss" }).isVisible());
     await page.getByRole("button", { name: "Dismiss" }).click();
     check(noticeChecks[2], !(await page.evaluate(async () => (await (await fetch("/")).text()).includes("Renamed to"))));
@@ -479,7 +482,7 @@ async function run(browser) {
       const toast = /** @type {HTMLElement | null} */ (document.querySelector("#ui-toast"));
       return toast?.textContent === "Renamed to Spring draft." && !toast.hidden && toast.checkVisibility();
     }, null, { timeout: 5000 }).then(() => true, () => false);
-    check(noticeChecks[3], again, await page.locator("#ui-toast").evaluate((t) => JSON.stringify({ text: t.textContent, hidden: /** @type {HTMLElement} */ (t).hidden })));
+    check(noticeChecks[3], again && (await kept()), await page.locator("#ui-toast").evaluate((t) => JSON.stringify({ text: t.textContent, hidden: /** @type {HTMLElement} */ (t).hidden })));
     await page.getByRole("button", { name: "Dismiss" }).click();
     // The write's page comes with another frame (here an attribute on <html> changed on the way):
     // the runtime loads it in full, and the notice, whose cookie that answer removed, goes with it.
@@ -500,6 +503,41 @@ async function run(browser) {
     check(noticeChecks[4], kept && loaded && (await page.locator("#ui-toast").isVisible()), `${loaded} ${await page.locator("#ui-toast").textContent()}`);
     await page.unroute("**/*");
   } else for (const name of noticeChecks) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
+  // A layout with <main> inside two <div>s: one write's page after another is swapped into the
+  // same document.
+  const nestedCheck = "writes in a layout that nests <main> in two <div>s keep the document";
+  if (engine !== "webkit") {
+    const nest = async (/** @type {import("@playwright/test").Route} */ route) => {
+      const req = route.request();
+      const whole = req.resourceType() === "document" || (req.resourceType() === "fetch" && !req.headers()["corten"]);
+      if (req.method() !== "GET" || !whole || new URL(req.url()).pathname !== "/") return route.fallback();
+      // Fetched uncompressed: Playwright does not decode zstd, which Firefox asks for.
+      const res = await route.fetch({ headers: { ...req.headers(), "accept-encoding": "identity" } });
+      const headers = res.headers();
+      delete headers["content-encoding"];
+      delete headers["content-length"];
+      const body = (await res.text()).replace("<main>", '<div class="frame"><div class="inner"><main>').replace("</main>", "</main></div></div>");
+      await route.fulfill({ status: res.status(), headers, body });
+    };
+    await page.route("**/*", nest);
+    await page.goto(`${base}/`);
+    await page.evaluate(() => ((/** @type {any} */ (window)).__nested = 1));
+    let documents = 0;
+    const onDocument = (/** @type {import("@playwright/test").Request} */ r) => r.resourceType() === "document" && documents++;
+    page.on("request", onDocument);
+    for (const name of ["Nested draft", "Nested again"]) {
+      await page.getByRole("button", { name: "Rename draft" }).click();
+      await page.locator("#draft-name").fill(name);
+      await page.getByRole("button", { name: "Rename", exact: true }).click();
+      await page.waitForFunction((name) => document.querySelector("#ui-toast")?.textContent === `Renamed to ${name}.`, name, { timeout: 5000 }).catch(() => {});
+      await page.getByRole("button", { name: "Dismiss" }).click().catch(() => {});
+    }
+    page.off("request", onDocument);
+    const nested = await page.evaluate(() => ({ kept: (/** @type {any} */ (window)).__nested === 1, inner: !!document.querySelector(".frame > .inner > main") }));
+    check(nestedCheck, nested.kept && nested.inner && documents === 0, `${JSON.stringify(nested)}, document requests ${documents}`);
+    await page.unroute("**/*", nest);
+    await page.goto(`${base}/`);
+  } else skip(nestedCheck, "no Navigation API: navigations are full page loads");
   // A plain navigation whose page comes with another layout (here a shell key changed on the way)
   // loads in full, as a write's does when its frame changed.
   const shellCheck = "a navigation to a page in another layout loads it in full";

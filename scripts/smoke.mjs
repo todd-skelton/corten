@@ -915,18 +915,30 @@ async function run(browser) {
       // What the route changes in the page: the brand in the header, a banner before the header (a run
       // of another length), an attribute of <html>.
       let [banner, frame] = ["", ""];
+      // Later checks: the section stylesheet's address made new, so it loads before the page is
+      // drawn (`late`); a read-again tag in the page and its navigation answers (`readAgain`); the
+      // whole page held back (`slow`).
+      let [late, readAgain, slow] = [false, false, false];
+      const readAgainTag = '<noscript data-corten-read-again="1" data-corten-head><meta http-equiv="refresh" content="1"></noscript>';
       await page.route(news, async (route) => {
-        if (route.request().method() !== "GET" || route.request().headers()["corten"]) return route.fallback();
+        const nav = route.request().headers()["corten"];
+        if (route.request().method() !== "GET" || (nav && !(readAgain && nav === "nav"))) return route.fallback();
         // Fetched uncompressed: Playwright does not decode zstd, which Firefox asks for.
         const res = await route.fetch({ headers: { ...route.request().headers(), "accept-encoding": "identity" } });
         const headers = res.headers();
         delete headers["content-encoding"];
         delete headers["content-length"];
-        const body = (await res.text())
-          .replace(">Watchlist</span>", ">Watchlist, again</span>")
-          .replace("<header", `${banner}<header`)
-          .replace("<html", `<html${frame}`);
-        await route.fulfill({ status: res.status(), headers, body });
+        let body = await res.text();
+        if (readAgain) body = body.replace("</title>", `</title>${readAgainTag}`);
+        if (!nav) {
+          body = body
+            .replace(">Watchlist</span>", ">Watchlist, again</span>")
+            .replace("<header", `${banner}<header`)
+            .replace("<html", `<html${frame}`);
+          if (late) body = body.replace(/<link\b[^>]*\bdata-corten-style\b[^>]*>/, (tag) => tag.replace(/href="([^"]+)"/, 'href="$1?late=1"'));
+          if (slow) await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+        await route.fulfill({ status: res.status(), headers, body }).catch(() => {});
       });
       // Something a script put beside <main> is not the layout's, and stays.
       await page.evaluate(() => document.body.append(Object.assign(document.createElement("div"), { id: "extension" })));
@@ -967,6 +979,81 @@ async function run(browser) {
       await back();
       const redrawn = await page.evaluate(() => document.querySelector("header span")?.textContent);
       check("a layout element a patch changed is drawn again by the next write", redrawn === "Watchlist, again", redrawn ?? "");
+      // A patch that lands after the write's page came and before it is drawn (here while the
+      // stylesheet it links loads) is newer than the page: the element keeps it.
+      {
+        const lateStyle = (/** @type {URL} */ url) => url.searchParams.has("late");
+        let patchedLate = false;
+        await page.route(lateStyle, async (route) => {
+          await page.evaluate(async () => {
+            const corten = /** @type {{ patch: (html: string) => Promise<void> }} */ (await import(/** @type {string} */ ("corten")));
+            await corten.patch('<span id="smoke-brand">Late</span>');
+          });
+          patchedLate = true;
+          const url = new URL(route.request().url());
+          url.searchParams.delete("late");
+          await route.fulfill({ response: await route.fetch({ url: url.href }) });
+        });
+        await page.evaluate(() => {
+          scrollTo(0, 0);
+          /** @type {HTMLElement} */ (document.querySelector("header span")).id = "smoke-brand";
+        });
+        late = true;
+        await thank();
+        await back();
+        late = false;
+        await page.unroute(lateStyle);
+        const kept = await page.evaluate(() => document.querySelector("header span")?.textContent);
+        check("a patch that lands while the write's page is drawn is kept", patchedLate && kept === "Late", `patched ${patchedLate}, ${kept}`);
+      }
+      // A page the write sent the browser to that reads itself again (ReadAgain): a read with
+      // nothing new leaves the page as it is, with what the user typed.
+      {
+        let reads = 0;
+        const onRead = (/** @type {import("@playwright/test").Request} */ r) => news(new URL(r.url())) && r.headers()["corten"] === "nav" && reads++;
+        page.on("request", onRead);
+        readAgain = true;
+        await page.evaluate(() => scrollTo(0, 0));
+        await thank();
+        await back();
+        await page.evaluate(() => {
+          (/** @type {any} */ (document.querySelector("main")?.firstElementChild)).__same = 1;
+          /** @type {HTMLInputElement} */ (document.querySelector("#briefing [name=email]")).value = "typed@example.com";
+        });
+        await page.waitForFunction(() => document.head.querySelector("noscript[data-corten-read-again]"), null, { timeout: 5000 }).catch(() => {});
+        const read = await page.waitForEvent("requestfinished", { predicate: (r) => news(new URL(r.url())) && r.headers()["corten"] === "nav", timeout: 5000 }).then(() => true, () => false);
+        await page.waitForTimeout(300);
+        const stayed = await page.evaluate(() => ({
+          same: (/** @type {any} */ (document.querySelector("main")?.firstElementChild))?.__same === 1,
+          typed: /** @type {HTMLInputElement | null} */ (document.querySelector("#briefing [name=email]"))?.value,
+        }));
+        check("a write's page read again with nothing new stays as it is", read && stayed.same && stayed.typed === "typed@example.com", `read ${read} ${JSON.stringify(stayed)}`);
+        // The next answer has no read-again tag: it differs, is swapped in, and the reads stop.
+        readAgain = false;
+        await page.waitForFunction(() => !document.head.querySelector("noscript[data-corten-read-again]"), null, { timeout: 5000 }).catch(() => {});
+        page.off("request", onRead);
+        check("reading again stops once the page no longer asks", reads >= 2, `${reads} reads`);
+      }
+      // A navigation the user starts before the write's page comes reads the whole page, so what
+      // the write changed in the layout is drawn there too.
+      {
+        /** @type {string[]} */
+        const asked = [];
+        const onStocks = (/** @type {import("@playwright/test").Request} */ r) => r.method() === "GET" && new URL(r.url()).pathname === "/" && asked.push(r.headers()["corten"] ?? "whole");
+        slow = true;
+        await page.evaluate(() => scrollTo(0, 0));
+        const held = page.waitForRequest((r) => news(new URL(r.url())) && !r.headers()["corten"], { timeout: 5000 });
+        await thank();
+        await held;
+        page.on("request", onStocks);
+        await page.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector('header a[href="/"]')).click());
+        await page.waitForFunction(() => document.title === "Stocks | Watchlist", null, { timeout: 5000 }).catch(() => {});
+        page.off("request", onStocks);
+        slow = false;
+        check("a navigation started before a write's page comes reads the whole page", asked[0] === "whole" && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1)), asked.join());
+        await page.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector('header a[href="/news"]')).click());
+        await page.waitForFunction(() => document.title === "News | Watchlist" && document.getElementById("briefing"), null, { timeout: 5000 });
+      }
       // More elements around <main>, or another attribute on an element around it: the page loads in
       // full, as the server draws it.
       for (const [name, change] of /** @type {const} */ ([
