@@ -673,7 +673,10 @@ fn placed_meters_listing(
     components: &'static [crate::Component],
 ) -> Router {
     let page = move |req: Req| async move {
-        let body = req.rendered(html! { <Meter used={42.5} /> <Meter used={7.0} /> });
+        let body = req.rendered(html! {
+            <Meter used={42.5} />
+            <Meter used={7.0} />
+        });
         req.test_page("Meters", place(body))
     };
     App::new(Routes::from(Router::new().route("/", get(page))))
@@ -719,7 +722,10 @@ fn a_rendered_view_brings_what_its_render_noted() {
         crate::script::collect(|| {
             crate::style::collect(|| {
                 let mut out = Meter { used: 42.5 }.to_html();
-                let inner = crate::Rendered::new(html! { <Meter used={7.0} /> {Handled} });
+                let inner = crate::Rendered::new(html! {
+                    <Meter used={7.0} />
+                    {Handled}
+                });
                 Meter { used: 1.0 }.render(&mut out);
                 inner.render(&mut out);
                 (out, inner)

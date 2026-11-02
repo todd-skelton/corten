@@ -2810,10 +2810,10 @@ Corten is pre-1.0, so any minor version may change the API.
     instructions a request on the branch, 92,381 to 92,438, against 92,338 on main, 91,474 to
     92,418)
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
-95. A render that panicked (a handler's, which is caught and the thread renders on) left its
+98. A render that panicked (a handler's, which is caught and the thread renders on) left its
     thread noting the values, script modules and components of every later render outside a page
-    (a patch, a live fragment) into a list that only grew; what was being noted is now put back
-    when a render unwinds.
+    (a patch, a live fragment) into lists it never gave back (the values' growing with each
+    render); what was being noted is now put back when a render unwinds.
 
 ### Documentation
 
