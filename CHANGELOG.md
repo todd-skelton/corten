@@ -1418,6 +1418,12 @@ Corten is pre-1.0, so any minor version may change the API.
     The names and data are not yet typed in the script
     ([#591 An event stream's names and data are strings the script reads untyped, where a feed's rows are checked from the route to the script](https://github.com/todd-skelton/corten/issues/591))
     ([#583 A route cannot answer server-sent events of its own JSON, only live HTML patches or a feed's rows, so a progress stream is sent as a Relay and holds the shutdown open](https://github.com/todd-skelton/corten/issues/583)).
+172. `JsonError::Own` and `From<JsonResponse> for JsonError`: a JSON route refuses in its own error
+    shape with `?` (`Err(refused(StatusCode::BAD_REQUEST, ".."))?`), answered as written, and a
+    helper's `Result<_, JsonError>` stays under clippy's `result_large_err`. A refusal of the
+    app's is written as that `Err` (an `Ok` one still answers as written). A `match` on `JsonError` needs an arm for the new
+    variant, and `JsonResponse`'s `Debug` shows its status and type, not its cookies
+    ([#584 A JSON route cannot refuse early in its own error shape: JsonError takes only Corten's, and Result<JsonResponse, JsonResponse> fails clippy's result_large_err](https://github.com/todd-skelton/corten/issues/584)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

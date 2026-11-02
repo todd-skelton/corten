@@ -3890,6 +3890,16 @@ mod own_json_url {
 
     #[route("/held", get = own_held)]
     pub struct Held;
+
+    #[route("/batches/{request}", post = own_created)]
+    pub struct Created {
+        pub request: String,
+    }
+
+    #[route("/secret/{request}", post = own_secret)]
+    pub struct Secret {
+        pub request: String,
+    }
 }
 
 #[cfg(feature = "json")]
@@ -3900,6 +3910,11 @@ mod own_json_api {
 
     #[route("/v1/forecast", get = own_forecast)]
     pub struct ApiForecast;
+
+    #[route("/v1/batches/{request}", post = own_api_created)]
+    pub struct ApiCreated {
+        pub request: String,
+    }
 }
 
 #[cfg(feature = "json")]
@@ -3916,13 +3931,52 @@ async fn own_started() -> Result<crate::JsonResponse, JsonError> {
 #[cfg(feature = "json")]
 async fn own_forecast() -> Result<crate::JsonResponse, JsonError> {
     let problem = crate::json::Raw::new(r#"{"error":"No capacity forecast yet"}"#)?;
-    Ok(crate::Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE))
+    Err(crate::Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE).into())
 }
 
 #[cfg(feature = "json")]
 async fn own_session() -> Result<crate::JsonResponse, JsonError> {
     let token = SetCookie::try_new("session", "abc")?;
     Ok(crate::Json(OwnStarted { ok: true }).with_cookie(token).with_cookie(SetCookie::remove("old")))
+}
+
+/// A refusal in the app's own shape, taken with `?` from a helper (#584).
+#[cfg(feature = "json")]
+fn own_batch(request: &str) -> Result<crate::JsonResponse, JsonError> {
+    let refused =
+        |status, error| crate::json::Raw::new(format!(r#"{{"error":"{error}"}}"#)).map(|e| crate::Json(e).with_status(status));
+    if request.trim() == "-" {
+        Err(refused(StatusCode::BAD_REQUEST, "requestId is required")?)?;
+    }
+    if request == "boom" {
+        return Err(Error::new("the store is down").into());
+    }
+    if request == "gone" {
+        Err(refused(StatusCode::GONE, "batch is closed")?.with_cookie(SetCookie::remove("batch")))?;
+    }
+    Ok(crate::Json(OwnStarted { ok: true }).with_status(StatusCode::CREATED))
+}
+
+#[cfg(feature = "json")]
+async fn own_created(crate::Params(at): crate::Params<own_json_url::Created>) -> Result<crate::JsonResponse, JsonError> {
+    own_batch(&at.request)
+}
+
+#[cfg(feature = "json")]
+async fn own_secret(crate::Params(at): crate::Params<own_json_url::Secret>) -> NoStore<Result<crate::JsonResponse, JsonError>> {
+    NoStore(own_batch(&at.request))
+}
+
+/// An API's own error shape, which Corten's failures take and the app's refusals do not.
+#[cfg(feature = "json")]
+#[derive(crate::ToJson)]
+struct OwnShape {
+    error: String,
+}
+
+#[cfg(feature = "json")]
+async fn own_api_created(crate::Params(at): crate::Params<own_json_api::ApiCreated>) -> Result<crate::JsonResponse, JsonError> {
+    own_batch(&at.request)
 }
 
 #[cfg(feature = "json")]
@@ -3933,7 +3987,9 @@ async fn own_held() -> crate::JsonResult<crate::json::Raw> {
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn a_json_answer_has_a_status_and_cookies_of_its_own() {
-    let router = App::new(own_json_url::router()).api(own_json_api::api).router();
+    let router = App::new(own_json_url::router())
+        .api(|routes| own_json_api::api(routes).errors(|_, message| OwnShape { error: format!("shaped: {message}") }))
+        .router();
     let (status, headers, body) = call_with(router.clone(), "POST", "/started", None, None).await;
     assert_eq!((status, &body[..]), (StatusCode::ACCEPTED, r#"{"ok":true}"#));
     assert_eq!(headers["content-type"], "application/json");
@@ -3951,8 +4007,59 @@ async fn a_json_answer_has_a_status_and_cookies_of_its_own() {
         ["session=abc; Path=/; SameSite=Lax; HttpOnly; Secure", "old=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]
     );
     assert!(headers["cache-control"].to_str().unwrap().contains("private"));
-    let (status, _, body) = call_with(router, "GET", "/held", None, None).await;
+    let (status, _, body) = call_with(router.clone(), "GET", "/held", None, None).await;
     assert_eq!((status, &body[..]), (StatusCode::OK, r#"{"rows":[1,2]}"#));
+    // A refusal in the app's own shape, `Err(answer)?`, reaches the client as written: not
+    // Problem Details, and with what the answer set.
+    for prefix in ["", "/v1"] {
+        let (status, _, body) = call_with(router.clone(), "POST", &format!("{prefix}/batches/b7"), None, None).await;
+        assert_eq!((status, &body[..]), (StatusCode::CREATED, r#"{"ok":true}"#), "{prefix}");
+        let (status, headers, body) =
+            call_with(router.clone(), "POST", &format!("{prefix}/batches/-"), None, Some("text/html")).await;
+        assert_eq!((status, &body[..]), (StatusCode::BAD_REQUEST, r#"{"error":"requestId is required"}"#), "{prefix}");
+        assert_eq!(headers["content-type"], "application/json");
+        let (status, headers, body) = call_with(router.clone(), "POST", &format!("{prefix}/batches/gone"), None, None).await;
+        assert_eq!((status, &body[..]), (StatusCode::GONE, r#"{"error":"batch is closed"}"#), "{prefix}");
+        assert_eq!(headers["set-cookie"], "batch=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure");
+    }
+    // Corten's failure takes the API's shape; the app's refusal beside it does not.
+    let (status, _, body) = call_with(router.clone(), "POST", "/v1/batches/boom", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":"shaped: Internal Server Error"}"#));
+    let (status, _, body) = call_with(router.clone(), "POST", "/v1/batches/-", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::BAD_REQUEST, r#"{"error":"requestId is required"}"#));
+    // NoStore holds for the app's refusal too.
+    let (status, headers, body) = call_with(router, "POST", "/secret/-", None, None).await;
+    assert_eq!(
+        (status, &body[..], headers["cache-control"].to_str().unwrap()),
+        (StatusCode::BAD_REQUEST, r#"{"error":"requestId is required"}"#, "no-store")
+    );
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn a_json_answer_keeps_its_cookies_out_of_debug() {
+    let answer = crate::Json(OwnStarted { ok: true }).with_cookie(SetCookie::new("session", "s3cret"));
+    let shown = format!("{:?}", JsonError::from(answer.with_status(StatusCode::UNAUTHORIZED)));
+    assert!(shown.contains("401") && !shown.contains("s3cret"), "{shown}");
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn a_json_error_stays_under_clippys_large_error_limit() {
+    // clippy's `result_large_err` refuses an `Err` of 128 bytes or more by default.
+    assert!(std::mem::size_of::<JsonError>() < 128, "{}", std::mem::size_of::<JsonError>());
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn a_json_refusal_is_an_error_status() {
+    let accepted = || crate::Json(OwnStarted { ok: true }).with_status(StatusCode::ACCEPTED);
+    // A debug build panics; a release build answers a failure, never a 2xx as written.
+    let panicked = std::panic::catch_unwind(|| JsonError::refusal(accepted(), true)).unwrap_err();
+    assert!(panicked.downcast_ref::<String>().is_some_and(|m| m.contains("refuses with a 4xx or 5xx")));
+    assert_eq!(JsonError::refusal(accepted(), false).into_response().status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let refused = crate::Json(OwnStarted { ok: false }).with_status(StatusCode::CONFLICT);
+    assert_eq!(JsonError::refusal(refused, true).into_response().status(), StatusCode::CONFLICT);
 }
 
 #[cfg(feature = "json")]
