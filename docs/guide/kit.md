@@ -57,16 +57,25 @@ and `--input` (a field's border) 3:1 on the page.
 
 Sizes are tokens too, so a theme changes them in one place and the copied files stay the kit's:
 `--control-height` (a button, field, select, menu button or page link of the default size; 2.25rem),
-`--control-height-sm` and `--control-height-lg` (2rem and 2.5rem, a small or large button and a
-tab), `--control-padding` (a field's inline padding; .75rem), `--control-font-size` (.875rem),
-`--card-padding` (1.5rem) and `--heading-font-size` (a card's heading; 1rem). A 44 px touch
-target is `"control-height": { "$type": "dimension", "$value": { "value": 2.75, "unit": "rem" } }`;
-a compact density is a modifier context of the app's that sets them lower. A size is the same in
-both themes, so `ui-dark.tokens.json` has none.
+`--control-height-sm` and `--control-height-lg` (2rem and 2.5rem: a small button and a tab, a
+large button), `--control-padding` (the inline padding of a field, a small button and a tab;
+.75rem), `--control-font-size` (the text in those controls; .875rem), `--card-padding` (a card's
+padding and the gap between its parts; 1.5rem) and `--card-heading-font-size` (a card's heading; 1rem).
+A 44 px touch target for buttons, fields, selects, menu buttons, page links and tabs is
+`control-height` and `control-height-sm` at 2.75rem (`"control-height": { "$type": "dimension",
+"$value": { "value": 2.75, "unit": "rem" } }`). The tokens do not reach a menu item, a combobox
+option, a checkbox, radio or switch label or a slider, which keep their own sizes, nor the labels
+and items whose text stays .875rem; a compact density is a modifier context of the app's that
+sets the tokens lower. A size is the same in both themes, so `ui-dark.tokens.json` has none.
+
+An app set up by an older kit has a theme without the newer tokens: `corten ui add` names each
+one a component it copies reads and the theme lacks, with the kit's line to add, and the app
+does not start until each is declared.
 
 A focused field's ring is a box shadow, which forced colors (Windows High Contrast) does not
 paint, so each text control and menu item also has a transparent outline that forced colors
-paints in the system's color: a field shows its focus in either.
+paints in the system's color: a field shows its focus in either, and so does a combobox's
+highlighted option, which keeps the focus in the field.
 
 ### An app's own theme
 

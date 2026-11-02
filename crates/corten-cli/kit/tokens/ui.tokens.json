@@ -31,5 +31,5 @@
   "control-padding": { "$type": "dimension", "$value": { "value": 0.75, "unit": "rem" } },
   "control-font-size": { "$type": "dimension", "$value": { "value": 0.875, "unit": "rem" } },
   "card-padding": { "$type": "dimension", "$value": { "value": 1.5, "unit": "rem" } },
-  "heading-font-size": { "$type": "dimension", "$value": { "value": 1, "unit": "rem" } }
+  "card-heading-font-size": { "$type": "dimension", "$value": { "value": 1, "unit": "rem" } }
 }

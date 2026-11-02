@@ -248,7 +248,8 @@ fn init(root: &Path, args: &[String]) -> Result<(), String> {
                 println!(
                     "\nThe components read their colors and sizes from your theme ({path}), which lacks these. Declare each at\n\
                      the top of a token file, most as a reference to one of yours, so it follows your other themes too\n\
-                     (\"card\": {{ \"$type\": \"color\", \"$value\": \"{{color.surface}}\" }}); the kit's sizes are in its ui.tokens.json:\n  {}\n\
+                     (\"card\": {{ \"$type\": \"color\", \"$value\": \"{{color.surface}}\" }}; a size as the kit's theme has it,\n\
+                     \"control-height\": {{ \"$type\": \"dimension\", \"$value\": {{ \"value\": 2.25, \"unit\": \"rem\" }} }}):\n  {}\n\
                      The app does not start while a component reads one no stylesheet declares, and says which.",
                     missing.join(", ")
                 );
@@ -838,6 +839,14 @@ fn add(root: &Path, args: &[String]) -> Result<(), String> {
             None => todo.push("add .components(corten_ui::COMPONENTS) to the App, after .components(ui::COMPONENTS)".to_string()),
         }
     }
+    let lacking = undeclared(root, &app, &pieces);
+    if !lacking.is_empty() {
+        todo.push(format!(
+            "these read tokens your theme does not declare (one an older kit set up lacks the newer ones): add each to it,\n    \
+             as the kit's theme has it, or as a reference to one of yours; the app does not start while one is missing\n    {}",
+            lacking.join(",\n    ")
+        ));
+    }
     apply(root, &files)?;
     for line in said {
         println!("{line}");
@@ -846,6 +855,38 @@ fn add(root: &Path, args: &[String]) -> Result<(), String> {
         println!("  to do: {step}");
     }
     Ok(())
+}
+
+/// The kit theme's lines (`"control-height": { .. }`) for each of its tokens that `pieces`'
+/// stylesheets read and the app's themes (every `tokens!` it has) do not declare. None when no
+/// theme can be read, as `init` reports that.
+fn undeclared(root: &Path, app: &[(String, String)], pieces: &[&Piece]) -> Vec<String> {
+    let mut declared: Option<Vec<String>> = None;
+    for (_, text) in app.iter().filter(|(_, text)| text.contains(TOKENS_CALL)) {
+        if let Ok(Some(theme)) = own_theme(root, text) {
+            declared.get_or_insert_with(Vec::new).extend(theme.properties);
+        }
+    }
+    let Some(declared) = declared else { return Vec::new() };
+    let kit = role_tokens();
+    let mut out: Vec<String> = Vec::new();
+    for (file, text) in pieces.iter().flat_map(|p| p.files.iter()) {
+        if !file.ends_with(".css") {
+            continue;
+        }
+        for read in text.split("var(--").skip(1) {
+            let name: String = read.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+            if !kit.contains(&name) || declared.contains(&name) {
+                continue;
+            }
+            let line = INIT[0].1.lines().map(str::trim).find(|l| l.starts_with(&format!("\"{name}\":")));
+            let line = line.unwrap_or_default().trim_end_matches(',').to_string();
+            if !out.contains(&line) {
+                out.push(line);
+            }
+        }
+    }
+    out
 }
 
 /// `Cargo.toml` with `corten-ui` after `corten` in `[dependencies]`, from the same place, as the
@@ -1244,7 +1285,7 @@ fn clashes(app: &[(String, String)], pieces: &[&Piece]) -> Vec<(String, String, 
 mod tests {
     use super::{
         INIT, KIT, OWN_THEME_MODULE, Piece, apply, clashes, depend_on_ui, fnv, list_in, list_ui_widgets, own_theme, report,
-        role_tokens, stamp_of, stamped, styled_components, unified, wire_app,
+        role_tokens, sources, stamp_of, stamped, styled_components, undeclared, unified, wire_app,
     };
 
     fn piece(name: &str) -> &'static Piece {
@@ -1464,6 +1505,30 @@ mod tests {
         assert!(super::add(&dir, &["card".to_string()]).unwrap_err().contains("exists"));
         super::add(&dir, &["card".to_string(), "--force".to_string()]).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("src/ui/card.rs")).unwrap(), copy);
+        // The kit's theme declares every token its components read.
+        let app_now = sources(&dir);
+        assert_eq!(undeclared(&dir, &app_now, &KIT.iter().collect::<Vec<_>>()), Vec::<String>::new());
+        // A theme an older kit wrote, without the sizes: add names each one a copy reads, as the
+        // kit's theme has it.
+        let theme = std::fs::read_to_string(dir.join("tokens/ui.tokens.json")).unwrap();
+        let old: String = theme
+            .lines()
+            .filter(|l| !l.contains("\"control-") && !l.contains("-font-size\"") && !l.contains("\"card-padding\""))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let old = format!("{}\n}}\n", old.trim_end().trim_end_matches('}').trim_end().trim_end_matches(','));
+        std::fs::write(dir.join("tokens/ui.tokens.json"), &old).unwrap();
+        let mut card = undeclared(&dir, &app_now, &[piece("card")]);
+        card.sort();
+        assert_eq!(
+            card,
+            [
+                r#""card-heading-font-size": { "$type": "dimension", "$value": { "value": 1, "unit": "rem" } }"#,
+                r#""card-padding": { "$type": "dimension", "$value": { "value": 1.5, "unit": "rem" } }"#
+            ],
+            "{old}"
+        );
+        assert!(undeclared(&dir, &app_now, &[piece("button")]).iter().any(|l| l.starts_with("\"control-height-sm\": ")));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

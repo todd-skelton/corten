@@ -6,7 +6,7 @@
   box-shadow: 0 1px 2px rgb(0 0 0 / .05);
 }
 .header { display: grid; gap: .375rem; padding-inline: var(--card-padding); }
-.header > :is(h1, h2, h3, h4, h5, h6) { margin: 0; font-size: var(--heading-font-size); font-weight: 600; line-height: 1.25; }
+.header > :is(h1, h2, h3, h4, h5, h6) { margin: 0; font-size: var(--card-heading-font-size); font-weight: 600; line-height: 1.25; }
 .header > p { margin: 0; font-size: .875rem; color: var(--muted-foreground); }
 .content { display: grid; gap: 1.25rem; padding-inline: var(--card-padding); }
 .footer { display: flex; align-items: center; gap: .5rem; padding-inline: var(--card-padding); }

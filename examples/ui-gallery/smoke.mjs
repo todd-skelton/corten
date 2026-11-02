@@ -817,18 +817,30 @@ async function run(browser) {
   );
   // Under forced colors a box shadow is not painted, so a focused field shows its outline, which is
   // transparent otherwise.
-  if (engine === "chromium") {
-    const field = orders.getByLabel("Ship from");
-    const ring = async () => {
+  const forcedCheck = "Select and Textarea: a focused field's outline is transparent, and painted under forced colors";
+  if (engine !== "webkit") {
+    /** @param {string} label */
+    const ring = async (label) => {
+      const field = orders.getByLabel(label);
       await field.focus();
       await orders.keyboard.press("Shift");
-      return field.evaluate((el) => ({ visible: el.matches(":focus-visible"), outline: `${getComputedStyle(el).outlineStyle} ${getComputedStyle(el).outlineWidth}` }));
+      return field.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return `${el.matches(":focus-visible")} ${s.outlineStyle} ${s.outlineWidth} ${s.outlineColor}`;
+      });
     };
-    await orders.emulateMedia({ forcedColors: "active" });
-    const forced = await ring();
-    await orders.emulateMedia({ forcedColors: "none" });
-    check("Select: a focused field has an outline under forced colors", forced.visible && forced.outline === "solid 2px", JSON.stringify(forced));
-  } else skip("Select: a focused field has an outline under forced colors", "forced colors are emulated in Chromium only");
+    const seen = [];
+    let ok = true;
+    for (const label of ["Ship from", "Note to buyers"]) {
+      const plain = await ring(label);
+      await orders.emulateMedia({ forcedColors: "active" });
+      const forced = await ring(label);
+      await orders.emulateMedia({ forcedColors: "none" });
+      seen.push(plain, forced);
+      ok &&= plain === "true solid 2px rgba(0, 0, 0, 0)" && forced.startsWith("true solid 2px ") && !forced.endsWith("rgba(0, 0, 0, 0)");
+    }
+    check(forcedCheck, ok, seen.join(" | "));
+  } else skip(forcedCheck, "Playwright's WebKit does not emulate forced colors");
   await orders.getByRole("button", { name: "Share the shop" }).click();
   check("Popover: its button opens it", await orders.locator("#share").evaluate((p) => p.matches(":popover-open")));
   await orders.keyboard.press("Escape");

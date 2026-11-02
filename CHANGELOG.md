@@ -1411,12 +1411,17 @@ Corten is pre-1.0, so any minor version may change the API.
     [#562 Kit Table keeps every cell on one line, and an app class cannot let a column wrap without matching the kit's specificity](https://github.com/todd-skelton/corten/issues/562),
     [#567 Kit Table has no sortable column header, so each app hand-writes aria-sort, the sort link and its arrow](https://github.com/todd-skelton/corten/issues/567)).
 169. The kit's sizes are tokens of its theme: `--control-height` (with `-sm` and `-lg`),
-    `--control-padding`, `--control-font-size`, `--card-padding` and `--heading-font-size`, read
+    `--control-padding`, `--control-font-size`, `--card-padding` and `--card-heading-font-size`, read
     by the button, field, select, textarea, combobox, menu, tabs, pagination and card stylesheets
-    with today's values as the defaults, so a theme gives every control a 44 px touch target, or a
-    density, in one place
+    with today's values as the defaults, so a theme sets the buttons', fields', selects', menu
+    buttons', page links' and tabs' size (a 44 px touch target with `control-height` and
+    `control-height-sm` at 2.75rem), or a density, in one place; menu items, combobox options,
+    checkbox, radio and switch labels and the slider keep their own sizes. A combobox's highlighted
+    option has a transparent outline too, so forced colors shows which one Enter picks
     ([#561 Kit control heights, spacing and type are literals, so a theme cannot give every control a 44 px touch target without editing each copied file](https://github.com/todd-skelton/corten/issues/561)).
-    An app with its own theme declares them too; `corten ui init` names the ones it lacks.
+    An app with its own theme declares them too, as `corten ui init` says; an app set up by an
+    older kit adds them to its theme, and `corten ui add` names each one a component it copies
+    reads and the theme lacks, with the kit's line to add (the app does not start until it does).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
