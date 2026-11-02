@@ -1408,10 +1408,14 @@ Corten is pre-1.0, so any minor version may change the API.
     `<button class={Button { variant: v, size: s }}>"Save"</button>`, `<Input><input name={f.q}></Input>` is
     `<input class={Input {}} name={f.q}>`, and an element with a class of its own takes both,
     `class={(Input {}, Wide)}`. A wrapper around several children becomes the element it used to
-    write: `<Card>..</Card>` is `<div class={Card {}}>..</div>`, `<CardHeader>` a
-    `<header class={CardHeader {}}>`. Badge's `variant` is a `tone` and an `emphasis`: `Primary`,
-    `Info`, `Success`, `Warning` and `Destructive` keep their tone with `Solid`, `Secondary` is
-    `Neutral` and `Solid`, and `Outline` is `Neutral` and `Outline`
+    write: `<Card>..</Card>` is `<div class={Card {}}>..</div>`, and CardHeader, CardContent,
+    CardFooter and DialogFooter are each a `<div>` too. Accordion goes on each `<details>` it held,
+    `<details class={Accordion {}} name="faq">`, not on an element around them, which its
+    stylesheet no longer styles. Badge held text, so it is the `<span>` it wrote, and its `variant`
+    is a `BadgeTone` and a `BadgeEmphasis`: `<Badge variant={BadgeVariant::Secondary}>"Draft"</Badge>`
+    is `<span class={Badge { tone: BadgeTone::Neutral, emphasis: BadgeEmphasis::Solid }}>"Draft"</span>`;
+    `Primary`, `Info`, `Success`, `Warning` and `Destructive` keep their tone with `Solid`, and
+    `Outline` is `Neutral` and `Outline`
     ([#558 Kit wrappers accept any children, so a Switch without role="switch" or a Button around a summary compiles and silently breaks](https://github.com/todd-skelton/corten/issues/558):
     its Button around a `<summary>` and Input on a `<select>`; a Switch's role is still the app's).
 168. The kit's Table has a `TableNumeric` look for a number column (aligned to its end, tabular
