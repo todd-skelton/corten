@@ -1,54 +1,39 @@
-/* Element defaults and the shell. Each component's rules are next to it (src/views/*.css). */
+/* Element defaults and the shell. The colors are the kit's theme (tokens/ui.tokens.json, light and
+   dark), the bulk bar's and dialog's buttons, the search field, the dialog and the statement table the
+   kit's components (src/ui/), and each
+   view's own rules are next to it (src/views/*.css). */
 *, *::before, *::after { box-sizing: border-box; }
+/* The root keeps the reader's font size, which the kit's rem sizes follow; the desk's text is a
+   step smaller (on body). */
 :root {
-  color-scheme: light dark;
-  --ink: light-dark(#1b1d24, #e8e9ef);
-  --muted: light-dark(#646877, #9a9eae);
-  --line: light-dark(#e3e5ec, #2c2f3a);
-  --bg: light-dark(#f5f6f9, #111318);
-  --surface: light-dark(#fff, #191b22);
-  --accent: light-dark(#0f766e, #2dd4bf);
-  --accent-ink: light-dark(#fff, #0b1f1d);
-  --tint: light-dark(#e6f4f2, #12302d);
-  --danger: light-dark(#c0392b, #f87171);
-  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: var(--ink);
-  background: var(--bg);
+  color-scheme: light;
+  font: 100%/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--foreground);
+  background: var(--background);
 }
-body { margin: 0; }
+/* The system's scheme when the page chose none, else the one chosen, as the theme's tokens do. */
+:root:not([data-theme]) { color-scheme: light dark; }
+[data-theme="dark"] { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }
+body { margin: 0; font-size: .875rem; }
 header {
   display: flex; align-items: center; gap: 24px;
   padding: 0 24px; height: 52px;
-  background: var(--surface); border-bottom: 1px solid var(--line);
+  background: var(--card); border-bottom: 1px solid var(--border);
 }
 header nav { display: flex; gap: 4px; height: 100%; }
 header nav a {
   display: flex; align-items: center; padding: 0 12px;
-  color: var(--muted); text-decoration: none; font-weight: 500;
+  color: var(--muted-foreground); text-decoration: none; font-weight: 500;
   border-bottom: 2px solid transparent;
 }
-header nav a:hover { color: var(--ink); }
-header nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+header nav a:hover { color: var(--foreground); }
+header nav a[aria-current="page"] { color: var(--foreground); border-bottom-color: var(--primary); }
 main { max-width: 1200px; margin: 0 auto; padding: 24px; }
 h1 { font-size: 22px; margin: 0 0 16px; letter-spacing: -0.01em; }
 h2 { font-size: 16px; margin: 0 0 8px; }
-table { border-collapse: collapse; width: 100%; background: var(--surface); }
-th { text-align: start; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
-th, td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
-button, input, select { font: inherit; color: inherit; }
-button {
-  padding: 6px 14px; border-radius: 6px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--surface);
-}
-button:hover { border-color: var(--muted); }
-button[value="confirm"], form[data-patch] > button { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-input[type="search"], input:not([type]) {
-  padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
-}
-input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-dialog { border: 1px solid var(--line); border-radius: 12px; padding: 24px; max-width: 26rem; background: var(--surface); color: inherit; box-shadow: 0 20px 50px rgb(0 0 0 / 0.25); }
-dialog::backdrop { background: rgb(15 17 24 / 0.45); }
-dialog form { display: flex; justify-content: end; gap: 8px; margin-top: 16px; }
+button, input { font: inherit; color: inherit; }
+input[type="checkbox"] { accent-color: var(--primary); width: 16px; height: 16px; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 [role="status"]:empty { display: none; }
-[role="status"] { margin: 0 0 12px; padding: 8px 12px; border-radius: 6px; background: var(--tint); }
+[role="status"] { margin: 0 0 12px; padding: 8px 12px; border-radius: var(--radius); background: var(--accent); color: var(--accent-foreground); }

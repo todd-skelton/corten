@@ -1,8 +1,19 @@
 .form { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: end; margin: 0; }
-/* The price looks like what it is, a field: a light box, darker under the pointer. */
-.form input { width: 9ch; padding: 3px 6px; text-align: end; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font-variant-numeric: tabular-nums; }
-.form input:hover { border-color: var(--muted); background: var(--surface); }
-.form input:focus { border-color: var(--accent); background: var(--surface); }
-.form input[aria-invalid="true"] { border-color: var(--danger); }
-.form button { padding: 2px 10px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.form p { margin: 0; color: var(--danger); font-size: 12px; }
+/* The kit's field and small primary button (src/ui/input.css, button.css), written here rather than
+   as their classes, narrower and shorter to fit a row. Every row has a price cell: with the classes
+   on its field and button the 500-row page measured 738 bytes a row instead of 667 and rendered in
+   810-870 us instead of 632-684 (render_cost, release). */
+.form input {
+  width: 9ch; height: 1.75rem; padding: 0 .5rem; text-align: end; font-variant-numeric: tabular-nums;
+  background: transparent; border: 1px solid var(--input); border-radius: calc(var(--radius) - 2px);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .05);
+}
+/* A transparent outline, not none: forced colors draws it where they drop the shadow. */
+.form input:focus-visible { outline: 2px solid transparent; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 35%, transparent); }
+.form input[aria-invalid="true"] { border-color: var(--destructive); }
+.form button {
+  height: 1.75rem; padding: 0 .625rem; font-size: .8125rem; font-weight: 500; cursor: pointer;
+  border: 0; border-radius: calc(var(--radius) - 2px); background: var(--primary); color: var(--primary-foreground);
+}
+.form button:hover { background: color-mix(in oklab, var(--primary) 88%, var(--foreground)); }
+.form p { margin: 0; color: var(--destructive); font-size: 12px; }

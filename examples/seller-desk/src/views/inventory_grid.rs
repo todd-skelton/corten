@@ -4,6 +4,7 @@ use super::{BulkBar, ConfirmDialog, InventoryRow, ItemCount, Line, PriceEdited};
 use crate::{
     app::{ArchiveInput, Level, url},
     text::{Msg, USD},
+    ui::input::Input,
 };
 
 /// The archive form's id: the rows' checkboxes name it in `form=`.
@@ -43,6 +44,7 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
         >
             <div class={Toolbar}>
                 <input
+                    class={Input {}}
                     type="search"
                     placeholder="Filter by name or set"
                     aria-label="Filter"

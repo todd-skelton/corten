@@ -372,6 +372,49 @@ try {
   });
   check("a row rows() copies from a <template> gets the template row's values", cloned === "12.5%", cloned);
 
+
+  // The kit's theme, recolored to the desk's palette, in the scheme the system asks for: the page,
+  // a price field (a field at rest, not only under the pointer) and the Save button take the
+  // colors of the token file for that scheme, as do the kit's own components: the search field
+  // (Input), Archive (an outline Button) and the dialog. The statement's amounts are the kit
+  // Table's numeric cells.
+  for (const [scheme, file] of [["light", "ui.tokens.json"], ["dark", "ui-dark.tokens.json"]]) {
+    const tokens = JSON.parse(readFileSync(new URL(`tokens/${file}`, import.meta.url), "utf8"));
+    const rgb = (/** @type {string} */ name) => {
+      const hex = tokens[name].$value.hex;
+      return `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+    };
+    const themed = await (await browser.newContext({ colorScheme: /** @type {"light" | "dark"} */ (scheme) })).newPage();
+    await themed.goto(base);
+    await themed.fill("tbody form[data-patch] input", "1.23");
+    const got = await themed.evaluate(() => {
+      const css = (/** @type {string} */ s) => getComputedStyle(/** @type {Element} */ (document.querySelector(s)));
+      return {
+        page: css("html").backgroundColor,
+        field: css("tbody form[data-patch] input:not(:focus)").borderTopColor,
+        save: css("tbody form[data-patch] button:not([hidden])").backgroundColor,
+        search: css("input[type=search]").borderTopColor,
+        archive: css('[aria-label="Selected items"] button[command]').borderTopColor,
+        dialog: css("dialog").backgroundColor,
+      };
+    });
+    const want = {
+      page: rgb("background"),
+      field: rgb("input"),
+      save: rgb("primary"),
+      search: rgb("input"),
+      archive: rgb("input"),
+      dialog: rgb("background"),
+    };
+    check(`in the ${scheme} scheme the page, a price field, Save and the kit's field, button and dialog take the theme's colors`, JSON.stringify(got) === JSON.stringify(want), JSON.stringify(got));
+    if (scheme === "light") {
+      await themed.goto(new URL("/statement", base).href);
+      const aligned = await themed.evaluate(() => [...document.querySelectorAll("td[class*=numeric]")].map((td) => getComputedStyle(td).textAlign));
+      check("the statement's amounts are the kit table's numeric cells, aligned to the end", aligned.length > 0 && aligned.every((a) => a === "end"), aligned.join(" "));
+    }
+    await themed.context().close();
+  }
+
   // Memory with the page settled.
   const heap = await page.evaluate(() => {
     /** @type {any} */ (window).gc?.();

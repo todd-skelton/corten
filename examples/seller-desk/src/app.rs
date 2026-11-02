@@ -205,6 +205,7 @@ impl Desk {
 pub fn app(desk: Desk) -> App<ServerTiming> {
     let sales = desk.clone();
     App::new(url::router(desk))
+        .components(crate::ui::COMPONENTS)
         .assets(views::Static)
         .components(views::COMPONENTS)
         .messages::<Msg>()
@@ -590,10 +591,15 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(headers["cache-control"], "no-store");
         assert!(
-            html.contains(r#"<th scope="row">Hollow Crown</th><td>3</td><td>$"#),
+            html.contains(r#"Hollow Crown</th><td class="table__numeric">3</td><td class="table__numeric">$"#),
             "the stock value in the locale's money format: {html}"
         );
-        assert!(html.contains(r#"<tfoot><tr><th scope="row">Total</th><td>10</td><td>$"#), "a total of every set: {html}");
+        assert!(
+            html.contains(
+                r#"<tfoot><tr><th scope="row">Total</th><td class="table__numeric">10</td><td class="table__numeric">$"#
+            ),
+            "a total of every set: {html}"
+        );
         let (_, headers, home) = send_full(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(home.contains(r#"<p id="item-count""#) && home.contains(">10 items</p>"), "the grid's count: {home}");
         let timing = headers["server-timing"].to_str().unwrap();

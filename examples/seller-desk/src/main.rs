@@ -1,5 +1,7 @@
 mod app;
 mod text;
+/// The UI kit (`corten ui`): public, so a component not used yet is not a warning.
+pub mod ui;
 mod views;
 
 #[tokio::main]

@@ -3052,6 +3052,14 @@ Corten is pre-1.0, so any minor version may change the API.
     none an app's scale would make, so the two themes do not replace each other's values) and how a
     utility over them is written, with its values (`fg_success()`)
     ([#553 Kit role tokens are loose top-level properties, so utilities like fg/bg cannot be generated from a group](https://github.com/todd-skelton/corten/issues/553)).
+45. `examples/seller-desk` is styled with the UI kit as `corten ui` gives it: its bulk bar's
+    and dialog's buttons, search field, dialog and statement table are the kit's components, copied and unedited
+    (`corten ui diff`), and the kit's theme is recolored to the desk's teal in light and dark, which
+    its smoke test checks. The grid writes the kit's looks in its own CSS for its table (whose
+    header stays as the rows scroll) and its 500 price cells (the classes on each cost 71 bytes a
+    row and a quarter more render time). The 500-row page is 39 bytes larger with brotli (12,860)
+    and the stylesheets 1,117 (3,078, cached)
+    ([#548 seller-desk: style it with the UI kit copied into the app and themed to its palette, so one real app shows the kit as corten ui gives it](https://github.com/todd-skelton/corten/issues/548)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

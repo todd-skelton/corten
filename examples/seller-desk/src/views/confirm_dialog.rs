@@ -1,5 +1,10 @@
 use corten::prelude::*;
 
+use crate::ui::{
+    button::{Button, ButtonSize, ButtonVariant},
+    dialog::{Dialog, DialogFooter},
+};
+
 /// A modal that asks before an action. A button opens it with `command="show-modal"` and
 /// `commandfor={id}`; Cancel closes it (`method="dialog"`), all without a script. The confirm
 /// button runs the parent's handler, then closes it the same way.
@@ -12,13 +17,25 @@ pub fn ConfirmDialog<'a, I: Id, C: Render>(
     children: C,
 ) -> impl Render {
     html! {
-        <dialog id={id}>
-            <h2>{title}</h2>
-            {children}
-            <form method="dialog">
-                <button value="cancel">"Cancel"</button>
-                <button value="confirm" on:click={on_confirm}>{confirm}</button>
-            </form>
-        </dialog>
+        <Dialog>
+            <dialog id={id}>
+                <h2>{title}</h2>
+                {children}
+                <form method="dialog">
+                    <DialogFooter>
+                        <button class={Button { variant: ButtonVariant::Outline, size: ButtonSize::Md }} value="cancel">
+                            "Cancel"
+                        </button>
+                        <button
+                            class={Button { variant: ButtonVariant::Destructive, size: ButtonSize::Md }}
+                            value="confirm"
+                            on:click={on_confirm}
+                        >
+                            {confirm}
+                        </button>
+                    </DialogFooter>
+                </form>
+            </dialog>
+        </Dialog>
     }
 }
