@@ -22,7 +22,8 @@ fn build(root: &Path, main: &str, release: bool) -> (bool, String) {
         args.push("--release");
     }
     // What matters of the release profile is that debug assertions are off; unoptimized, it builds
-    // in about the time a debug build does.
+    // in about the time a debug build does. At the default level (3) both listed Dialogs fail to
+    // link the same way (checked by hand when this test was written).
     let out = Command::new(env!("CARGO"))
         .args(args)
         .current_dir(root)

@@ -2815,6 +2815,7 @@ Corten is pre-1.0, so any minor version may change the API.
     `Component` holds the static (`anchor`, hidden; the macros write it), which a hand-written
     one now needs too
     ([#570 The two_components_style guard passes on Windows for a library and an app component with one name, and fails only at Linux link](https://github.com/todd-skelton/corten/issues/570)).
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
