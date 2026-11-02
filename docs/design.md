@@ -300,3 +300,7 @@ framework's shape, and what it does not do yet.
     Text that must match another service's is the app's own (`Raw`, or serde_json's `RawValue`
     where `Serialize` writes it), and a shared checksum is over RFC 8785 (the app guide, Numbers in
     JSON).
+17. An event stream's (`corten::event_stream`) event names and data are not checked against the
+    script that reads them, as a feed's rows are (`rows = Row`, `FeedUrl<Row>`): the script
+    listens by a name it writes and parses the data untyped. Prefer `<corten-live>` or a feed
+    where either fits; typed streams are [#591 An event stream's names and data are strings the script reads untyped, where a feed's rows are checked from the route to the script](https://github.com/todd-skelton/corten/issues/591).

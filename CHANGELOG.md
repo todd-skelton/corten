@@ -1410,6 +1410,14 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#559 Kit Table cannot end-align a number column or let a cell wrap without !important](https://github.com/todd-skelton/corten/issues/559),
     [#562 Kit Table keeps every cell on one line, and an app class cannot let a column wrap without matching the kit's specificity](https://github.com/todd-skelton/corten/issues/562),
     [#567 Kit Table has no sortable column header, so each app hand-writes aria-sort, the sort link and its arrow](https://github.com/todd-skelton/corten/issues/567)).
+169. `corten::event_stream(stream)`, `StreamEvent` and `EventStreamResponse` (feature `json`): a
+    route answers server-sent events of the app's own JSON, `event: <name>` with `data: <JSON>` and
+    the event's cursor as its `id`, for a script's `EventSource` or a native client. It is kept
+    alive and ends at shutdown like `corten::live`, a failure before the stream starts is answered
+    as JSON, and `EventStreamResponse::ended()` (204) stops a reconnect once the stream is over.
+    The names and data are not yet typed in the script
+    ([#591 An event stream's names and data are strings the script reads untyped, where a feed's rows are checked from the route to the script](https://github.com/todd-skelton/corten/issues/591))
+    ([#583 A route cannot answer server-sent events of its own JSON, only live HTML patches or a feed's rows, so a progress stream is sent as a Relay and holds the shutdown open](https://github.com/todd-skelton/corten/issues/583)).
 172. `JsonError::Own` and `From<JsonResponse> for JsonError`: a JSON route refuses in its own error
     shape with `?` (`Err(refused(StatusCode::BAD_REQUEST, ".."))?`), answered as written, and a
     helper's `Result<_, JsonError>` stays under clippy's `result_large_err`. A refusal of the
@@ -2848,6 +2856,20 @@ Corten is pre-1.0, so any minor version may change the API.
     instructions a request on the branch, 92,381 to 92,438, against 92,338 on main, 91,474 to
     92,418)
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
+
+95. Two components with one name in two crates (a library's `Dialog` with a stylesheet and the
+    app's) failed to link on Linux and linked on Windows (GNU), where the linker loads a library's
+    object file only for a symbol it needs and so never saw the library's, and the page got the
+    app's rules; a check passed on one machine and failed in CI. Each component's, event's and
+    `script!` module's constant now points at a static beside the symbols that take its names, and
+    an id's write does in a debug build, so a program that uses both namesakes (lists the
+    component, or renders it or writes the id in a debug build, as every test is) fails to link on
+    every platform, naming the symbol
+    (`corten__two_components_style__dialog`); a namesake the program does not use may still fail,
+    depending on what shares its object file. Each
+    `Component` holds the static (`anchor`, hidden; the macros write it), which a hand-written
+    one now needs too
+    ([#570 The two_components_style guard passes on Windows for a library and an app component with one name, and fails only at Linux link](https://github.com/todd-skelton/corten/issues/570)).
 
 96. `corten new --corten-path` given a checkout's root (a workspace, not the corten crate) wrote
     a dependency that does not build, and `corten ui add` could not find `corten-ui` beside it. A
