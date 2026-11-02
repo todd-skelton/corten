@@ -3788,6 +3788,11 @@ mod own_json_url {
 
     #[route("/held", get = own_held)]
     pub struct Held;
+
+    #[route("/batches/{request}", post = own_created)]
+    pub struct Created {
+        pub request: String,
+    }
 }
 
 #[cfg(feature = "json")]
@@ -3798,6 +3803,11 @@ mod own_json_api {
 
     #[route("/v1/forecast", get = own_forecast)]
     pub struct ApiForecast;
+
+    #[route("/v1/batches/{request}", post = own_api_created)]
+    pub struct ApiCreated {
+        pub request: String,
+    }
 }
 
 #[cfg(feature = "json")]
@@ -3821,6 +3831,30 @@ async fn own_forecast() -> Result<crate::JsonResponse, JsonError> {
 async fn own_session() -> Result<crate::JsonResponse, JsonError> {
     let token = SetCookie::try_new("session", "abc")?;
     Ok(crate::Json(OwnStarted { ok: true }).with_cookie(token).with_cookie(SetCookie::remove("old")))
+}
+
+/// A refusal in the app's own shape, taken with `?` from a helper (#584).
+#[cfg(feature = "json")]
+fn own_batch(request: &str) -> Result<crate::JsonResponse, JsonError> {
+    let refused =
+        |status, error| crate::json::Raw::new(format!(r#"{{"error":"{error}"}}"#)).map(|e| crate::Json(e).with_status(status));
+    if request.trim() == "-" {
+        Err(refused(StatusCode::BAD_REQUEST, "requestId is required")?)?;
+    }
+    if request == "gone" {
+        Err(refused(StatusCode::GONE, "batch is closed")?.with_cookie(SetCookie::remove("batch")))?;
+    }
+    Ok(crate::Json(OwnStarted { ok: true }).with_status(StatusCode::CREATED))
+}
+
+#[cfg(feature = "json")]
+async fn own_created(crate::Params(at): crate::Params<own_json_url::Created>) -> Result<crate::JsonResponse, JsonError> {
+    own_batch(&at.request)
+}
+
+#[cfg(feature = "json")]
+async fn own_api_created(crate::Params(at): crate::Params<own_json_api::ApiCreated>) -> Result<crate::JsonResponse, JsonError> {
+    own_batch(&at.request)
 }
 
 #[cfg(feature = "json")]
@@ -3849,8 +3883,36 @@ async fn a_json_answer_has_a_status_and_cookies_of_its_own() {
         ["session=abc; Path=/; SameSite=Lax; HttpOnly; Secure", "old=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]
     );
     assert!(headers["cache-control"].to_str().unwrap().contains("private"));
-    let (status, _, body) = call_with(router, "GET", "/held", None, None).await;
+    let (status, _, body) = call_with(router.clone(), "GET", "/held", None, None).await;
     assert_eq!((status, &body[..]), (StatusCode::OK, r#"{"rows":[1,2]}"#));
+    // A refusal in the app's own shape, `Err(answer)?`, reaches the client as written: not
+    // Problem Details, and with what the answer set.
+    for prefix in ["", "/v1"] {
+        let (status, _, body) = call_with(router.clone(), "POST", &format!("{prefix}/batches/b7"), None, None).await;
+        assert_eq!((status, &body[..]), (StatusCode::CREATED, r#"{"ok":true}"#), "{prefix}");
+        let (status, headers, body) =
+            call_with(router.clone(), "POST", &format!("{prefix}/batches/-"), None, Some("text/html")).await;
+        assert_eq!((status, &body[..]), (StatusCode::BAD_REQUEST, r#"{"error":"requestId is required"}"#), "{prefix}");
+        assert_eq!(headers["content-type"], "application/json");
+        let (status, headers, body) = call_with(router.clone(), "POST", &format!("{prefix}/batches/gone"), None, None).await;
+        assert_eq!((status, &body[..]), (StatusCode::GONE, r#"{"error":"batch is closed"}"#), "{prefix}");
+        assert_eq!(headers["set-cookie"], "batch=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure");
+    }
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn a_json_error_stays_under_clippys_large_error_limit() {
+    // clippy's `result_large_err` refuses an `Err` of 128 bytes or more by default.
+    assert!(std::mem::size_of::<JsonError>() < 128, "{}", std::mem::size_of::<JsonError>());
+}
+
+#[cfg(feature = "json")]
+#[test]
+#[should_panic(expected = "refuses with a 4xx or 5xx")]
+#[cfg(debug_assertions)]
+fn a_json_refusal_is_an_error_status() {
+    let _ = JsonError::from(crate::Json(OwnStarted { ok: true }).with_status(StatusCode::ACCEPTED));
 }
 
 #[cfg(feature = "json")]

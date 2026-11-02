@@ -889,6 +889,31 @@ as written; a failure (`Err`) is still answered in Corten's shape (or the API's 
 `Api::errors`). A `JsonResponse` is for the client who asked, so `Public` of one does not
 compile; a public JSON answer is a `JsonResult<T>`.
 
+A route that keeps another server's error shape refuses in it with `?`: a `JsonResponse` is a
+`JsonError` too (`JsonError::Own`, boxed so a helper's `Result<_, JsonError>` stays small), and
+it is answered as written, status, body and cookies, as an `Ok` one is. Its status is a 4xx or
+5xx (a debug build panics on another).
+
+```rust
+use corten::{axum::http::StatusCode, prelude::*, JsonError, JsonResponse};
+
+#[derive(ToJson)]
+struct Problem<'a> { error: &'a str }
+
+#[derive(ToJson)]
+struct Batch<'a> { batch: &'a str }
+
+fn refused(status: StatusCode, error: &str) -> JsonResponse {
+    Json(Problem { error }).with_status(status)
+}
+
+fn created(request: Option<&str>) -> Result<JsonResponse, JsonError> {
+    let id = request.filter(|id| !id.trim().is_empty()).ok_or_else(|| refused(StatusCode::BAD_REQUEST, "requestId is required"))?;
+    Ok(Json(Batch { batch: id }).with_status(StatusCode::CREATED))
+}
+# let _ = created;
+```
+
 JSON the app already holds as bytes (a document built once when its data changes, a file sent as
 it was written) is a `corten::json::Raw`: `Json(raw.clone())` sends the bytes as they are, with
 no serialization and no copy. `Raw::new` reads them through once and returns an `InvalidJson`

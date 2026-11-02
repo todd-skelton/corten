@@ -1393,6 +1393,10 @@ Corten is pre-1.0, so any minor version may change the API.
     (the app's `Field` beside the kit's), naming the app's file, before it writes anything: the two
     would style one class prefix, and the program would not link
     ([#550 A kit component and an app component with the same name fail at link time, and corten ui add does not warn](https://github.com/todd-skelton/corten/issues/550)).
+168. `JsonError::Own` and `From<JsonResponse> for JsonError`: a JSON route refuses in its own error
+    shape with `?` (`Err(refused(StatusCode::BAD_REQUEST, ".."))?`), answered as written, and a
+    helper's `Result<_, JsonError>` stays under clippy's `result_large_err`
+    ([#584 A JSON route cannot refuse early in its own error shape: JsonError takes only Corten's, and Result<JsonResponse, JsonResponse> fails clippy's result_large_err](https://github.com/todd-skelton/corten/issues/584)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

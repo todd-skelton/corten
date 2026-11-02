@@ -361,7 +361,8 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 ///
 /// A status here is the app's own answer, body and all: `503 {"error":"No forecast yet"}` reaches
 /// the client as written. A failure (`Err`) is answered as every failure of a JSON route is, a
-/// Problem Details document (`application/problem+json`, `{"title","status","detail"}`).
+/// Problem Details document (`application/problem+json`, `{"title","status","detail"}`), unless
+/// it is one of these: `Err(answer)?` refuses in the app's own shape ([`JsonError::Own`]).
 ///
 /// ```
 /// use corten::{axum::http::StatusCode, json::Raw, prelude::*, security::cookie::SetCookie, JsonError, JsonResponse};
@@ -413,6 +414,7 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 /// }
 /// ```
 #[cfg(feature = "json")]
+#[derive(Debug)]
 pub struct JsonResponse(Response);
 
 #[cfg(feature = "json")]
@@ -523,9 +525,10 @@ impl Answer for JsonResponse {
     type Rows = NotAFeed;
 }
 
-/// A JSON handler's error: an [`Error`] (`?` on any error, as in a page handler) or the
+/// A JSON handler's error: an [`Error`] (`?` on any error, as in a page handler), the
 /// input's field errors, `?` on [`crate::Errors`], answered as the 422 with `fields` (409 or 410
-/// for [`crate::Errors::refuse`]). Only a
+/// for [`crate::Errors::refuse`]), or a refusal in the app's own shape, `?` on a
+/// [`JsonResponse`] ([`JsonError::Own`]). Only a
 /// JSON handler takes field errors this way: a page shows its form again with
 /// [`crate::Req::invalid`], so `?` on `Errors` there does not compile:
 ///
@@ -552,6 +555,49 @@ pub enum JsonError {
     Error(Error),
     /// The input's field errors: 422 (or the refusal's status), `{"title","status","detail","fields":{..}}`.
     Fields(crate::Errors),
+    /// A refusal in the app's own shape (another server's `{"error": ".."}` the route keeps),
+    /// answered as written, status and body: `Err(refused(..))?`, where `refused` makes a
+    /// [`JsonResponse`]. It is boxed, so the error stays small and a helper returning
+    /// `Result<_, JsonError>` passes clippy's `result_large_err`.
+    ///
+    /// ```
+    /// use corten::{axum::http::StatusCode, prelude::*, JsonError, JsonResponse};
+    ///
+    /// #[derive(ToJson)]
+    /// struct Problem<'a> { error: &'a str }
+    ///
+    /// #[derive(ToJson)]
+    /// struct Batch<'a> { batch: &'a str }
+    ///
+    /// fn refused(status: StatusCode, error: &str) -> JsonResponse {
+    ///     Json(Problem { error }).with_status(status)
+    /// }
+    ///
+    /// fn created(request: Option<&str>) -> Result<JsonResponse, JsonError> {
+    ///     let id = request
+    ///         .filter(|id| !id.trim().is_empty())
+    ///         .ok_or_else(|| refused(StatusCode::BAD_REQUEST, "requestId is required"))?;
+    ///     Ok(Json(Batch { batch: id }).with_status(StatusCode::CREATED))
+    /// }
+    /// # assert_eq!(created(None).unwrap_err().into_response().status(), StatusCode::BAD_REQUEST);
+    /// # use corten::axum::response::IntoResponse;
+    /// ```
+    ///
+    /// A refusal is a client or server error: a debug build panics on one with another status.
+    Own(Box<JsonResponse>),
+}
+
+#[cfg(feature = "json")]
+impl From<JsonResponse> for JsonError {
+    #[track_caller]
+    fn from(answer: JsonResponse) -> Self {
+        let status = answer.status();
+        debug_assert!(
+            status.is_client_error() || status.is_server_error(),
+            "corten: a JSON route refuses with a 4xx or 5xx, not {status}; answer Ok(..) for any other status"
+        );
+        JsonError::Own(Box::new(answer))
+    }
 }
 
 #[cfg(feature = "json")]
@@ -574,6 +620,7 @@ impl IntoResponse for JsonError {
         match self {
             JsonError::Error(error) => error.into_response(),
             JsonError::Fields(errors) => errors.into_response(),
+            JsonError::Own(answer) => answer.into_response(),
         }
     }
 }
