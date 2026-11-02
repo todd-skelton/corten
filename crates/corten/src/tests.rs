@@ -2985,6 +2985,32 @@ async fn a_layer_outside_the_app_shares_the_lookup_with_the_handler() {
     assert_eq!((body.as_str(), LOOKUPS.with(|n| n.get())), ("ada", 1));
 }
 
+/// The app's own middleware that reads the caller before the handler (a request log naming who
+/// asked) shares the lookup with the handler and with the error page of a refusal after it.
+#[tokio::test]
+async fn a_middleware_that_reads_the_caller_shares_the_lookup() {
+    struct Logs;
+    impl crate::Middleware for Logs {
+        async fn call(&self, req: axum::extract::Request, next: impl crate::Next) -> Response {
+            let (mut parts, body) = req.into_parts();
+            parts.headers.insert("viewer", axum::http::HeaderValue::from_static("ada"));
+            let who = Caller::<Viewer>::find(&parts, &()).await.map(|Caller(v)| v.0).unwrap_or("no one");
+            let mut res = next.run(axum::extract::Request::from_parts(parts, body)).await;
+            res.headers_mut().insert("x-who", axum::http::HeaderValue::from_static(who));
+            res
+        }
+    }
+    let routes = Router::new()
+        .route("/", get(|Caller(v): Caller<Viewer>| async move { v.0 }))
+        .route("/refused", get(|Caller(_): Caller<Viewer>| async move { Err::<&str, _>(Error::status(StatusCode::FORBIDDEN)) }));
+    let router = App::new(Routes::from(routes)).error_page(test_error_page, ()).middleware(Logs).router();
+    for (uri, status) in [("/", StatusCode::OK), ("/refused", StatusCode::FORBIDDEN)] {
+        LOOKUPS.with(|n| n.set(0));
+        let (got, headers, _) = call_with(router.clone(), "GET", uri, None, None).await;
+        assert_eq!((got, headers["x-who"].to_str().unwrap(), LOOKUPS.with(|n| n.get())), (status, "ada", 1), "{uri}");
+    }
+}
+
 /// A caller type that is a rule over another (`Staff` reads `Viewer` with `Caller::find`)
 /// shares its lookup, in whichever order the handler takes them.
 #[tokio::test]
