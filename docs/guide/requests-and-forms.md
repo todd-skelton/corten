@@ -865,9 +865,8 @@ is then drawn again with its other fields kept and the message next to the input
 
 A JSON route takes an upload the same way. One with no text fields still names its file input
 with a `Files` field and takes the file by that name (`file.is(..)`); the struct is not dead code,
-since `#[derive(Fields)]` marks a `Files` field read. (`Upload<()>` takes files from inputs of any
-name, for a route that does not care which.) In an [API](app.md#json-only-routes) its refusals are
-the API's failures, as a `Json<T>` body that does not parse is: a body that is not multipart
+since `#[derive(Fields)]` marks a `Files` field read. In an [API](app.md#json-only-routes) its
+refusals are the API's failures, as a `Json<T>` body that does not parse is: a body that is not multipart
 (415), one that breaks the format (400) or is over the limit (413), each in Problem Details, or the
 API's own shape when it sets `Api::errors`. `?` on an `UploadError` makes it a `JsonError` with
 its status:

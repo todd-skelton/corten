@@ -137,7 +137,7 @@ const HEAD_LIMIT: usize = 8 * 1024;
 /// failure, in its JSON shape.
 ///
 /// A route with no text fields still names its file input with a `Files` field, so it takes the
-/// file by its typed name ([`File::is`]); `Upload<()>` takes files from inputs of any name.
+/// file by its typed name ([`File::is`]), never by comparing [`File::field`] with a string.
 pub struct Upload<T> {
     parts: Parts,
     fields: Vec<(String, String)>,
@@ -208,11 +208,8 @@ impl<T> Upload<T> {
                     // A file input left empty sends a part with no file name and nothing in it: no
                     // file. A part with bytes is a file whatever its name (a client may send none,
                     // or a path that ends in a separator), so it is handed out with an empty name.
-                    if filename.is_empty() {
-                        match self.parts.data().await? {
-                            None => continue,
-                            Some(first) => self.parts.unread(first),
-                        }
+                    if filename.is_empty() && self.parts.part_is_empty().await? {
+                        continue;
                     }
                     let content_type = head.content_type.unwrap_or_else(|| "application/octet-stream".into());
                     return Ok(Some(File { parts: &mut self.parts, field: head.name, filename, content_type }));
@@ -296,7 +293,7 @@ impl File<'_> {
     }
 
     /// The file's name as the browser sent it, without a path: the user's to choose, so never a
-    /// path to write to as it is.
+    /// path to write to as it is. Empty when the client sent none (or only a path) with the bytes.
     pub fn filename(&self) -> &str {
         &self.filename
     }
@@ -430,9 +427,24 @@ impl Parts {
         }
     }
 
-    /// Puts back a piece `data` handed out, to be handed out again first.
-    fn unread(&mut self, piece: Bytes) {
-        self.buf = if self.buf.is_empty() { piece } else { Bytes::from([&piece[..], &self.buf[..]].concat()) };
+    /// Whether the current part ends where it begins, reading only as far as it takes to know and
+    /// handing nothing out.
+    async fn part_is_empty(&mut self) -> Result<bool> {
+        loop {
+            if self.state != State::Body {
+                return Ok(true);
+            }
+            let n = self.buf.len().min(self.delimiter.len());
+            if self.buf[..n] != self.delimiter[..n] {
+                return Ok(false);
+            }
+            if n == self.delimiter.len() {
+                return Ok(true);
+            }
+            if !self.more().await? {
+                return Err(malformed("it ended inside a part"));
+            }
+        }
     }
 
     /// The current part's content as text.

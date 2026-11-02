@@ -2803,8 +2803,9 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
 99. `Upload::next_file` passed over every part with an empty file name, so a file a client sent
     with bytes and no name was dropped without a word. Only a part with an empty name and no bytes
-    (a file input left empty) is passed over now; one with bytes is a file whose `filename()` is
-    empty
+    (a file input left empty) is passed over now; one with bytes reaches the handler as a file whose
+    `filename()` is empty. Telling the two apart reads only as far as the part's first bytes and
+    copies nothing
     ([#587 Upload is built for HTML forms: a JSON route taking one file needs a dead form struct, gets HTML refusals, and cannot see an empty file input FormData keeps](https://github.com/todd-skelton/corten/issues/587)).
 
 ### Documentation
@@ -3076,9 +3077,9 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#553 Kit role tokens are loose top-level properties, so utilities like fg/bg cannot be generated from a group](https://github.com/todd-skelton/corten/issues/553)).
 45. The requests guide shows a JSON route taking an upload: one with no text fields names its
     file input with a `Files` field (which `#[derive(Fields)]` marks read, so it is not dead code)
-    and takes the file by that name, and `Upload<()>` takes files from inputs of any name. In an API
-    every refusal of an upload (not multipart, malformed, over the limit) is the API's failure, in
-    Problem Details or its own shape, which tests now hold. That an empty file input is no file,
+    and takes the file by that name. In an API every refusal of an upload (not multipart, malformed,
+    over the limit, fields that do not fit) is the API's failure, in Problem Details or its own
+    shape, which tests now hold. That an empty file input is no file,
     where `FormData` keeps an empty `File`, is a limit in `docs/design.md`
     ([#587 Upload is built for HTML forms: a JSON route taking one file needs a dead form struct, gets HTML refusals, and cannot see an empty file input FormData keeps](https://github.com/todd-skelton/corten/issues/587)).
 

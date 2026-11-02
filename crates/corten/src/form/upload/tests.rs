@@ -123,8 +123,11 @@ async fn an_empty_file_input_sends_no_file_and_fields_read_past_files() {
     let upload = Upload::<Listing>::from_request(request(&bytes, 7), &()).await.ok().unwrap();
     let listing = upload.fields().await.unwrap();
     assert_eq!(listing, Listing { title: "Pikachu".into(), price: Some(12), tags: vec![], photos: Files });
-    let (files, _) = read(request(&bytes, 7), None).await.unwrap();
-    assert_eq!(files, vec![("photos".into(), "a.png".into(), "application/octet-stream".into(), b"abc".to_vec())]);
+    for size in 1..=bytes.len() {
+        let (files, _) = read(request(&bytes, size), None).await.unwrap_or_else(|e| panic!("pieces of {size}: {e:?}"));
+        let expected = vec![("photos".into(), "a.png".into(), "application/octet-stream".into(), b"abc".to_vec())];
+        assert_eq!(files, expected, "pieces of {size}");
+    }
 }
 
 /// A part with bytes is a file even with an empty file name (a client may send none): it is
@@ -275,13 +278,30 @@ struct ImportRoot;
 #[route("/api/import")]
 struct Import;
 
-/// A JSON route that takes one file: `Upload<()>`, since it reads no text fields.
-async fn import(mut upload: Upload<()>) -> crate::Result<String> {
+#[derive(crate::Route)]
+#[route("/api/listings")]
+struct Listings;
+
+/// A file-only route's input, named by its one field.
+#[derive(serde::Deserialize, corten_macros::Fields)]
+struct Export {
+    file: Files,
+}
+
+/// A JSON route that takes one file and no text fields.
+async fn import(mut upload: Upload<Export>) -> crate::Result<String> {
     let mut sizes = Vec::new();
     while let Some(mut file) = upload.next_file().await? {
-        sizes.push(file.bytes_up_to(16).await?.map_or(0, |b| b.len()));
+        if file.is(Export::FIELDS.file) {
+            sizes.push(file.bytes_up_to(16).await?.map_or(0, |b| b.len()));
+        }
     }
     Ok(format!("{sizes:?}"))
+}
+
+/// A JSON route whose text fields must fit `Listing`.
+async fn list(upload: Upload<Listing>) -> crate::Result<String> {
+    Ok(upload.fields().await?.title)
 }
 
 /// An API's own failure shape, `{"error": ..}`.
@@ -297,7 +317,9 @@ async fn api_call(errors: bool, req: Request) -> (StatusCode, String, String) {
     use tower::ServiceExt;
     let router = crate::App::new(crate::Routes::from(axum::Router::new()))
         .api::<ImportRoot>(|api| {
-            let api = api.route::<Import>(crate::Methods::writes(axum::routing::post(import)));
+            let api = api
+                .route::<Import>(crate::Methods::writes(axum::routing::post(import)))
+                .route::<Listings>(crate::Methods::writes(axum::routing::post(list)));
             #[cfg(feature = "json")]
             let api = if errors { api.errors(|_, message| Refusal { error: message.to_string() }) } else { api };
             #[cfg(not(feature = "json"))]
@@ -312,22 +334,21 @@ async fn api_call(errors: bool, req: Request) -> (StatusCode, String, String) {
 }
 
 fn to_import(content_type: &str, bytes: Vec<u8>) -> Request {
-    Request::builder()
-        .method("POST")
-        .uri("/api/import")
-        .header(header::CONTENT_TYPE, content_type)
-        .body(Body::from(bytes))
-        .unwrap()
+    to("/api/import", content_type, bytes)
+}
+
+fn to(uri: &str, content_type: &str, bytes: Vec<u8>) -> Request {
+    Request::builder().method("POST").uri(uri).header(header::CONTENT_TYPE, content_type).body(Body::from(bytes)).unwrap()
 }
 
 /// Under an API, `Upload` is taken as an argument and its refusals are the API's failures: a body
 /// that is not multipart, one that breaks the format and one over the limit answer as Problem
-/// Details, as a `Json<T>` that does not parse does. A file-only route needs no form struct.
+/// Details, as a `Json<T>` that does not parse does, and so do fields that do not fit.
 #[tokio::test]
 async fn under_an_api_an_uploads_refusals_are_the_apis_failures() {
     let multipart = format!("multipart/form-data; boundary={BOUNDARY}");
     let (status, _, body) = api_call(false, to_import(&multipart, self::body(&[("file", Some("a.csv"), None, b"a,b")]))).await;
-    assert_eq!((status, &body[..]), (StatusCode::OK, "[3]"), "Upload<()> reads the file");
+    assert_eq!((status, &body[..]), (StatusCode::OK, "[3]"), "the file is read by its input's name");
     let (status, content_type, body) = api_call(false, to_import("application/json", b"{}".to_vec())).await;
     assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
     assert_eq!(content_type, "application/problem+json", "{body}");
@@ -341,6 +362,9 @@ async fn under_an_api_an_uploads_refusals_are_the_apis_failures() {
     let (status, content_type, body) = api_call(false, to_import(&multipart, over)).await;
     assert_eq!((status, &content_type[..]), (StatusCode::PAYLOAD_TOO_LARGE, "application/problem+json"), "{body}");
     assert!(body.contains(r#""status":413"#), "over the 2 MiB default: {body}");
+    let unfit = self::body(&[("title", None, None, b"Mew"), ("price", None, None, b"lots")]);
+    let (status, content_type, body) = api_call(false, to("/api/listings", &multipart, unfit)).await;
+    assert_eq!((status, &content_type[..]), (StatusCode::UNPROCESSABLE_ENTITY, "application/problem+json"), "{body}");
 }
 
 /// An API with an error shape of its own answers an upload's refusal in that shape.
@@ -350,4 +374,18 @@ async fn an_apis_own_error_shape_holds_for_an_upload() {
     let (status, content_type, body) = api_call(true, to_import("text/csv", b"a,b".to_vec())).await;
     assert_eq!((status, &content_type[..]), (StatusCode::UNSUPPORTED_MEDIA_TYPE, "application/json"));
     assert!(body.starts_with(r#"{"error":"Upload requests must have"#), "{body}");
+    // And the refusals the handler returns with `?`: malformed, over the limit, fields that do not fit.
+    let multipart = format!("multipart/form-data; boundary={BOUNDARY}");
+    let broken = format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.csv\"\r\n\r\na,b");
+    let large = vec![b'x'; 3 << 20];
+    let unfit = self::body(&[("title", None, None, b"Mew"), ("price", None, None, b"lots")]);
+    for (req, expected) in [
+        (to_import(&multipart, broken.into_bytes()), StatusCode::BAD_REQUEST),
+        (to_import(&multipart, self::body(&[("file", Some("a.csv"), None, &large)])), StatusCode::PAYLOAD_TOO_LARGE),
+        (to("/api/listings", &multipart, unfit), StatusCode::UNPROCESSABLE_ENTITY),
+    ] {
+        let (status, content_type, body) = api_call(true, req).await;
+        assert_eq!((status, &content_type[..]), (expected, "application/json"), "{body}");
+        assert!(body.starts_with(r#"{"error":"#), "{body}");
+    }
 }
