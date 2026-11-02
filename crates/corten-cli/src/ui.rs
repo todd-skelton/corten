@@ -1591,6 +1591,10 @@ mod tests {
             for (file, text) in piece.files.iter().filter(|(f, _)| f.ends_with(".css")) {
                 for read in text.split("var(--").skip(1) {
                     let name = &read[..read.find(|c: char| !(c.is_ascii_alphanumeric() || c == '-')).unwrap()];
+                    // One the stylesheet sets itself (a badge's `--tone`) is not the theme's.
+                    if text.contains(&format!("--{name}:")) {
+                        continue;
+                    }
                     assert!(light.contains(&format!("\n  \"{name}\": ")), "{file} reads --{name}, which the theme lacks");
                     if name != "radius" {
                         assert!(dark.contains(&format!("\n  \"{name}\": ")), "{file} reads --{name}, which the dark theme lacks");
@@ -1645,6 +1649,36 @@ mod tests {
             for (text_color, on, least) in pairs {
                 let r = ratio(&text_color, &on);
                 assert!(r >= least, "{file}: {text_color} on {on} is {r:.2}:1, under {least}:1");
+            }
+            // A badge's text, in each tone (`--tone` in badge.css) and emphasis: solid is the tone's
+            // `-foreground` pair above; soft is 85% of the tone in the foreground on 12% of it in the
+            // card, mixed in sRGB as `color-mix(in srgb, ..)` mixes; outline is the tone on the page
+            // and on a card.
+            let channels = |rgb: u32| [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255].map(|c| f64::from(c) / 255.0);
+            let linear = |c: f64| if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
+            let lum = |c: [f64; 3]| 0.2126 * linear(c[0]) + 0.7152 * linear(c[1]) + 0.0722 * linear(c[2]);
+            let contrast = |a: [f64; 3], b: [f64; 3]| {
+                let (x, y) = (lum(a), lum(b));
+                (x.max(y) + 0.05) / (x.min(y) + 0.05)
+            };
+            let badge = include_str!("../kit/badge.css");
+            assert!(
+                badge.contains(".soft { background: color-mix(in srgb, var(--tone) 12%, var(--card)); color: color-mix(in srgb, var(--tone) 85%, var(--foreground)); }"),
+                "the soft badge's mix is the one checked here"
+            );
+            for tone in ["neutral", "primary", "info", "success", "warning", "destructive"] {
+                let rule = badge.lines().find(|l| l.starts_with(&format!(".{tone} {{ --tone: var(--"))).expect(tone);
+                let color = &rule[rule.find("var(--").unwrap() + 6..rule.find(");").unwrap()];
+                let (ink, card, fg) = (channels(hex(color)), channels(hex("card")), channels(hex("foreground")));
+                let soft = [0, 1, 2].map(|i| ink[i] * 0.12 + card[i] * 0.88);
+                let soft_text = [0, 1, 2].map(|i| ink[i] * 0.85 + fg[i] * 0.15);
+                for (name, r) in [
+                    ("a soft badge", contrast(soft_text, soft)),
+                    ("the page", contrast(ink, channels(hex("background")))),
+                    ("a card", contrast(ink, card)),
+                ] {
+                    assert!(r >= 4.5, "{file}: a {tone} badge's text on {name} is {r:.2}:1, under 4.5:1");
+                }
             }
         }
     }
