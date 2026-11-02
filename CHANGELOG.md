@@ -2849,6 +2849,11 @@ Corten is pre-1.0, so any minor version may change the API.
     directory that is neither (or a corten crate in a directory not named `corten`, beside
     which `corten ui add` would not find corten-ui) is refused before anything is written
     ([#560 corten new --corten-path takes the repository root and writes a corten dependency that does not build](https://github.com/todd-skelton/corten/issues/560)).
+102. `corten ui add` put a new module between the next module and the attributes above it (a
+    `ui.rs` whose modules each carry `#[rustfmt::skip]`), so the attribute moved to the new module.
+    It now goes before the next module's attributes and doc comment, and takes the attributes every
+    module has
+    ([#586 corten ui add puts a new module between the next module and its attribute in a ui.rs whose modules carry #[rustfmt::skip]](https://github.com/todd-skelton/corten/issues/586)).
 
 ### Documentation
 

@@ -1111,8 +1111,25 @@ fn list_in(module: &str, piece: &Piece) -> Option<String> {
     let mut lines: Vec<&str> = out.lines().collect();
     let mods: Vec<usize> =
         lines.iter().enumerate().filter(|(_, l)| l.starts_with("pub mod ") && l.ends_with(';')).map(|(i, _)| i).collect();
+    // A module's attributes and doc comment, on the lines above it, are its own: the first of them.
+    let head = |i: usize| {
+        let mut s = i;
+        while s > 0 && (lines[s - 1].starts_with("#[") || lines[s - 1].starts_with("///")) {
+            s -= 1;
+        }
+        s
+    };
+    // The attributes every module has (`#[rustfmt::skip]`), which the new one gets too.
+    let attrs: Vec<&str> = match mods.first() {
+        Some(&m) => lines[head(m)..m]
+            .iter()
+            .filter(|a| a.starts_with("#[") && mods.iter().all(|&o| lines[head(o)..o].contains(a)))
+            .copied()
+            .collect(),
+        None => Vec::new(),
+    };
     let at = match mods.iter().find(|&&i| lines[i] > decl.as_str()) {
-        Some(&i) => i,
+        Some(&i) => head(i),
         None => match mods.last() {
             Some(&i) => i + 1,
             // The first: before the tokens, apart from them, or before the list and its comment.
@@ -1126,6 +1143,9 @@ fn list_in(module: &str, piece: &Piece) -> Option<String> {
         },
     };
     lines.insert(at, &decl);
+    for attr in attrs.into_iter().rev() {
+        lines.insert(at, attr);
+    }
     let mut text = lines.join("\n");
     text.push('\n');
     Some(text)
@@ -1264,6 +1284,24 @@ mod tests {
             module.contains("pub const COMPONENTS: &[Component] = &[TOKENS, alert::Alert, button::Button, card::Card];\n"),
             "{module}"
         );
+    }
+
+    /// A module's attributes and doc comment stay with it, and one every module has (`#[rustfmt::skip]`)
+    /// the new one gets too, before the next module or after the last (#586).
+    #[test]
+    fn a_new_module_goes_before_the_next_ones_attributes_and_takes_the_common_ones() {
+        let module = "use corten::Component;\n\n#[rustfmt::skip]\n#[path = \"kit/badge.rs\"]\npub mod badge;\n/// Cards.\n#[rustfmt::skip]\npub mod card;\n\npub const COMPONENTS: &[Component] = &[badge::Badge, card::Card];\n";
+        let module = list_in(module, piece("button")).unwrap();
+        assert!(
+            module.contains("pub mod badge;\n#[rustfmt::skip]\npub mod button;\n/// Cards.\n#[rustfmt::skip]\npub mod card;\n"),
+            "{module}"
+        );
+        let module = list_in(&module, piece("table")).unwrap();
+        assert!(module.contains("pub mod card;\n#[rustfmt::skip]\npub mod table;\n\npub const"), "{module}");
+        // None in common: the new one has none.
+        let module = "use corten::Component;\n\n#[cfg(test)]\npub mod badge;\npub mod card;\n\npub const COMPONENTS: &[Component] = &[badge::Badge, card::Card];\n";
+        let module = list_in(module, piece("alert")).unwrap();
+        assert!(module.contains("use corten::Component;\n\npub mod alert;\n#[cfg(test)]\npub mod badge;\n"), "{module}");
     }
 
     #[test]
