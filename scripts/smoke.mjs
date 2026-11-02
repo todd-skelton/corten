@@ -919,6 +919,8 @@ async function run(browser) {
       // drawn (`late`); a read-again tag in the page and its navigation answers (`readAgain`); the
       // whole page held back (`slow`).
       let [late, readAgain, slow] = [false, false, false];
+      // The brand the write's page draws in the header.
+      let brandNow = "Watchlist, again";
       const readAgainTag = '<noscript data-corten-read-again="1" data-corten-head><meta http-equiv="refresh" content="1"></noscript>';
       await page.route(news, async (route) => {
         const nav = route.request().headers()["corten"];
@@ -932,7 +934,7 @@ async function run(browser) {
         if (readAgain) body = body.replace("</title>", `</title>${readAgainTag}`);
         if (!nav) {
           body = body
-            .replace(">Watchlist</span>", ">Watchlist, again</span>")
+            .replace(">Watchlist</span>", `>${brandNow}</span>`)
             .replace("<header", `${banner}<header`)
             .replace("<html", `<html${frame}`);
           if (late) body = body.replace(/<link\b[^>]*\bdata-corten-style\b[^>]*>/, (tag) => tag.replace(/href="([^"]+)"/, 'href="$1?late=1"'));
@@ -998,10 +1000,11 @@ async function run(browser) {
           scrollTo(0, 0);
           /** @type {HTMLElement} */ (document.querySelector("header span")).id = "smoke-brand";
         });
-        late = true;
+        // The write's page draws another header, which the patch is newer than.
+        [late, brandNow] = [true, "Watchlist, late"];
         await thank();
         await back();
-        late = false;
+        [late, brandNow] = [false, "Watchlist, again"];
         await page.unroute(lateStyle);
         const kept = await page.evaluate(() => document.querySelector("header span")?.textContent);
         check("a patch that lands while the write's page is drawn is kept", patchedLate && kept === "Late", `patched ${patchedLate}, ${kept}`);
@@ -1030,9 +1033,13 @@ async function run(browser) {
         check("a write's page read again with nothing new stays as it is", read && stayed.same && stayed.typed === "typed@example.com", `read ${read} ${JSON.stringify(stayed)}`);
         // The next answer has no read-again tag: it differs, is swapped in, and the reads stop.
         readAgain = false;
-        await page.waitForFunction(() => !document.head.querySelector("noscript[data-corten-read-again]"), null, { timeout: 5000 }).catch(() => {});
+        const gone = await page
+          .waitForFunction(() => !document.head.querySelector("noscript[data-corten-read-again]"), null, { timeout: 5000 })
+          .then(() => true, () => false);
+        const settled = reads;
+        await page.waitForTimeout(1500);
         page.off("request", onRead);
-        check("reading again stops once the page no longer asks", reads >= 2, `${reads} reads`);
+        check("reading again stops once the page no longer asks", gone && reads === settled, `tag gone ${gone}, ${reads - settled} more reads`);
       }
       // A navigation the user starts before the write's page comes reads the whole page, so what
       // the write changed in the layout is drawn there too.

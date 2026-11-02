@@ -1614,9 +1614,10 @@ impl Req {
     /// page's path (`__Host-corten-notice`, a minute; `corten-notice` for a write from a plain
     /// `http://` origin that is not loopback, which refuses a `Secure` cookie), which the page's
     /// answer removes. A
-    /// navigation's page that did not draw it hands it to the runtime, which dispatches
-    /// `corten:notice` on the document for the app's toaster, since the layout around `<main>`
-    /// does not run there. Text past 500 bytes is cut at a character's end.
+    /// `data-patch` write's redirect is followed by the whole page, whose layout draws it as a full
+    /// load does; a page that did not draw it (a plain navigation's, whose layout around `<main>`
+    /// does not run) hands it to the runtime, which dispatches `corten:notice` on the document for
+    /// the app's toaster. Text past 500 bytes is cut at a character's end.
     ///
     /// Only for a page of the app ([`crate::OnSite`]: a route, a place on one, a checked
     /// [`crate::Local`], a `#[derive(Href)]` enum of those): a URL of another site does not compile.

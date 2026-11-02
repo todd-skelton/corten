@@ -2207,13 +2207,16 @@ Corten is pre-1.0, so any minor version may change the API.
     before the write's page has come, which reads the whole page too. A page read again
     (`ReadAgain`) after a write's page stays as it is while nothing changed. A whole document now
     carries its notice in `corten-notice` too, so the runtime announces one the page did not draw.
-    Measured: the runtime is 993 bytes larger gzipped (10,091 to 11,084; brotli 9,119 to 10,061;
-    27,882 to 30,871 minified), which every first load pays once (it is cached after); a full load
+    A live region in the layout (a toaster's `role="status"`) stays, with the new message put in it,
+    so a screen reader announces it as it does a patch's.
+    Measured: the runtime is 1,240 bytes larger gzipped (10,091 to 11,331; brotli 9,119 to 10,268;
+    27,882 to 31,687 minified), which every first load pays once (it is cached after); a full load
     after each such write instead (the issue's first option) costs nothing there but takes each
     write from about 53 ms to about 88 ms below, and marking the layout parts a write may change
     (its second) leaves a part nobody marked stale, which is the bug; keeping the layout to compare (its markup as loaded; it is
     normalized only when a write compares it) costs each full load a median under 0.1 ms and at
-    most 0.4 ms on the watchlist's and the gallery's pages (Chromium, 495 and 327 bytes kept),
+    most 0.4 ms on the watchlist's and the gallery's pages (Chromium, 50 captures a page, 495 and
+    327 bytes kept),
     and 1 ms (1.2 ms at most) on a 61.5 KB layout, and the watchlist's briefing write, which redirects to `/news`,
     now reads 1,919 bytes gzipped where the swap read 1,410 (brotli 1,786 against 1,328; 4,871
     against 3,566 uncompressed), once per write, and the server draws the layout for it as for a

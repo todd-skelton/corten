@@ -460,17 +460,21 @@ async function run(browser) {
     "and the toaster offers to dismiss it",
     "the notice is said once",
     "the same notice again is shown again",
+    "the toaster's live region stays, so its message is announced",
     "a notice whose page loads in full instead reaches the toaster after the load",
   ];
   if (engine !== "webkit") {
     // A full load would draw the same toast: the marker says the document was kept.
-    await page.evaluate(() => ((/** @type {any} */ (window)).__kept = 1));
-    const kept = () => page.evaluate(() => (/** @type {any} */ (window)).__kept === 1);
+    await page.evaluate(() => {
+      (/** @type {any} */ (window)).__kept = 1;
+      (/** @type {any} */ (document.querySelector("#ui-toast")?.parentElement)).__region = 1;
+    });
+    const keptDoc = () => page.evaluate(() => (/** @type {any} */ (window)).__kept === 1);
     await page.getByRole("button", { name: "Rename draft" }).click();
     await page.locator("#draft-name").fill("Spring draft");
     await page.getByRole("button", { name: "Rename", exact: true }).click();
     const renamed = await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Spring draft.", null, { timeout: 5000 }).then(() => true, () => false);
-    check(noticeChecks[0], renamed && (await kept()) && (await page.locator("#ui-toast").isVisible()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)), await page.locator("#ui-toast").textContent());
+    check(noticeChecks[0], renamed && (await keptDoc()) && (await page.locator("#ui-toast").isVisible()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)), await page.locator("#ui-toast").textContent());
     check(noticeChecks[1], await page.getByRole("button", { name: "Dismiss" }).isVisible());
     await page.getByRole("button", { name: "Dismiss" }).click();
     check(noticeChecks[2], !(await page.evaluate(async () => (await (await fetch("/")).text()).includes("Renamed to"))));
@@ -482,7 +486,12 @@ async function run(browser) {
       const toast = /** @type {HTMLElement | null} */ (document.querySelector("#ui-toast"));
       return toast?.textContent === "Renamed to Spring draft." && !toast.hidden && toast.checkVisibility();
     }, null, { timeout: 5000 }).then(() => true, () => false);
-    check(noticeChecks[3], again && (await kept()), await page.locator("#ui-toast").evaluate((t) => JSON.stringify({ text: t.textContent, hidden: /** @type {HTMLElement} */ (t).hidden })));
+    const region = await page.evaluate(() => {
+      const status = document.querySelector("#ui-toast")?.parentElement;
+      return { same: (/** @type {any} */ (status))?.__region === 1, role: status?.getAttribute("role") };
+    });
+    check(noticeChecks[4], region.same && region.role === "status", JSON.stringify(region));
+    check(noticeChecks[3], again && (await keptDoc()), await page.locator("#ui-toast").evaluate((t) => JSON.stringify({ text: t.textContent, hidden: /** @type {HTMLElement} */ (t).hidden })));
     await page.getByRole("button", { name: "Dismiss" }).click();
     // The write's page comes with another frame (here an attribute on <html> changed on the way):
     // the runtime loads it in full, and the notice, whose cookie that answer removed, goes with it.
@@ -500,7 +509,7 @@ async function run(browser) {
     await page.getByRole("button", { name: "Rename", exact: true }).click();
     const kept = await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Renamed to Autumn draft.", null, { timeout: 5000 }).then(() => true, () => false);
     const loaded = await page.evaluate(() => (/** @type {any} */ (window)).__before === undefined);
-    check(noticeChecks[4], kept && loaded && (await page.locator("#ui-toast").isVisible()), `${loaded} ${await page.locator("#ui-toast").textContent()}`);
+    check(noticeChecks[5], kept && loaded && (await page.locator("#ui-toast").isVisible()), `${loaded} ${await page.locator("#ui-toast").textContent()}`);
     await page.unroute("**/*");
   } else for (const name of noticeChecks) skip(name, "Playwright's WebKit never sends a Secure cookie back over http");
   // A layout with <main> inside two <div>s: one write's page after another is swapped into the
@@ -525,16 +534,20 @@ async function run(browser) {
     let documents = 0;
     const onDocument = (/** @type {import("@playwright/test").Request} */ r) => r.resourceType() === "document" && documents++;
     page.on("request", onDocument);
+    let drawn = 0;
     for (const name of ["Nested draft", "Nested again"]) {
       await page.getByRole("button", { name: "Rename draft" }).click();
       await page.locator("#draft-name").fill(name);
       await page.getByRole("button", { name: "Rename", exact: true }).click();
-      await page.waitForFunction((name) => document.querySelector("#ui-toast")?.textContent === `Renamed to ${name}.`, name, { timeout: 5000 }).catch(() => {});
-      await page.getByRole("button", { name: "Dismiss" }).click().catch(() => {});
+      const shown = await page
+        .waitForFunction((name) => document.querySelector("#ui-toast")?.textContent === `Renamed to ${name}.`, name, { timeout: 5000 })
+        .then(() => true, () => false);
+      if (shown) drawn++;
+      await page.getByRole("button", { name: "Dismiss" }).click();
     }
     page.off("request", onDocument);
     const nested = await page.evaluate(() => ({ kept: (/** @type {any} */ (window)).__nested === 1, inner: !!document.querySelector(".frame > .inner > main") }));
-    check(nestedCheck, nested.kept && nested.inner && documents === 0, `${JSON.stringify(nested)}, document requests ${documents}`);
+    check(nestedCheck, drawn === 2 && nested.kept && nested.inner && documents === 0, `${drawn} drawn, ${JSON.stringify(nested)}, document requests ${documents}`);
     await page.unroute("**/*", nest);
     await page.goto(`${base}/`);
   } else skip(nestedCheck, "no Navigation API: navigations are full page loads");

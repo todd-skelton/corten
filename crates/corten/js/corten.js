@@ -1259,11 +1259,45 @@ function layoutChanges(doc, notice) {
         // One a patch replaced, or changed inside, while the page was on its way is newer than the
         // page: it stays.
         if (!old.isConnected || drawn.get(old) !== was) continue;
-        replaceKeeping(old, el, null);
-        setVars(el);
+        const markup = markupOf(el);
+        drawLayout(old, el);
+        const now = old.isConnected ? old : el;
+        drawn.set(now, markup);
+        setVars(now);
       }
     },
   };
+}
+
+/** A live region: what goes into it is announced, but not one inserted with its message. */
+const LIVE = '[role="status"], [role="alert"], [aria-live]';
+/**
+ * Draws `fresh`, the server's markup for the layout element `old`, in its place, as a patch
+ * replaces an element ({@link replaceKeeping}), except that a live region in it (a toaster's)
+ * stays and takes the new content, as a patch inside it would, so its message is announced. The
+ * elements on the way to a region stay too, with the new attributes; one whose children are not
+ * the same nodes is replaced whole.
+ * @param {Element} old @param {Element} fresh
+ */
+function drawLayout(old, fresh) {
+  if (old.localName !== fresh.localName || !(old.matches(LIVE) || old.querySelector(LIVE))) return replaceKeeping(old, fresh, null);
+  for (const a of Array.from(old.attributes)) if (!fresh.hasAttribute(a.name)) old.removeAttribute(a.name);
+  for (const a of Array.from(fresh.attributes)) if (old.getAttribute(a.name) !== a.value) old.setAttribute(a.name, a.value);
+  if (old.matches(LIVE)) {
+    const content = document.createDocumentFragment();
+    content.append(...Array.from(fresh.childNodes));
+    serve(content);
+    old.replaceChildren(content);
+    return;
+  }
+  const [mine, theirs] = [Array.from(old.childNodes), Array.from(fresh.childNodes)];
+  if (mine.length !== theirs.length || mine.some((n, i) => n.nodeName !== theirs[i].nodeName)) return replaceKeeping(old, fresh, null);
+  mine.forEach((n, i) => {
+    const there = theirs[i];
+    if (!(n instanceof Element)) {
+      if (n.nodeValue !== there.nodeValue) n.nodeValue = there.nodeValue;
+    } else if (comparable(n.outerHTML) !== markupOf(/** @type {Element} */ (there))) drawLayout(n, /** @type {Element} */ (there));
+  });
 }
 
 /**

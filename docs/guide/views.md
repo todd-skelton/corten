@@ -195,7 +195,9 @@ load) is newer than the page and wins: the element keeps the patch. A layout ele
 whose markup differs on every render (a form with a submit key, a `<corten-live>` with its
 position) is replaced on every such write, losing what scripts did to it; keep it out of the
 layout, or draw it in a component a patch updates. A layout element that shows the redirect's
-notice is drawn again even when its markup is the same, so the same notice twice is shown twice. The page a write sends the browser to is
+notice is drawn again even when its markup is the same, so the same notice twice is shown twice;
+a live region in it (the toaster's `role="status"`) stays and takes the new message, so it is
+announced as a patch's is. The page a write sends the browser to is
 fetched as a document, so when it redirects again, `fetch` follows that redirect itself: a
 `#id` on the second one is not kept, and one to another site loads in full.
 
