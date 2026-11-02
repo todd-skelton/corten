@@ -26,7 +26,8 @@ pub struct Copied {}
 /// ancestor can count the copy (`on:Copied={js::counted(event)}`). Listing `CopyButton` serves
 /// the event's class; the app does not list `Copied`.
 ///
-/// Parts: the `button` and the `span[aria-live=polite]` inside it that holds its text.
+/// Parts: the `button`, which has the classes `class` gives it (`()` for none: a look of the
+/// app's, a kit `Button`), and the `span[aria-live=polite]` inside it that holds its text.
 ///
 /// ```
 /// use corten::prelude::*;
@@ -40,7 +41,7 @@ pub struct Copied {}
 ///     for parcel in parcels {
 ///         <p>
 ///             <code id={TrackingId(parcel)}>{parcel}</code>
-///             <CopyButton text={TrackingId(parcel)} label="Copy" copied="Copied" />
+///             <CopyButton text={TrackingId(parcel)} label="Copy" copied="Copied" class={()} />
 ///         </p>
 ///     }
 /// }
@@ -56,15 +57,16 @@ pub struct Copied {}
 /// use corten::prelude::*;
 /// use corten_ui::CopyButton;
 ///
-/// let html = html! { <CopyButton text="tracking-1Z999" label="Copy" copied="Copied" /> };
+/// let html = html! { <CopyButton text="tracking-1Z999" label="Copy" copied="Copied" class={()} /> };
 /// ```
 #[component(js)]
-pub fn CopyButton<'a, I: Id, L: Render>(text: I, label: L, copied: &'a str) -> impl Render {
+pub fn CopyButton<'a, I: Id, L: Render, C: ClassList>(text: I, label: L, copied: &'a str, class: C) -> impl Render {
     let said = refs();
     let id = plain_id(&text);
     html! {
         <button
             type="button"
+            class={class}
             hidden
             on:connect={js::connect(target, said, signal)}
             on:click={js::copy(target, id.as_str(), said, copied)}
