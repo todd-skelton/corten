@@ -167,6 +167,13 @@ Another source (a change stream, a queue) is `corten::live(stream)`: give each i
 `Last-Event-ID` after a reconnect) to send nothing until the next change when it is current. A
 slow part sent once is a stream of one item. See the live-data guide.
 
+A script that draws a stream's data itself (a progress bar from a job's state) reads named JSON
+events with `EventSource`: the route returns `corten::event_stream(stream)` of
+`StreamEvent::new("progress", &state).cursor(v)` (feature `json`), not a `Relay` or a hand-built
+`Sse`. A stream that is over answers the `EventSource`'s reconnect with
+`EventStreamResponse::ended()` (204), which stops it. Its names and data are untyped in the
+script, so prefer `<corten-live>` or a feed when either fits.
+
 A job another process runs has only a read to repeat. Many pages following one job: an
 `App::task` reads it on an interval into a `watch` channel, and each stream is `live_watch`. One
 page's job: `corten::live` over an `unfold` loop that reads, sends only when the version moved, ends

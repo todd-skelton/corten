@@ -373,6 +373,8 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     out.extend([TokenTree::Group(Group::new(Delimiter::Brace, fields))]);
     let mut scope = TokenStream::new();
     let mut items = TokenStream::new();
+    // The names this component's constant takes for the whole program (`crate::id::guards`).
+    let mut guarded: Vec<(&str, String, bool)> = Vec::new();
     // The constant the app lists: the component's script and its own stylesheet.
     if let Some(css) = &css {
         // A helper (`css = Owner`) uses the owner's constants, so its uses count for the owner.
@@ -381,7 +383,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             items.extend(css.items(&name));
             // Two components that style `.{prefix}__*` fail to build, not the app when it starts.
             // A library's classes are not prefixed, so its `Card` and the app's clash at any version.
-            items.extend(crate::id::one_per_program("two_components_style", &css.prefix, false));
+            guarded.push(("two_components_style", css.prefix.clone(), false));
         }
         scope.extend(css.scope(&path, &style_owner, &used));
     }
@@ -389,11 +391,11 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     // `corten/views` exports one class of a name, unprefixed, so two views of one name fail to
     // build, at any version.
     if view.is_some() {
-        items.extend(crate::id::one_per_program("two_views_are", &name.to_string(), false));
+        guarded.push(("two_views_are", name.to_string(), false));
     }
     if let Some(module) = &script {
         // Two components whose scripts are served at one URL fail to build.
-        items.extend(crate::id::one_per_program("two_scripts_are", &module.name, true));
+        guarded.push(("two_scripts_are", module.name.clone(), true));
         // Beside the component, named after it, so two components in one file each have their
         // own, and a part of it (`js = Owner`) can use it; `js` inside `render`.
         let module_name = js_module(&name);
@@ -438,6 +440,8 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         })
     };
     if has_constant {
+        let names: Vec<_> = guarded.iter().map(|(what, n, v)| (*what, n.as_str(), *v)).collect();
+        items.extend(crate::id::guards(&name.to_string(), &names));
         let some = |t: Option<TokenStream>| match t {
             Some(t) => q("::core::option::Option::Some(__A0)", &[t]),
             None => q("::core::option::Option::None", &[]),
@@ -457,6 +461,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
                 style: __A4,
                 event: ::core::option::Option::None,
                 view: __A6,
+                anchor: __A7,
             };",
             &[
                 literal(&doc),
@@ -466,6 +471,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
                 some(style),
                 stream(vis.iter().cloned()),
                 some(view),
+                crate::id::anchor(&name.to_string()),
             ],
         ));
     }
