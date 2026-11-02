@@ -8,11 +8,15 @@ use std::time::Duration;
 /// runs at each size, so the load slows both alike rather than failing a bound on the clock. Load
 /// that slows only the smaller runs can let a slow case pass, never fail a fast one.
 pub(crate) fn linear(name: &str, n: usize, case: impl Fn(usize)) {
-    let time = |n: usize| {
+    linear_with(name, n, |n| {
         let started = std::time::Instant::now();
         case(n);
         started.elapsed()
-    };
+    });
+}
+
+/// [`linear`] with the time a case takes at a size given by `time`.
+fn linear_with(name: &str, n: usize, time: impl Fn(usize) -> Duration) {
     let first = time(n);
     if first < Duration::from_secs(1) {
         return;
@@ -28,7 +32,22 @@ fn grows_linearly(quarter: Duration, whole: Duration) -> bool {
     whole < quarter * 10 + Duration::from_millis(20)
 }
 
-/// The verdict, on times given rather than measured, so a busy machine cannot change it.
+/// The check fails a case that grows with the square of its size once it takes a second, on
+/// times given rather than measured, so a busy machine cannot change the outcome.
+#[test]
+#[should_panic(expected = "quadratic")]
+fn the_check_fails_a_quadratic_case() {
+    linear_with("quadratic", 1_000, |n| Duration::from_micros((n * n) as u64 * 11 / 10));
+}
+
+/// And passes one that grows with its size, and one under a second whatever it grows by.
+#[test]
+fn the_check_passes_a_linear_case_and_a_fast_one() {
+    linear_with("linear", 1_000, |n| Duration::from_micros(n as u64 * 1_100));
+    linear_with("fast", 1_000, |n| Duration::from_micros((n * n) as u64 * 9 / 10));
+}
+
+/// The verdict, on times given rather than measured.
 #[test]
 fn the_verdict_fails_a_quadratic_case_and_passes_a_linear_one() {
     let whole = Duration::from_millis(1_100);

@@ -2848,9 +2848,9 @@ Corten is pre-1.0, so any minor version may change the API.
     script tests use (moved to a test module they share): under a second passes, slower is checked
     against the time at a quarter of the size. The merge test now merges into an empty group too,
     so a scan per key fails it whether it finds keys or adds them (measured on one machine: 32.0 s
-    at 50,000 tokens against 1.7 s at 12,500, and 33.1 s against 1.9 s, about 16 times where the
-    bound is 10). The check's own test judges times it is given, not ones it measures, so load
-    cannot fail it either
+    at 50,000 tokens against 1.7 s at 12,500, and 33.1 s against 1.9 s, 17 to 19 times where the
+    bound is 10). The check's own tests run it on times they give, not ones they measure, so load
+    cannot fail them either
     ([#593 corten-macros' dtcg merge test has a wall-clock bound (under 2 s) that fails when the machine is busy, as the script tests did before #495](https://github.com/todd-skelton/corten/issues/593)).
 
 ### Documentation
