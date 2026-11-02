@@ -1015,6 +1015,77 @@ pub trait QueryParams {
 /// pub struct Items { #[route(query)] pub choice: Choice }
 /// ```
 ///
+/// A name the read set reads and the link never writes, an older name of a parameter that links
+/// now write another way (so an address shared before the rename still reads), is
+/// `#[route(read_only)]` on the read set's field. No link writes it, and the route counts it with
+/// the others, so no other parameter can have it:
+///
+/// ```
+/// use corten::{form::FormError, prelude::*, route::FromQuery};
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct TermsLink<'a> { pub q: Option<&'a str> }
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct TermsRead { pub q: Vec<String>, #[route(read_only)] pub search: Vec<String> }
+///
+/// pub struct Terms(pub Option<String>);
+///
+/// impl FromQuery for Terms {
+///     type Link<'a> = TermsLink<'a>;
+///     type Read = TermsRead;
+///     fn link(&self) -> TermsLink<'_> { TermsLink { q: self.0.as_deref() } }
+///     fn from_query(read: TermsRead) -> Result<Self, FormError> {
+///         // `q`, or the older `search` when there is no `q`.
+///         Ok(Terms(read.q.into_iter().chain(read.search).find(|t| !t.is_empty())))
+///     }
+/// }
+///
+/// #[derive(Route)]
+/// #[route("/search")]
+/// pub struct Search { #[route(query)] pub terms: Terms }
+///
+/// assert_eq!(Search { terms: Terms(Some("pika".into())) }.href(), "/search?q=pika");
+/// ```
+///
+/// ```compile_fail,E0080
+/// use corten::{form::FormError, prelude::*, route::FromQuery};
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct TermsLink<'a> { pub q: Option<&'a str> }
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct TermsRead { pub q: Vec<String>, #[route(read_only)] pub search: Vec<String> }
+///
+/// pub struct Terms(pub Option<String>);
+///
+/// impl FromQuery for Terms {
+///     type Link<'a> = TermsLink<'a>;
+///     type Read = TermsRead;
+///     fn link(&self) -> TermsLink<'_> { TermsLink { q: self.0.as_deref() } }
+///     fn from_query(read: TermsRead) -> Result<Self, FormError> { Ok(Terms(read.q.into_iter().next())) }
+/// }
+///
+/// // `search` is the set's older name, so the route cannot have a parameter of its own by it.
+/// #[derive(Route)]
+/// #[route("/search")]
+/// pub struct Search<'a> { pub search: Option<&'a str>, #[route(query)] pub terms: Terms }
+/// ```
+///
+/// A read-only name is one query parameter's: not a path parameter, a set or a prefix.
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[derive(Route)]
+/// #[route("/items/{id}")]
+/// pub struct Item { #[route(read_only)] pub id: String }
+/// ```
+///
 /// The route checks its own names against the set's, so a route that writes `listing` itself
 /// beside it does not compile:
 ///
@@ -1088,7 +1159,8 @@ pub trait FromQuery: Sized + 'static {
 impl<T: FromQuery> QueryParams for T {
     const __KEYS: &'static [__private::Key] = {
         __private::same_keys(<T::Link<'static> as QueryParams>::__KEYS, <T::Read as QueryParams>::__KEYS);
-        <T::Link<'static> as QueryParams>::__KEYS
+        // The read set's: the names links write and any it only reads, which no other may take.
+        <T::Read as QueryParams>::__KEYS
     };
 
     #[inline]
@@ -2909,13 +2981,18 @@ pub mod __private {
         Name(&'static str),
         Prefix(&'static str),
         Set(&'static [Key]),
+        /// A name read and never written (`#[route(read_only)]`): no other parameter may have it,
+        /// but a link does not write it.
+        ReadOnly(&'static str),
     }
 
-    const fn count(keys: &[Key]) -> usize {
+    /// How many names `keys` has, sets flattened; only those a link writes when `written`.
+    const fn count(keys: &[Key], written: bool) -> usize {
         let (mut n, mut i) = (0, 0);
         while i < keys.len() {
             n += match &keys[i] {
-                Key::Set(inner) => count(inner),
+                Key::Set(inner) => count(inner, written),
+                Key::ReadOnly(_) if written => 0,
                 _ => 1,
             };
             i += 1;
@@ -2923,19 +3000,20 @@ pub mod __private {
         n
     }
 
-    /// The `n`th name, sets flattened: `(is a prefix, text)`.
-    const fn nth(keys: &[Key], mut n: usize) -> Option<(bool, &'static str)> {
+    /// The `n`th name, sets flattened: `(is a prefix, text)`; of those a link writes when `written`.
+    const fn nth(keys: &[Key], mut n: usize, written: bool) -> Option<(bool, &'static str)> {
         let mut i = 0;
         while i < keys.len() {
             match &keys[i] {
                 Key::Set(inner) => {
-                    let c = count(inner);
+                    let c = count(inner, written);
                     if n < c {
-                        return nth(inner, n);
+                        return nth(inner, n, written);
                     }
                     n -= c;
                 }
-                Key::Name(name) if n == 0 => return Some((false, *name)),
+                Key::ReadOnly(_) if written => {}
+                Key::Name(name) | Key::ReadOnly(name) if n == 0 => return Some((false, *name)),
                 Key::Prefix(prefix) if n == 0 => return Some((true, *prefix)),
                 _ => n -= 1,
             }
@@ -2959,11 +3037,12 @@ pub mod __private {
         true
     }
 
-    /// Fails to compile a `FromQuery` set whose link and read sets do not have the same names.
+    /// Fails to compile a `FromQuery` set whose link and read sets do not write the same names
+    /// (a `#[route(read_only)]` name the read set has besides is not written).
     pub const fn same_keys(link: &[Key], read: &[Key]) {
         const fn has(keys: &[Key], prefix: bool, text: &str) -> bool {
             let mut i = 0;
-            while let Some((p, t)) = nth(keys, i) {
+            while let Some((p, t)) = nth(keys, i, true) {
                 if p == prefix && t.len() == text.len() && starts_with(t, text) {
                     return true;
                 }
@@ -2971,17 +3050,17 @@ pub mod __private {
             }
             false
         }
-        let total = count(link);
-        let mut same = total == count(read);
+        let total = count(link, true);
+        let mut same = total == count(read, true);
         let mut i = 0;
         while same && i < total {
-            let (Some((lp, lt)), Some((rp, rt))) = (nth(link, i), nth(read, i)) else { unreachable!() };
+            let (Some((lp, lt)), Some((rp, rt))) = (nth(link, i, true), nth(read, i, true)) else { unreachable!() };
             same = has(read, lp, lt) && has(link, rp, rt);
             i += 1;
         }
         if !same {
             panic!(
-                "a FromQuery set's Link and Read write different names: give the two sets the same fields' names and prefixes"
+                "a FromQuery set's Link and Read write different names: give the two sets the same fields' names and prefixes, and mark a name the Read set only reads #[route(read_only)]"
             );
         }
     }
@@ -2989,12 +3068,14 @@ pub mod __private {
     /// Fails to compile a route whose parameters, its own and its sets', could be read back as
     /// each other's: two with one name, or a prefix another's name starts with.
     pub const fn check_keys(keys: &[Key]) {
-        let total = count(keys);
+        let total = count(keys, false);
         let mut a = 0;
         while a < total {
             let mut b = a + 1;
             while b < total {
-                let (Some((a_prefix, a_text)), Some((b_prefix, b_text))) = (nth(keys, a), nth(keys, b)) else { unreachable!() };
+                let (Some((a_prefix, a_text)), Some((b_prefix, b_text))) = (nth(keys, a, false), nth(keys, b, false)) else {
+                    unreachable!()
+                };
                 let clash = match (a_prefix, b_prefix) {
                     (false, false) => starts_with(a_text, b_text) && a_text.len() == b_text.len(),
                     (true, false) => starts_with(b_text, a_text),

@@ -91,6 +91,12 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
                         format!("{name} is #[route(prefix = ..)], so it is query parameters, not {{{name}}} in the path"),
                     );
                 }
+                Some(f) if is_read_only(f) => {
+                    return err(
+                        f.ident.span(),
+                        format!("{name} is #[route(read_only)], a query parameter's older name, not {{{name}}} in the path"),
+                    );
+                }
                 Some(f) if f.key != f.name => {
                     return err(
                         f.ident.span(),
@@ -422,6 +428,8 @@ fn query_keys(fields: &[&Field], statics: bool) -> TokenStream {
             keys.extend(q("::corten::route::__private::Key::Set(<__A0 as ::corten::route::QueryParams>::__KEYS),", &[ty]));
         } else if let Ok(Some((prefix, _))) = route_prefix(field) {
             keys.extend(q("::corten::route::__private::Key::Prefix(__A0),", &[string(&prefix).into()]));
+        } else if is_read_only(field) {
+            keys.extend(q("::corten::route::__private::Key::ReadOnly(__A0),", &[string(&field.key).into()]));
         } else {
             keys.extend(q("::corten::route::__private::Key::Name(__A0),", &[string(&field.key).into()]));
         }
@@ -687,6 +695,16 @@ fn serde_names(attrs: &[proc_macro::Group], fields: &mut [Field]) -> Result<(), 
     Ok(())
 }
 
+/// `#[route(read_only)]`: a query parameter read and never written (an older name of one a
+/// link now writes another way, kept so addresses shared before the rename still read).
+fn is_read_only(field: &Field) -> bool {
+    field.attrs.iter().any(|attr| {
+        let tokens: Vec<proc_macro::TokenTree> = attr.stream().into_iter().collect();
+        matches!(tokens.as_slice(), [proc_macro::TokenTree::Ident(name), proc_macro::TokenTree::Group(args)]
+            if name.to_string() == "route" && args.stream().to_string().trim() == "read_only")
+    })
+}
+
 /// `#[route(query)]`.
 fn is_route_query(attr: &proc_macro::Group) -> bool {
     let tokens: Vec<proc_macro::TokenTree> = attr.stream().into_iter().collect();
@@ -773,6 +791,12 @@ fn route_prefix(field: &Field) -> Result<Option<(String, Span)>, Error> {
 fn check_prefixes(fields: &[Field]) -> Result<(), Error> {
     let mut prefixes = Vec::new();
     for field in fields {
+        if is_read_only(field) && (field.attrs.iter().any(is_route_query) || route_prefix(field)?.is_some()) {
+            return err(
+                field.ident.span(),
+                "#[route(read_only)] is one parameter's name: not a #[route(query)] set or a #[route(prefix = ..)] family",
+            );
+        }
         if let Some((prefix, span)) = route_prefix(field)? {
             if field.attrs.iter().any(is_route_query) {
                 return err(span, "a field is #[route(query)] or #[route(prefix = ..)], not both");
@@ -815,7 +839,10 @@ fn query_writes(fields: &[&Field]) -> TokenStream {
     let mut body = TokenStream::new();
     for field in fields {
         let ident: TokenStream = proc_macro::TokenTree::Ident(field.ident.clone()).into();
-        if field.attrs.iter().any(is_route_query) {
+        if is_read_only(field) {
+            // Read, never written: a link has no value for it.
+            body.extend(q("let _ = &self.__A0;", &[ident]));
+        } else if field.attrs.iter().any(is_route_query) {
             body.extend(q(
                 "::corten::route::QueryParams::write_params(&self.__A0, __corten_first, __corten_html, __OUT);",
                 &[ident],

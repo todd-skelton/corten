@@ -85,7 +85,9 @@ filter fields in each route. A set whose value is a rule over what
 was sent (every `listing` sent must agree, a flag set by any `dimension.*`) implements
 `corten::route::FromQuery` with two derived sets of the same names: `type Link<'a>` (writes links,
 as narrow as the value, via `link`) and `type Read` (owned, `Vec` fields, read back and turned into
-the value by `from_query`); never implement `QueryParams` by hand or reach into
+the value by `from_query`; an older name it still reads but links never write is a
+`#[route(read_only)]` field on `Read` alone, never a field the link sets to `None`); never
+implement `QueryParams` by hand or reach into
 `corten::route::__private`, and keep a set of plain fields derived. Parameters whose names are data (an option per dimension) are a
 `#[route(prefix = "dimension.")] dimensions: &BTreeMap<String, String>` field, never a query string
 built by hand. A parameter whose URL name is not the field's (`?priceMin=`) is renamed with serde

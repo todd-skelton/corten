@@ -1410,6 +1410,11 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#559 Kit Table cannot end-align a number column or let a cell wrap without !important](https://github.com/todd-skelton/corten/issues/559),
     [#562 Kit Table keeps every cell on one line, and an app class cannot let a column wrap without matching the kit's specificity](https://github.com/todd-skelton/corten/issues/562),
     [#567 Kit Table has no sortable column header, so each app hand-writes aria-sort, the sort link and its arrow](https://github.com/todd-skelton/corten/issues/567)).
+170. `#[route(read_only)]` on a query field: a parameter's older name that `Params` reads and no
+    link writes, so an address shared before a rename still reads. On a `FromQuery` set's `Read`
+    it needs no field on `Link`, and the route counts it with its other names, so no other
+    parameter can take it
+    ([#577 A FromQuery Read cannot take an older parameter name its Link never writes, so a renamed parameter is declared on the link set](https://github.com/todd-skelton/corten/issues/577)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

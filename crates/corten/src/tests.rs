@@ -3309,6 +3309,61 @@ fn a_query_set_that_is_a_rule_matches_names_not_their_order() {
     assert_eq!(read.set, Reordered { listing: Some("l1".into()), page: Some(3) });
 }
 
+/// Search words read from `q`, or from the older `search` an address shared before the rename
+/// has (`#[route(read_only)]`); links write only `q` (#577).
+#[derive(Debug, PartialEq)]
+pub struct Terms(pub Option<String>);
+
+#[derive(crate::Route)]
+#[route(query)]
+pub struct TermsLink<'a> {
+    pub q: Option<&'a str>,
+}
+
+#[derive(crate::Route)]
+#[route(query)]
+pub struct TermsRead {
+    pub q: Vec<String>,
+    #[route(read_only)]
+    pub search: Vec<String>,
+}
+
+impl crate::route::FromQuery for Terms {
+    type Link<'a> = TermsLink<'a>;
+    type Read = TermsRead;
+
+    fn link(&self) -> TermsLink<'_> {
+        TermsLink { q: self.0.as_deref() }
+    }
+
+    fn from_query(read: TermsRead) -> Result<Self, crate::form::FormError> {
+        Ok(Terms(read.q.into_iter().chain(read.search).find(|t| !t.is_empty())))
+    }
+}
+
+#[derive(crate::Route)]
+#[route("/search")]
+pub struct SearchRoute {
+    #[route(query)]
+    pub terms: Terms,
+    pub page: Option<u32>,
+}
+
+#[test]
+fn an_older_name_is_read_and_never_written() {
+    use crate::route::FromUrl;
+    assert_eq!(SearchRoute { terms: Terms(Some("pika".into())), page: None }.href(), "/search?q=pika");
+    for (query, words) in [("search=pika", Some("pika")), ("q=mew&search=pika", Some("mew")), ("page=2", None)] {
+        let read = <SearchRoute as FromUrl>::__read((), query).unwrap();
+        assert_eq!(read.terms, Terms(words.map(str::to_owned)), "{query}");
+    }
+    // A read set's read-only field is never written, even by the set itself.
+    let read = TermsRead { q: vec!["mew".into()], search: vec!["pika".into()] };
+    let mut out = String::new();
+    crate::route::QueryParams::write_params(&read, &mut true, false, &mut out);
+    assert_eq!(out, "?q=mew");
+}
+
 /// A `FromQuery` set inside a derived one, beside the outer set's own names.
 #[derive(crate::Route)]
 #[route(query)]
