@@ -361,8 +361,10 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 ///
 /// A status here is the app's own answer, body and all: `503 {"error":"No forecast yet"}` reaches
 /// the client as written. A failure (`Err`) is answered as every failure of a JSON route is, a
-/// Problem Details document (`application/problem+json`, `{"title","status","detail"}`), unless
-/// it is one of these: `Err(answer)?` refuses in the app's own shape ([`JsonError::Own`]).
+/// Problem Details document (`application/problem+json`, `{"title","status","detail"}`), except
+/// a refusal in the app's own shape, `Err(answer)?` ([`JsonError::Own`]), which is answered as
+/// written. A refusal (a 4xx or 5xx of the app's) is that `Err`; `Ok` is for the route's answers
+/// and another server's passed on.
 ///
 /// ```
 /// use corten::{axum::http::StatusCode, json::Raw, prelude::*, security::cookie::SetCookie, JsonError, JsonResponse};
@@ -378,10 +380,10 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 /// }
 ///
 /// async fn capacity(State(forecast): State<Option<Raw>>) -> Result<JsonResponse, JsonError> {
-///     Ok(match forecast {
-///         Some(doc) => Json(doc).into(),
-///         None => Json(Problem { error: "No capacity forecast yet" }).with_status(StatusCode::SERVICE_UNAVAILABLE),
-///     })
+///     match forecast {
+///         Some(doc) => Ok(Json(doc).into()),
+///         None => Err(Json(Problem { error: "No capacity forecast yet" }).with_status(StatusCode::SERVICE_UNAVAILABLE).into()),
+///     }
 /// }
 ///
 /// async fn sign_in() -> Result<JsonResponse, JsonError> {
@@ -400,9 +402,10 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 /// let _ = Json(1).with_cookie("session=abc");
 /// ```
 ///
-/// It answers the visitor who asked, so it is never [`Public`]: a cache would give its cookie to
-/// everyone. A public JSON answer is a [`JsonResult<T>`], held bytes included
-/// (`Public<JsonResult<Raw>>`).
+/// It answers the visitor who asked, so it is never a [`Public`] answer: a cache would give its
+/// cookie to everyone. A public JSON answer is a [`JsonResult<T>`], held bytes included
+/// (`Public<JsonResult<Raw>>`), whose refusal may be a `JsonResponse`: a refusal is never
+/// shared, and one that sets a cookie is private.
 ///
 /// ```compile_fail,E0277
 /// use std::time::Duration;
@@ -414,8 +417,18 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 /// }
 /// ```
 #[cfg(feature = "json")]
-#[derive(Debug)]
 pub struct JsonResponse(Response);
+
+/// Its status and type, not its headers: a cookie it sets (a session) stays out of logs.
+#[cfg(feature = "json")]
+impl std::fmt::Debug for JsonResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JsonResponse")
+            .field("status", &self.0.status())
+            .field("content_type", &self.0.headers().get(axum::http::header::CONTENT_TYPE))
+            .finish_non_exhaustive()
+    }
+}
 
 #[cfg(feature = "json")]
 impl JsonResponse {
@@ -583,7 +596,8 @@ pub enum JsonError {
     /// # use corten::axum::response::IntoResponse;
     /// ```
     ///
-    /// A refusal is a client or server error: a debug build panics on one with another status.
+    /// A refusal is a client or server error. One with another status is a bug: a debug build
+    /// panics, and in release it is logged and answered as a failure (500), never as written.
     Own(Box<JsonResponse>),
 }
 
@@ -592,10 +606,16 @@ impl From<JsonResponse> for JsonError {
     #[track_caller]
     fn from(answer: JsonResponse) -> Self {
         let status = answer.status();
-        debug_assert!(
-            status.is_client_error() || status.is_server_error(),
-            "corten: a JSON route refuses with a 4xx or 5xx, not {status}; answer Ok(..) for any other status"
-        );
+        if !(status.is_client_error() || status.is_server_error()) {
+            let message = format!(
+                "corten: a JSON route refuses with a 4xx or 5xx, not {status} (at {}); answer Ok(..) for any other status",
+                std::panic::Location::caller()
+            );
+            if cfg!(debug_assertions) {
+                panic!("{message}");
+            }
+            return JsonError::Error(Error::new(message));
+        }
         JsonError::Own(Box::new(answer))
     }
 }

@@ -3793,6 +3793,11 @@ mod own_json_url {
     pub struct Created {
         pub request: String,
     }
+
+    #[route("/secret/{request}", post = own_secret)]
+    pub struct Secret {
+        pub request: String,
+    }
 }
 
 #[cfg(feature = "json")]
@@ -3841,6 +3846,9 @@ fn own_batch(request: &str) -> Result<crate::JsonResponse, JsonError> {
     if request.trim() == "-" {
         Err(refused(StatusCode::BAD_REQUEST, "requestId is required")?)?;
     }
+    if request == "boom" {
+        return Err(Error::new("the store is down").into());
+    }
     if request == "gone" {
         Err(refused(StatusCode::GONE, "batch is closed")?.with_cookie(SetCookie::remove("batch")))?;
     }
@@ -3850,6 +3858,18 @@ fn own_batch(request: &str) -> Result<crate::JsonResponse, JsonError> {
 #[cfg(feature = "json")]
 async fn own_created(crate::Params(at): crate::Params<own_json_url::Created>) -> Result<crate::JsonResponse, JsonError> {
     own_batch(&at.request)
+}
+
+#[cfg(feature = "json")]
+async fn own_secret(crate::Params(at): crate::Params<own_json_url::Secret>) -> NoStore<Result<crate::JsonResponse, JsonError>> {
+    NoStore(own_batch(&at.request))
+}
+
+/// An API's own error shape, which Corten's failures take and the app's refusals do not.
+#[cfg(feature = "json")]
+#[derive(crate::ToJson)]
+struct OwnShape {
+    error: String,
 }
 
 #[cfg(feature = "json")]
@@ -3865,7 +3885,9 @@ async fn own_held() -> crate::JsonResult<crate::json::Raw> {
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn a_json_answer_has_a_status_and_cookies_of_its_own() {
-    let router = App::new(own_json_url::router()).api(own_json_api::api).router();
+    let router = App::new(own_json_url::router())
+        .api(|routes| own_json_api::api(routes).errors(|_, message| OwnShape { error: format!("shaped: {message}") }))
+        .router();
     let (status, headers, body) = call_with(router.clone(), "POST", "/started", None, None).await;
     assert_eq!((status, &body[..]), (StatusCode::ACCEPTED, r#"{"ok":true}"#));
     assert_eq!(headers["content-type"], "application/json");
@@ -3898,6 +3920,25 @@ async fn a_json_answer_has_a_status_and_cookies_of_its_own() {
         assert_eq!((status, &body[..]), (StatusCode::GONE, r#"{"error":"batch is closed"}"#), "{prefix}");
         assert_eq!(headers["set-cookie"], "batch=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure");
     }
+    // Corten's failure takes the API's shape; the app's refusal beside it does not.
+    let (status, _, body) = call_with(router.clone(), "POST", "/v1/batches/boom", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":"shaped: Internal Server Error"}"#));
+    let (status, _, body) = call_with(router.clone(), "POST", "/v1/batches/-", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::BAD_REQUEST, r#"{"error":"requestId is required"}"#));
+    // NoStore holds for the app's refusal too.
+    let (status, headers, body) = call_with(router, "POST", "/secret/-", None, None).await;
+    assert_eq!(
+        (status, &body[..], headers["cache-control"].to_str().unwrap()),
+        (StatusCode::BAD_REQUEST, r#"{"error":"requestId is required"}"#, "no-store")
+    );
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn a_json_answer_keeps_its_cookies_out_of_debug() {
+    let answer = crate::Json(OwnStarted { ok: true }).with_cookie(SetCookie::new("session", "s3cret"));
+    let shown = format!("{:?}", JsonError::from(answer.with_status(StatusCode::UNAUTHORIZED)));
+    assert!(shown.contains("401") && !shown.contains("s3cret"), "{shown}");
 }
 
 #[cfg(feature = "json")]
@@ -3909,10 +3950,11 @@ fn a_json_error_stays_under_clippys_large_error_limit() {
 
 #[cfg(feature = "json")]
 #[test]
-#[should_panic(expected = "refuses with a 4xx or 5xx")]
-#[cfg(debug_assertions)]
+#[cfg_attr(debug_assertions, should_panic(expected = "refuses with a 4xx or 5xx"))]
 fn a_json_refusal_is_an_error_status() {
-    let _ = JsonError::from(crate::Json(OwnStarted { ok: true }).with_status(StatusCode::ACCEPTED));
+    // In release, a failure: never a shared 2xx.
+    let error = JsonError::from(crate::Json(OwnStarted { ok: true }).with_status(StatusCode::ACCEPTED));
+    assert_eq!(error.into_response().status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 
 #[cfg(feature = "json")]

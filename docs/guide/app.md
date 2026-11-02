@@ -882,17 +882,19 @@ A JSON answer is `200` with the value's JSON. One with a status or a cookie of i
 `JsonResponse`, made from the value (or from a `Relay`, [below](#websockets-and-relays)), and its
 handler returns `Result<JsonResponse, JsonError>`:
 `Json(started).with_status(StatusCode::ACCEPTED)` for a job begun,
-`Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE)` for a document that does not exist
-yet, `Json(session).with_cookie(SetCookie::try_new("session", &token)?)` for a sign-in (never a
+`Json(session).with_cookie(SetCookie::try_new("session", &token)?)` for a sign-in (never a
 `Set-Cookie` header by hand). That status and body are the app's own answer and reach the client
-as written; a failure (`Err`) is still answered in Corten's shape (or the API's own,
-`Api::errors`). A `JsonResponse` is for the client who asked, so `Public` of one does not
-compile; a public JSON answer is a `JsonResult<T>`.
+as written. A failure (`Err`) is answered in Corten's shape (or the API's own, `Api::errors`),
+except a refusal in the app's own shape, below. A `JsonResponse` is for the client who asked, so
+`Public` of one does not compile; a public JSON answer is a `JsonResult<T>`, and a refusal in it
+is never shared (one that sets a cookie is private).
 
-A route that keeps another server's error shape refuses in it with `?`: a `JsonResponse` is a
-`JsonError` too (`JsonError::Own`, boxed so a helper's `Result<_, JsonError>` stays small), and
-it is answered as written, status, body and cookies, as an `Ok` one is. Its status is a 4xx or
-5xx (a debug build panics on another).
+A refusal in the app's own shape (a document that does not exist yet,
+`{"error":"No forecast yet"}` with a 503, or another server's error shape the route keeps) is an
+`Err`: a `JsonResponse` converts into a `JsonError` (`JsonError::Own`, boxed so a helper's
+`Result<_, JsonError>` stays small), so a helper refuses with `?`, and it is answered as written,
+status, body and cookies. `Ok` is for the route's answers. Its status is a 4xx or 5xx: another
+panics in a debug build, and in release is logged and answered as a 500.
 
 ```rust
 use corten::{axum::http::StatusCode, prelude::*, JsonError, JsonResponse};
