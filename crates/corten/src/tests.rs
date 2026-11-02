@@ -5534,14 +5534,17 @@ async fn a_step_before_http_is_counted_and_timed_as_the_connection() {
     let mut rest = Vec::new();
     let closed = tokio::time::timeout(Duration::from_secs(3), stalled.read_to_end(&mut rest)).await;
     assert!(closed.is_ok(), "a stalled step is not held past the header timeout");
-    assert!(started.elapsed() >= Duration::from_millis(550), "{:?}", started.elapsed());
+    // The clock closes it within a tick (a tenth of the timeout, 60 ms) of 600 ms from the accept,
+    // either way: well after the check at 200 ms, with 40 ms of room besides.
+    assert!(started.elapsed() >= Duration::from_millis(500), "{:?}", started.elapsed());
     let answer = tokio::time::timeout(Duration::from_secs(3), next).await.expect("answered once it closes").unwrap();
     assert!(answer.ends_with("hi"), "{answer}");
 
     // One clock from the accept to the head: a step that takes most of the timeout leaves the
-    // rest for the head, not the whole timeout again. It closes at 600 ms from the accept; a second
-    // clock would close it at 1,000 ms. The bound is between them, 250 ms from each, so a loaded
-    // machine's delay does not fail it (#594).
+    // rest for the head, not the whole timeout again. It closes within a tick (60 ms) of 600 ms
+    // from the accept; a second clock would close it within a tick of 1,000 ms. The bound leaves
+    // about 190 ms after the first and 90 ms before the second, so a loaded machine's delay does
+    // not fail it (#594).
     let started = Instant::now();
     let mut slow = tokio::net::TcpStream::connect(addr).await.unwrap();
     tokio::time::sleep(Duration::from_millis(400)).await;

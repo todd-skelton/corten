@@ -2844,8 +2844,9 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#555 An html! error from a local that shadows a function points at an unrelated file](https://github.com/todd-skelton/corten/issues/555)).
 
 99. A listener test bounded a connection's close 120 ms past the header timeout on the wall
-    clock, so a loaded machine failed it; its timeout is longer, and the bound sits halfway between
-    one clock from the accept and a second one after the step
+    clock, so a loaded machine failed it; its timeout is longer, the bound sits between one clock
+    from the accept and a second one after the step, and the lower bound allows for the clock's
+    tick
     ([#594 a_step_before_http_is_counted_and_timed_as_the_connection bounds the wall clock 20 ms past the expected close, so a loaded machine fails it](https://github.com/todd-skelton/corten/issues/594)).
 
 ### Documentation
